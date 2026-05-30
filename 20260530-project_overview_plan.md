@@ -22,11 +22,11 @@ Traditional PDF layout extractors break when exposed to structurally complex, mu
 All development must rigidly adhere to this foundational modern Python stack:
 
 * **Package & Runtime Manager:** `uv` (Fast Python packaging, script execution, and project lock management).
-* **Agentic State Machine:** `LangGraph` (v0.2+ structured state-graph management with persistent checkpointers and the Send API for parallel dispatch).
-* **State Persistence Engine:** `SQLite3` via LangGraph's native `AsyncSqliteSaver` (Write-Ahead Logging enabled).
+* **Agentic State Machine:** `LangGraph` (v1.2.2+ structured state-graph management with persistent checkpointers and the Send API for parallel dispatch).
+* **State Persistence Engine:** `SQLite3` via `langgraph-checkpoint-sqlite` (v3.1.0+) — a **separate package** from `langgraph` core that provides `AsyncSqliteSaver` with Write-Ahead Logging. Must be listed explicitly in dependencies.
 * **Inference Engine Model:** Anthropic `claude-sonnet-4-6` — centralized in `src/config.py` so all nodes reference a single constant.
-* **Data Validation Layer:** `jsonschema` (v4.22+) for runtime validation of LLM output against the JSON Schema Draft-07 blueprint files. Pydantic v2 is used only for the native extractor's internal data models (`NativeWord`, `NativePageMetadata`), not for schema registry validation. `TypeAdapter` is explicitly **not** used for JSON Schema dict validation — it does not accept raw schema dicts.
-* **API Resilience:** `tenacity` (v8.3+) — all Anthropic API call sites are decorated with `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))` to handle transient 429/529 errors without manual intervention.
+* **Data Validation Layer:** `jsonschema` (v4.26.0+) for runtime validation of LLM output against the JSON Schema Draft-07 blueprint files. Pydantic v2 is used only for the native extractor's internal data models (`NativeWord`, `NativePageMetadata`), not for schema registry validation. `TypeAdapter` is explicitly **not** used for JSON Schema dict validation — it does not accept raw schema dicts.
+* **API Resilience:** `tenacity` (v9.1.4+) — all Anthropic API call sites are decorated with `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))` to handle transient 429/529 errors without manual intervention.
 * **Native Extractor Engine:** `pdfplumber` (De-coupled via the Strategy Design Pattern to support seamless future migration to `pypdfium2`).
 
 ---
@@ -206,7 +206,7 @@ START
 
 When picking up this project workflow, execute development tasks in this specific sequence:
 
-1. **Environment Initialization:** Run `uv sync`. Install packages with `uv add langgraph anthropic pydantic pdfplumber jsonschema tenacity`.
+1. **Environment Initialization:** Run `uv sync`. Install packages with `uv add "langgraph>=1.2.2" "langgraph-checkpoint-sqlite>=3.1.0" "anthropic>=0.105.2" "pydantic>=2.13.4" "pdfplumber>=0.11.9" "jsonschema>=4.26.0" "tenacity>=9.1.4"`.
 2. **Schema Baseline First:** Implement `src/schema_registry.py` first. Write a quick test that calls `SchemaRegistry().validate("invoice", mock_payload)` with a deliberately malformed payload and confirms that `jsonschema.ValidationError` is raised.
 3. **Config Centralization Check:** Confirm that all nodes import `MODEL` from `src/config.py` and never hardcode a model string. Running `grep -r "claude-" src/` should return zero results after setup.
 4. **Cache Validation Check:** After implementing `src/nodes/worker_node.py`, run a test invocation against a real PDF and inspect `response.usage` — confirm that `cache_read_input_tokens` increases on the second (burst) page invocations.

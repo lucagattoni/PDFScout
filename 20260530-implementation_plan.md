@@ -13,7 +13,7 @@ cd pdfscout
 mkdir -p schemas src/extractors src/nodes
 
 # Add strict version-controlled dependencies
-uv add "langgraph>=0.2.0" "anthropic>=0.30.0" "pydantic>=2.7.0" "pdfplumber>=0.11.0" "jsonschema>=4.22.0" "tenacity>=8.3.0"
+uv add "langgraph>=1.2.2" "langgraph-checkpoint-sqlite>=3.1.0" "anthropic>=0.105.2" "pydantic>=2.13.4" "pdfplumber>=0.11.9" "jsonschema>=4.26.0" "tenacity>=9.1.4"
 ```
 
 Configure the generated `pyproject.toml` file to enforce Python 3.13:
@@ -24,12 +24,13 @@ name = "pdfscout"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "langgraph>=0.2.0",
-    "anthropic>=0.30.0",
-    "pydantic>=2.7.0",
-    "pdfplumber>=0.11.0",
-    "jsonschema>=4.22.0",
-    "tenacity>=8.3.0",
+    "langgraph>=1.2.2",
+    "langgraph-checkpoint-sqlite>=3.1.0",
+    "anthropic>=0.105.2",
+    "pydantic>=2.13.4",
+    "pdfplumber>=0.11.9",
+    "jsonschema>=4.26.0",
+    "tenacity>=9.1.4",
 ]
 ```
 
@@ -169,10 +170,9 @@ COLUMN_BUCKET_PX = 50       # xmin bucket width for geometric pre-sorter column 
 ### File: `src/state.py`
 
 ```python
-from typing import TypedDict, List, Dict, Any, Optional
-from typing_extensions import Annotated
+from typing import Annotated, Any, TypedDict
 
-def merge_flat_blocks(existing: List[Dict[str, Any]], new: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Appends sub-agent page payloads into a unified global accumulation array."""
     if not existing:
         return new
@@ -184,14 +184,14 @@ class PDFParserState(TypedDict):
     file_path: str
     pdf_hash: str
     total_pages: int
-    native_text_metadata: List[Dict[str, Any]]
+    native_text_metadata: list[dict[str, Any]]
     document_type: str
-    target_json_schema: Dict[str, Any]
+    target_json_schema: dict[str, Any]
     current_page: int
     retry_count: int
-    last_validation_error: Optional[str]
-    extracted_flat_blocks: Annotated[List[Dict[str, Any]], merge_flat_blocks]
-    hierarchical_document_tree: Optional[Dict[str, Any]]
+    last_validation_error: str | None
+    extracted_flat_blocks: Annotated[list[dict[str, Any]], merge_flat_blocks]
+    hierarchical_document_tree: dict[str, Any] | None
 ```
 
 ### File: `src/extractors/base.py`
@@ -200,22 +200,22 @@ Note: `min_items`/`max_items` are Pydantic v1 kwargs silently ignored in v2. Use
 
 ```python
 from abc import ABC, abstractmethod
-from typing import List, Annotated
+from typing import Annotated
 from pydantic import BaseModel, Field
 
 class NativeWord(BaseModel):
     text: str
-    bbox: Annotated[List[float], Field(min_length=4, max_length=4)]  # [ymin, xmin, ymax, xmax]
+    bbox: Annotated[list[float], Field(min_length=4, max_length=4)]  # [ymin, xmin, ymax, xmax]
 
 class NativePageMetadata(BaseModel):
     page_number: int
     raw_text: str
-    words: List[NativeWord]
-    dimensions: List[float]  # [width, height]
+    words: list[NativeWord]
+    dimensions: list[float]  # [width, height]
 
 class BaseNativeExtractor(ABC):
     @abstractmethod
-    def extract_document(self, file_path: str) -> List[NativePageMetadata]:
+    def extract_document(self, file_path: str) -> list[NativePageMetadata]:
         pass
 ```
 
@@ -467,10 +467,9 @@ def retry_incrementor_node(state: Dict[str, Any]) -> Dict[str, Any]:
 Uses tool-calling with a structured `set_block_relations` schema instead of text parsing. This eliminates the JSON markdown fence fragility of plain-text output. Deduplicates blocks by `block_id` before hierarchy assignment to guard against duplicates introduced by the pioneer retry loop (which appends via `merge_flat_blocks`).
 
 ```python
-import asyncio
 import os
 import json
-from typing import Dict, Any, List
+from typing import Any
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from src.config import MODEL, COLUMN_BUCKET_PX
