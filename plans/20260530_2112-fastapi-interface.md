@@ -1,5 +1,6 @@
 # FastAPI Interface Plan
-_Created: 2026-05-30 21:12 · Revised after devil's advocate review_
+_Created: 2026-05-30 21:12_
+_Updated: 2026-05-30 22:05 · Implementation feasibility pass — tracing interface redesign, StateSnapshot guards, CWD-relative path_
 
 ## Goal
 
@@ -82,7 +83,7 @@ lifespan startup:
   open AsyncSqliteSaver("api_checkpoint.db")  →  app.state.graph
   build_app(checkpointer)                     →  app.state.graph
   Langfuse()                                  →  app.state.langfuse  (if keys present)
-  mkdir tmp/uploads/
+  mkdir Path(__file__).parent / "tmp" / "uploads"  # anchored to api.py, not CWD
 
 lifespan shutdown:
   langfuse.shutdown()  (once — at process exit, not after each request)
@@ -104,26 +105,47 @@ signal to the operator. Separate files eliminate the interference entirely.
 The original plan duplicated this branch verbatim in `runner.py`, creating a
 third maintenance site (two files with identical Langfuse logic).
 
-**Fix**: extract into `src/utils/tracing.py`:
+**Fix**: extract into `src/utils/tracing.py` as an **async context manager**:
 
 ```python
-async def run_with_tracing(
-    graph,
-    input_data: dict | None,
-    config: dict,
-    display_name: str,
-    session_id: str,
-    langfuse=None,
-) -> tuple[AsyncIterator, Coroutine]:
+from contextlib import asynccontextmanager
+from langfuse import propagate_attributes
+
+@asynccontextmanager
+async def tracing_span(langfuse, display_name: str, session_id: str):
     """
-    Wraps graph.stream() with an optional Langfuse span.
-    Both main.py and runner.py call this instead of duplicating the branch.
-    Returns the stream iterator and a post-run coroutine for span metadata.
+    Async context manager that opens a Langfuse span (if langfuse is not None)
+    and sets propagate_attributes for the duration of the block.
+    Yields the span object (or None). Span stays open while the caller streams
+    the graph, reads final state, and calls span.update() — then closes on exit.
     """
+    if langfuse:
+        with langfuse.start_as_current_span(name=display_name) as span:
+            with propagate_attributes(session_id=session_id):
+                yield span
+    else:
+        yield None
 ```
 
-`main.py` is also updated to use this helper — the if/else Langfuse branch is
-removed from both entry points.
+Usage in both `main.py` and `runner.py`:
+
+```python
+async with tracing_span(langfuse, display_name, session_id) as span:
+    async for event in graph.stream(input_data, config):
+        # per-node work
+    final_state = await graph.aget_state(config)
+    # ... read job fields from final_state ...
+    if span:
+        span.update(metadata={...})   # span is still open here
+# span closes on __aexit__
+```
+
+The `with langfuse.start_as_current_span(...)` inside `asynccontextmanager` is a
+synchronous context manager nested inside an async one — valid Python. The `yield`
+from inside the `with` block keeps the span open for the entire `async with` body.
+
+`main.py` is also updated to use `tracing_span` — the `if/else` Langfuse branch
+is removed from both entry points.
 
 **Lifecycle change from `main.py`**
 
@@ -132,14 +154,20 @@ In a long-running server this would kill the background flush thread after the
 first request. The API moves `shutdown()` to the lifespan cleanup so it fires
 exactly once — at process exit — after all spans are enqueued.
 
-**`propagate_attributes` context isolation (review finding #7 — resolved)**
+**`propagate_attributes` context isolation (review finding #7 — revised)**
 
-`propagate_attributes(session_id=...)` sets a Python `ContextVar`. Each
-`run_extraction` coroutine is launched as an `asyncio.create_task()`, which
-copies the current context at task-creation time (`contextvars.copy_context()`).
-LangGraph's Send fan-out also uses `asyncio.create_task()` for worker nodes,
-so each worker inherits its parent job's context. Concurrent jobs cannot bleed
-their session IDs into each other's spans. **Safe by design.**
+Each `run_extraction` coroutine is launched as `asyncio.create_task()`, which
+copies the current context at task-creation time. Concurrent jobs therefore have
+isolated `ContextVar` copies at the job level — no cross-job bleed. ✓
+
+However, LangGraph's Send fan-out (burst workers) does **not** use
+`asyncio.create_task()` internally — it uses a custom `submit()` executor that
+does not guarantee ContextVar propagation to dispatched worker coroutines.
+Langfuse span context set by `propagate_attributes` may not propagate into
+burst-phase worker spans, meaning those child spans may not be attributed to the
+parent trace in Langfuse. This is a **known observability limitation**, not a
+correctness bug, and affects the CLI equally. Document it; do not attempt to fix
+it at the API layer.
 
 ---
 
@@ -168,7 +196,8 @@ if existing is not new_record:
 
 # Won the race — we are the sole owner of this job.
 # Write the file only once; no other concurrent request will write it.
-tmp_path = Path(f"tmp/uploads/{job_id}.pdf")
+_UPLOAD_DIR = Path(__file__).parent.parent.parent / "tmp" / "uploads"  # api.py-relative
+tmp_path = _UPLOAD_DIR / f"{job_id}.pdf"
 await asyncio.to_thread(tmp_path.write_bytes, content)
 
 # Optionally call force-clear on the job store entry and re-create
@@ -421,11 +450,13 @@ async def run_extraction(job_id: str, file_path: str, graph, langfuse, force: bo
         )
 
         final_state = await graph.aget_state(config)
-        tree = final_state.values.get("hierarchical_document_tree") if final_state else None
+        # graph.aget_state() always returns a StateSnapshot, never None.
+        # values={} on a run that never checkpointed (e.g., failed before first node).
+        tree = final_state.values.get("hierarchical_document_tree")
         job.result = tree
         job.warnings = tree.get("extraction_warnings", []) if tree else []
         job.document_type = tree.get("document_type") if tree else None
-        job.total_pages = final_state.values.get("total_pages") if final_state else None
+        job.total_pages = final_state.values.get("total_pages")
         job.status = "completed"
         job.completed_at = datetime.utcnow()
     except Exception as exc:
@@ -451,8 +482,8 @@ uv run uvicorn api:app --reload   # development
 ```
 
 The `lifespan` context manager:
-1. Creates `tmp/uploads/`
-2. Opens `AsyncSqliteSaver("api_checkpoint.db")`
+1. Creates `Path(__file__).parent / "tmp" / "uploads"` — anchored to `api.py`'s location, not CWD, so `uvicorn api:app` works from any directory
+2. Opens `AsyncSqliteSaver(str(Path(__file__).parent / "api_checkpoint.db"))`
 3. Compiles LangGraph app via `build_app(checkpointer)`
 4. Initialises `Langfuse()` if `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` present
 5. On shutdown: calls `langfuse.shutdown()` (once)
@@ -486,7 +517,7 @@ The `lifespan` context manager:
 | 7 | `tmp/uploads/` gitignored? | Yes — add `tmp/` to `.gitignore`. |
 | 8 | Content-Type spoofing | Content-Type check is a hint only; `pypdf.PdfReader` in `native_extractor_node` will raise on non-PDF bytes and mark the job failed. |
 | 9 | resume logic when snapshot.next is non-empty but file was deleted | If the server crashed after extraction finished but before cleanup, `snapshot.next` is `()` — the run completed, so no resume is attempted. If the server crashed mid-burst, `file_path` points to a file that may or may not still exist. The runner re-uploads the file (from the new request) before starting the resume, so the file is always present at resume time. |
-| 10 | `propagate_attributes` context bleed across concurrent jobs | Resolved — asyncio tasks copy context at creation time; each job's task and its LangGraph-spawned child tasks have isolated ContextVar copies. Safe by design. |
+| 10 | `propagate_attributes` context bleed across concurrent jobs | Job-level isolation is safe (each `run_extraction` is an `asyncio.create_task()`). Burst-phase Send workers may not inherit the ContextVar — LangGraph's `submit()` does not guarantee propagation. Known observability limitation; burst spans may appear detached in Langfuse. Affects CLI equally; not addressed at API layer. |
 
 ---
 
