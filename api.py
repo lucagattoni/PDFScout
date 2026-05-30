@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
 from langfuse import Langfuse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
@@ -41,6 +42,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="PDFScout API", version="0.3.0", lifespan=lifespan)
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health", response_model=HealthResponse)
