@@ -1,4 +1,4 @@
-# PDFScout
+# PDFScout · [Changelog](CHANGELOG.md)
 
 An agnostic, multi-agent PDF structure extractor that converts any PDF document into a validated, hierarchical JSON tree. Built on LangGraph with Claude's native PDF vision API, prompt caching for cost efficiency, and a self-healing validation loop. Works on text-based and scanned documents alike.
 
