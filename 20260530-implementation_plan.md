@@ -106,6 +106,108 @@ Create the static schema blueprint files. These files act as the source of truth
 }
 ```
 
+### File: `schemas/scientific_paper.json`
+
+Extends the baseline with bibliographic fields, numbered sections, reference entries, and figure/table caption metadata.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgnosticScientificPaperStructure",
+  "type": "object",
+  "properties": {
+    "document_type": { "type": "string", "enum": ["scientific_paper"] },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "block_id": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["title", "heading", "paragraph", "list_item", "table", "figure", "footnote", "margin_element"]
+          },
+          "bbox": {
+            "type": "object",
+            "properties": {
+              "page_number": { "type": "integer" },
+              "coordinates": { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4 }
+            },
+            "required": ["page_number", "coordinates"]
+          },
+          "text": { "type": "string" },
+          "is_continued": { "type": "boolean", "default": false },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "bibliographic": {
+                "type": "object",
+                "properties": {
+                  "authors": { "type": "array", "items": { "type": "string" } },
+                  "title":   { "type": "string" },
+                  "abstract":{ "type": "string" },
+                  "doi":     { "type": "string" }
+                }
+              },
+              "section": {
+                "type": "object",
+                "properties": {
+                  "section_number": { "type": "string" },
+                  "section_title":  { "type": "string" }
+                }
+              },
+              "reference": {
+                "type": "object",
+                "properties": {
+                  "citation_key": { "type": "string" },
+                  "authors": { "type": "array", "items": { "type": "string" } },
+                  "year":    { "type": "integer" },
+                  "title":   { "type": "string" },
+                  "venue":   { "type": "string" }
+                }
+              },
+              "figure_table": {
+                "type": "object",
+                "properties": {
+                  "label":               { "type": "string" },
+                  "caption":             { "type": "string" },
+                  "referenced_block_id": { "type": "string" }
+                }
+              },
+              "table_data": {
+                "type": "object",
+                "properties": {
+                  "total_rows": { "type": "integer" },
+                  "total_cols": { "type": "integer" },
+                  "cells": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "r": { "type": "integer" }, "c":  { "type": "integer" },
+                        "rs":{ "type": "integer" }, "cs": { "type": "integer" },
+                        "value": { "type": "string" },
+                        "is_header": { "type": "boolean", "default": false }
+                      },
+                      "required": ["r", "c", "rs", "cs", "value"]
+                    }
+                  }
+                },
+                "required": ["total_rows", "total_cols", "cells"]
+              }
+            }
+          }
+        },
+        "required": ["block_id", "type", "bbox", "text"]
+      }
+    }
+  },
+  "required": ["document_type", "blocks"]
+}
+```
+
+---
+
 ### File: `schemas/baseline_core.json`
 
 Generic fallback schema used when the classifier returns an unknown document type. Contains only the shared 8-type block enum with no domain-specific metadata constraints.
@@ -180,6 +282,9 @@ def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]])
         return existing
     return existing + new
 
+def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
+    return existing + new
+
 class PDFParserState(TypedDict):
     file_path: str
     pdf_hash: str
@@ -191,6 +296,7 @@ class PDFParserState(TypedDict):
     retry_count: int
     last_validation_error: str | None
     extracted_flat_blocks: Annotated[list[dict[str, Any]], merge_flat_blocks]
+    extraction_warnings: Annotated[list[str], merge_warnings]
     hierarchical_document_tree: dict[str, Any] | None
 ```
 
@@ -278,10 +384,12 @@ class SchemaRegistry:
 
     def get_schema_and_tool(self, doc_type: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         schema = self._load_schema(doc_type)
+        # Strip JSON Schema meta-fields rejected by Anthropic's tool input_schema spec
+        tool_schema = {k: v for k, v in schema.items() if k not in ("$schema", "title")}
         tool = {
             "name": f"extract_{doc_type}_structure",
             "description": f"Outputs structured semantic and layout blocks for a {doc_type} document.",
-            "input_schema": schema
+            "input_schema": tool_schema
         }
         return schema, tool
 
@@ -295,12 +403,12 @@ class SchemaRegistry:
 
 ## Step 7: LangGraph Node Implementations
 
-### File: `src/__init__.py`
+### Files: `src/__init__.py`, `src/nodes/__init__.py`, `src/extractors/__init__.py`
 
 ```python
 ```
 
-Empty file — marks `src/` as a Python package so that `from src.xxx import yyy` imports resolve correctly.
+Empty files — mark each directory as a Python package so that `from src.nodes.xxx import yyy` and `from src.extractors.xxx import yyy` imports resolve correctly. All three must be created.
 
 ---
 
@@ -308,19 +416,29 @@ Empty file — marks `src/` as a Python package so that `from src.xxx import yyy
 
 ```python
 import hashlib
-from typing import Dict, Any
+from typing import Any
 from src.extractors.plumber_engine import PlumberExtractor
 
-def native_extractor_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    file_path = state["file_path"]
-
+def _hash_file(file_path: str) -> str:
+    """Chunked SHA-256 — avoids loading the entire file into memory."""
     hasher = hashlib.sha256()
     with open(file_path, "rb") as f:
-        hasher.update(f.read())
-    pdf_hash = hasher.hexdigest()
+        for chunk in iter(lambda: f.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
+    file_path = state["file_path"]
+    pdf_hash = _hash_file(file_path)
 
     extractor = PlumberExtractor()
     metadata_objects = extractor.extract_document(file_path)
+
+    if not metadata_objects:
+        raise ValueError(
+            f"PDF at '{file_path}' yielded zero pages. "
+            "The file may be empty, image-only, or password-protected."
+        )
 
     return {
         "pdf_hash": pdf_hash,
@@ -329,7 +447,8 @@ def native_extractor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "current_page": 1,
         "retry_count": 0,
         "last_validation_error": None,
-        "extracted_flat_blocks": []
+        "extracted_flat_blocks": [],
+        "extraction_warnings": []
     }
 ```
 
@@ -341,14 +460,14 @@ Validates the returned token against `SUPPORTED_DOC_TYPES`. Falls back to `FALLB
 
 ```python
 import os
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from src.config import MODEL, SUPPORTED_DOC_TYPES, FALLBACK_DOC_TYPE
 from src.schema_registry import SchemaRegistry
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def _classify(client: Anthropic, first_page_text: str) -> str:
-    response = client.messages.create(
+async def _classify(client: AsyncAnthropic, first_page_text: str) -> str:
+    response = await client.messages.create(
         model=MODEL,
         max_tokens=10,
         temperature=0.0,
@@ -362,10 +481,10 @@ def _classify(client: Anthropic, first_page_text: str) -> str:
     )
     return response.content[0].text.strip().lower()
 
-def classifier_node(state: dict) -> dict:
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+async def classifier_node(state: dict) -> dict:
+    client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     first_page_text = state["native_text_metadata"][0]["raw_text"][:4000]
-    doc_type = _classify(client, first_page_text)
+    doc_type = await _classify(client, first_page_text)
 
     if doc_type not in SUPPORTED_DOC_TYPES:
         doc_type = FALLBACK_DOC_TYPE
@@ -448,14 +567,28 @@ async def window_parser_node(state: Dict[str, Any]) -> Dict[str, Any]:
 Single-responsibility node that sits between a failed pioneer validation and the re-entry to `pioneer_parser`. Writes the incremented retry count and the error description to state before the parser re-runs.
 
 ```python
-from typing import Dict, Any
+from typing import Any
+import jsonschema
+from src.schema_registry import SchemaRegistry
 
-def retry_incrementor_node(state: Dict[str, Any]) -> Dict[str, Any]:
+def retry_incrementor_node(state: dict[str, Any]) -> dict[str, Any]:
+    # Re-run validation to capture the actual error detail for the LLM's next attempt
+    active_blocks = [b for b in state["extracted_flat_blocks"] if b["bbox"]["page_number"] == 1]
+    payload = {"document_type": state["document_type"], "blocks": active_blocks}
+    error_detail = "Unknown schema violation."
+    try:
+        SchemaRegistry().validate(state["document_type"], payload)
+    except jsonschema.ValidationError as e:
+        path = " → ".join(str(p) for p in e.absolute_path) or "root"
+        error_detail = f"Field '{path}': {e.message}"
+
+    attempt = state["retry_count"] + 1
     return {
-        "retry_count": state["retry_count"] + 1,
+        "retry_count": attempt,
         "last_validation_error": (
-            "Schema violation detected on pioneer page extraction. "
-            "Adjust block structure to match the target schema constraints."
+            f"Schema violation on pioneer page extraction (attempt {attempt}/3).\n"
+            f"Error: {error_detail}\n"
+            f"Fix the block structure to match the target schema."
         )
     }
 ```
@@ -496,7 +629,7 @@ RELATION_TOOL = {
     }
 }
 
-def geometric_pre_sorter(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Sorts blocks deterministically: page ASC → column bucket ASC → ymin ASC.
     COLUMN_BUCKET_PX controls how finely columns are grouped; tune in src/config.py."""
     def sort_key(b):
@@ -506,7 +639,7 @@ def geometric_pre_sorter(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(blocks, key=sort_key)
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-async def _call_api(client: AsyncAnthropic, manifest: list):
+async def _call_api(client: AsyncAnthropic, manifest: list) -> Any:
     return await client.messages.create(
         model=MODEL,
         max_tokens=4000,
@@ -528,7 +661,7 @@ async def _call_api(client: AsyncAnthropic, manifest: list):
         }]
     )
 
-async def layout_hierarchy_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
     client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
     # Deduplicate by block_id before sorting — guards against pioneer retry duplicates
@@ -541,29 +674,33 @@ async def layout_hierarchy_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     sorted_blocks = geometric_pre_sorter(unique_blocks)
 
-    manifest = [
-        {
-            "block_id": b["block_id"],
-            "type": b["type"],
-            "bbox": b["bbox"],
-            "is_continued": b.get("is_continued", False),
-            "text_preview": b["text"][:50]
-        }
-        for b in sorted_blocks
-    ]
-
-    response = await _call_api(client, manifest)
-    tool_block = next(b for b in response.content if b.type == "tool_use")
-    relations = tool_block.input.get("relations", [])
-    relation_map = {r["block_id"]: r["parent_id"] for r in relations}
-
-    for block in sorted_blocks:
-        block["parent_id"] = relation_map.get(block["block_id"])
+    # Skip the hierarchy API call when there is at most one block — no relations to assign
+    if len(sorted_blocks) > 1:
+        manifest = [
+            {
+                "block_id": b["block_id"],
+                "type": b["type"],
+                "bbox": b["bbox"],
+                "is_continued": b.get("is_continued", False),
+                "text_preview": b["text"][:50]
+            }
+            for b in sorted_blocks
+        ]
+        response = await _call_api(client, manifest)
+        tool_block = next(b for b in response.content if b.type == "tool_use")
+        relations = tool_block.input.get("relations", [])
+        relation_map = {r["block_id"]: r["parent_id"] for r in relations}
+        for block in sorted_blocks:
+            block["parent_id"] = relation_map.get(block["block_id"])
+    else:
+        for block in sorted_blocks:
+            block["parent_id"] = None
 
     return {
         "hierarchical_document_tree": {
             "document_type": state["document_type"],
             "pdf_hash": state["pdf_hash"],
+            "extraction_warnings": state.get("extraction_warnings", []),
             "structured_payload": sorted_blocks
         }
     }
@@ -579,15 +716,20 @@ Uses `jsonschema.ValidationError` (not `pydantic.ValidationError`). Applies only
 
 ```python
 import jsonschema
-from typing import Dict, Any, Literal
+from typing import Any, Literal
 from src.schema_registry import SchemaRegistry
 
-def pioneer_validation_route(state: Dict[str, Any]) -> Literal["retry_node", "burst_dispatcher"]:
+def pioneer_validation_route(state: dict[str, Any]) -> Literal["retry_node", "burst_dispatcher"]:
     """Routes after pioneer_parser completes. Validates page 1 blocks only."""
     active_blocks = [
         b for b in state["extracted_flat_blocks"]
         if b["bbox"]["page_number"] == 1
     ]
+
+    # Empty list means the model returned no blocks for page 1 or used the wrong page number
+    if not active_blocks:
+        return "retry_node" if state["retry_count"] < 3 else "burst_dispatcher"
+
     payload = {"document_type": state["document_type"], "blocks": active_blocks}
 
     try:
@@ -606,7 +748,7 @@ def pioneer_validation_route(state: Dict[str, Any]) -> Literal["retry_node", "bu
 Implements the full Send API map-reduce topology. `pioneer_parser` and `parser_worker` are separate graph nodes backed by the same `window_parser_node` function. This is required because LangGraph applies conditional edges per node name — using the same node for both sequential and parallel phases would cause all burst completions to re-trigger the pioneer validation route.
 
 ```python
-from typing import List, Union
+from typing import Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 from src.state import PDFParserState
@@ -617,7 +759,16 @@ from src.nodes.retry_node import retry_incrementor_node
 from src.nodes.hierarchy_node import layout_hierarchy_agent_node
 from src.edges import pioneer_validation_route
 
-def dispatch_pages(state: PDFParserState) -> Union[List[Send], str]:
+def burst_dispatcher_node(state: PDFParserState) -> dict[str, Any]:
+    """Passthrough node. Writes a warning if pioneer validation degraded after max retries."""
+    if state["retry_count"] >= 3:
+        return {"extraction_warnings": [
+            "Pioneer page (page 1) failed schema validation after 3 retries. "
+            "Page 1 data may be incomplete or structurally invalid."
+        ]}
+    return {}
+
+def dispatch_pages(state: PDFParserState) -> list[Send] | str:
     """Dispatches pages 2-N as concurrent Send tasks. Single-page docs skip to hierarchy."""
     if state["total_pages"] < 2:
         return "hierarchy_node"
@@ -626,44 +777,38 @@ def dispatch_pages(state: PDFParserState) -> Union[List[Send], str]:
         for page in range(2, state["total_pages"] + 1)
     ]
 
-workflow = StateGraph(PDFParserState)
+def build_app(checkpointer=None):
+    """Factory — pass a checkpointer instance, or None for an in-memory (test) graph."""
+    workflow = StateGraph(PDFParserState)
 
-# Node Registry
-workflow.add_node("native_extractor", native_extractor_node)
-workflow.add_node("classifier", classifier_node)
-workflow.add_node("pioneer_parser", window_parser_node)   # page 1 — has pioneer routing
-workflow.add_node("retry_node", retry_incrementor_node)
-workflow.add_node("burst_dispatcher", lambda state: {})   # passthrough; routing via conditional edge
-workflow.add_node("parser_worker", window_parser_node)    # pages 2-N — dispatched via Send
-workflow.add_node("hierarchy_node", layout_hierarchy_agent_node)
+    workflow.add_node("native_extractor", native_extractor_node)
+    workflow.add_node("classifier", classifier_node)
+    workflow.add_node("pioneer_parser", window_parser_node)   # page 1 — has pioneer routing
+    workflow.add_node("retry_node", retry_incrementor_node)
+    workflow.add_node("burst_dispatcher", burst_dispatcher_node)
+    workflow.add_node("parser_worker", window_parser_node)    # pages 2-N — dispatched via Send
+    workflow.add_node("hierarchy_node", layout_hierarchy_agent_node)
 
-# Graph Topology
-workflow.add_edge(START, "native_extractor")
-workflow.add_edge("native_extractor", "classifier")
-workflow.add_edge("classifier", "pioneer_parser")
+    workflow.add_edge(START, "native_extractor")
+    workflow.add_edge("native_extractor", "classifier")
+    workflow.add_edge("classifier", "pioneer_parser")
 
-workflow.add_conditional_edges(
-    "pioneer_parser",
-    pioneer_validation_route,
-    {
-        "retry_node": "retry_node",
-        "burst_dispatcher": "burst_dispatcher"
-    }
-)
-workflow.add_edge("retry_node", "pioneer_parser")
+    workflow.add_conditional_edges(
+        "pioneer_parser",
+        pioneer_validation_route,
+        {"retry_node": "retry_node", "burst_dispatcher": "burst_dispatcher"}
+    )
+    workflow.add_edge("retry_node", "pioneer_parser")
 
-# burst_dispatcher uses conditional edges to return Send objects for concurrent dispatch
-workflow.add_conditional_edges(
-    "burst_dispatcher",
-    dispatch_pages,
-    ["parser_worker", "hierarchy_node"]
-)
-workflow.add_edge("parser_worker", "hierarchy_node")
-workflow.add_edge("hierarchy_node", END)
+    workflow.add_conditional_edges(
+        "burst_dispatcher",
+        dispatch_pages,
+        ["parser_worker", "hierarchy_node"]
+    )
+    workflow.add_edge("parser_worker", "hierarchy_node")
+    workflow.add_edge("hierarchy_node", END)
 
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-memory_checkpointer = AsyncSqliteSaver.from_conn_string("state_checkpoint.db")
-compiled_extractor_app = workflow.compile(checkpointer=memory_checkpointer)
+    return workflow.compile(checkpointer=checkpointer)
 ```
 
 ---
@@ -680,12 +825,15 @@ import sys
 import asyncio
 import json
 import hashlib
-from src.graph import compiled_extractor_app
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from src.graph import build_app
 
 def _compute_hash(file_path: str) -> str:
+    """Chunked SHA-256 — avoids loading the full PDF into memory."""
     hasher = hashlib.sha256()
     with open(file_path, "rb") as f:
-        hasher.update(f.read())
+        for chunk in iter(lambda: f.read(65536), b""):
+            hasher.update(chunk)
     return hasher.hexdigest()
 
 async def main():
@@ -704,12 +852,20 @@ async def main():
 
     print(f"Initializing extraction pipeline for: {target_pdf} (thread: {pdf_hash[:8]}...)")
 
-    async for event in compiled_extractor_app.stream(initial_inputs, config):
-        for node_name in event:
-            print(f"[GRAPH] Node '{node_name}' completed.")
+    async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
+        app = build_app(checkpointer)
 
-    final_state = await compiled_extractor_app.get_state(config)
-    tree_result = final_state.values.get("hierarchical_document_tree")
+        async for event in app.stream(initial_inputs, config):
+            for node_name in event:
+                print(f"[GRAPH] Node '{node_name}' completed.")
+
+        final_state = await app.get_state(config)
+        tree_result = final_state.values.get("hierarchical_document_tree")
+
+    if tree_result and tree_result.get("extraction_warnings"):
+        print("\nWARNINGS:")
+        for w in tree_result["extraction_warnings"]:
+            print(f"  ⚠ {w}")
 
     print("\nExtraction complete. Output tree:\n")
     print(json.dumps(tree_result, indent=2))

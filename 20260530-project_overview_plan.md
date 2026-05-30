@@ -39,7 +39,7 @@ The extraction pipeline is split into distinct sequential and parallel execution
 2. **Classifier Agent Node:** Reads the raw text of the first page. Returns one of the supported document type tokens (e.g., `"invoice"`, `"scientific_paper"`). If the returned value is not in `SUPPORTED_DOC_TYPES`, it falls back gracefully to `"baseline_core"` instead of crashing.
 3. **Pioneer Parser Node (`pioneer_parser`):** Passes page 1 text and coordinates to Claude via tool-calling. The global metadata payload is sent with `cache_control: ephemeral` to commit it to the provider's cache. This is a dedicated graph node (separate from the burst `parser_worker` node) with its own routing edge for validation and retry.
 4. **Pioneer Validation & Self-Healing Loop:** After `pioneer_parser` completes, a routing function validates page 1's extracted blocks using `jsonschema.validate()`. On failure, it routes to `retry_incrementor_node` (which increments `retry_count` and writes the error message to state) before re-entering `pioneer_parser`. After 3 failed retries, the route degrades gracefully to `burst_dispatcher`.
-5. **Burst Dispatcher Node:** After page 1 is validated (or degraded), `burst_dispatcher` emits one `Send("parser_worker", ...)` object per remaining page via LangGraph's native Send API. LangGraph executes these concurrently. Each `parser_worker` invocation runs under a module-level `asyncio.Semaphore(CONCURRENCY_LIMIT)` to prevent TPM saturation. Single-page documents skip this phase and route directly to the hierarchy node.
+5. **Burst Dispatcher Node:** After page 1 is validated (or degraded after 3 retries — in which case a warning is written to `extraction_warnings`), `burst_dispatcher` emits one `Send("parser_worker", ...)` object per remaining page via LangGraph's native Send API. LangGraph executes these concurrently. Each `parser_worker` invocation runs under a module-level `asyncio.Semaphore(CONCURRENCY_LIMIT)` to prevent TPM saturation. Single-page documents skip this phase and route directly to the hierarchy node. **Scalability note:** each Send task receives a full copy of `native_text_metadata` (all pages) — this is intentional for cache priming but creates memory pressure proportional to `page_count × document_size`. **Cache TTL note:** Anthropic's prompt cache TTL is 5 minutes. If burst dispatch is delayed beyond that window (very large documents, slow extractor, tenacity retries), the cache expires and burst pages pay full input token cost.
 6. **Geometric Pre-Sorter:** A local Python step inside the hierarchy node that aggregates all returned flat JSON blocks and sorts them by: page ASC → column bucket (xmin // `COLUMN_BUCKET_PX`) ASC → ymin ASC. The bucket width is a tunable constant in `src/config.py`.
 7. **Hierarchy Agent Node:** Receives the sorted flat block sequence. Uses Claude tool-calling (with a structured `set_block_relations` schema) to assign `parent_id` mappings — eliminating the JSON fence stripping fragility of plain text output. Handles cross-page `is_continued` linkages and deduplicates blocks by `block_id` to guard against retry-accumulated duplicates.
 8. **SQLite Checkpointer:** Flushes the completed session to disk. Thread ID is the PDF's SHA-256 hash, so re-running the same file resumes from its last valid checkpoint rather than creating a new session.
@@ -96,11 +96,15 @@ pdfscout/
     │   └── plumber_engine.py   # Concrete implementation via pdfplumber
     │
     ├── nodes/                  # Discrete execution graph nodes
-    │   ├── extractor_node.py   # PDF hashing + pdfplumber coordinate extraction
-    │   ├── classifier_node.py  # Document type prediction with fallback
+    │   ├── __init__.py         # Required — marks nodes/ as a package
+    │   ├── extractor_node.py   # PDF hashing (chunked) + pdfplumber coordinate extraction
+    │   ├── classifier_node.py  # Document type prediction with fallback (async)
     │   ├── worker_node.py      # Core page extraction (pioneer + burst, shared function)
-    │   ├── retry_node.py       # Increments retry_count and writes validation error to state
+    │   ├── retry_node.py       # Increments retry_count and re-runs validation for actual error detail
     │   └── hierarchy_node.py   # Geometric pre-sorter + tool-calling tree mapping agent
+    │
+    ├── extractors/
+    │   ├── __init__.py         # Required — marks extractors/ as a package
     │
     ├── edges.py                # pioneer_validation_route routing function
     └── graph.py                # LangGraph construction, Send API dispatch, SQLite compilation
@@ -123,10 +127,9 @@ COLUMN_BUCKET_PX = 50       # xmin bucket width for geometric pre-sorter column 
 ### State Definition (`src/state.py`)
 
 ```python
-from typing import TypedDict, List, Dict, Any, Optional
-from typing_extensions import Annotated
+from typing import Annotated, Any, TypedDict
 
-def merge_flat_blocks(existing: List[Dict[str, Any]], new: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Appends newly extracted page blocks into the global accumulation array."""
     if not existing:
         return new
@@ -134,25 +137,29 @@ def merge_flat_blocks(existing: List[Dict[str, Any]], new: List[Dict[str, Any]])
         return existing
     return existing + new
 
+def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
+    return existing + new
+
 class PDFParserState(TypedDict):
     # Static Input
     file_path: str
     pdf_hash: str
     total_pages: int
-    native_text_metadata: List[Dict[str, Any]]
+    native_text_metadata: list[dict[str, Any]]
 
     # Polymorphic Blueprint Configuration
     document_type: str
-    target_json_schema: Dict[str, Any]
+    target_json_schema: dict[str, Any]
 
     # State Iteration Engine (pioneer page only)
     current_page: int
     retry_count: int
-    last_validation_error: Optional[str]
+    last_validation_error: str | None
 
     # Aggregate Buffers
-    extracted_flat_blocks: Annotated[List[Dict[str, Any]], merge_flat_blocks]
-    hierarchical_document_tree: Optional[Dict[str, Any]]
+    extracted_flat_blocks: Annotated[list[dict[str, Any]], merge_flat_blocks]
+    extraction_warnings: Annotated[list[str], merge_warnings]
+    hierarchical_document_tree: dict[str, Any] | None
 ```
 
 ### Extractor Strategy Contract (`src/extractors/base.py`)
