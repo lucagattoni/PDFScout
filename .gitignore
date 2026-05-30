@@ -1,1 +1,5 @@
-plans/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+state_checkpoint.db
