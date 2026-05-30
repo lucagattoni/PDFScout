@@ -49,8 +49,9 @@ async def root() -> RedirectResponse:
     return RedirectResponse(url="/docs")
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health", response_model=HealthResponse, summary="Server health and configuration")
 async def health() -> HealthResponse:
+    """Returns the current model, supported document types, fallback type, and whether Langfuse tracing is active."""
     return HealthResponse(
         status="ok",
         model=MODEL,
@@ -60,7 +61,7 @@ async def health() -> HealthResponse:
     )
 
 
-@app.post("/extract", response_model=JobResponse, status_code=202)
+@app.post("/extract", response_model=JobResponse, status_code=202, summary="Submit a PDF for extraction")
 async def extract(
     file: UploadFile,
     force: bool = Query(
@@ -68,6 +69,15 @@ async def extract(
         description="Re-run a completed or failed job for this PDF. Has no effect on a running or queued job (returns 409 instead).",
     ),
 ) -> JobResponse:
+    """
+    Upload a PDF and start an extraction job. Returns a `job_id` straight away —
+    the extraction runs in the background.
+
+    Uploading the same file twice returns the existing job without re-running it.
+    Use `force=true` to re-run a job that already completed or failed.
+
+    Poll `GET /jobs/{job_id}` until `status` is `completed` or `failed`.
+    """
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="File must be a PDF (content-type: application/pdf).")
 
@@ -110,16 +120,29 @@ async def extract(
     return JobResponse.from_record(new_record)
 
 
-@app.get("/jobs/{job_id}", response_model=JobResponse)
+@app.get("/jobs/{job_id}", response_model=JobResponse, summary="Get job status and result")
 async def get_job(job_id: str) -> JobResponse:
+    """
+    Check the status of an extraction job and retrieve the result once it finishes.
+
+    - `status` progresses through `queued → running → completed | failed`.
+    - `result` contains the full document tree when `status` is `completed`.
+    - `error` contains the failure reason when `status` is `failed`.
+    - `events` lists each pipeline node as it completes, useful for tracking progress.
+    """
     job = jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     return JobResponse.from_record(job)
 
 
-@app.delete("/jobs/{job_id}", status_code=204)
+@app.delete("/jobs/{job_id}", status_code=204, summary="Delete a finished job")
 async def delete_job(job_id: str) -> None:
+    """
+    Remove a completed or failed job from the list and clean up its temporary file.
+
+    Returns `409` if the job is still running or queued — wait for it to finish first.
+    """
     job = jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
