@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgnosticInvoiceStructure",
+  "type": "object",
+  "properties": {
+    "document_type": { "type": "string", "enum": ["invoice"] },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "block_id": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["title", "heading", "paragraph", "list_item", "table", "figure", "footnote", "margin_element"]
+          },
+          "bbox": {
+            "type": "object",
+            "properties": {
+              "page_number": { "type": "integer" },
+              "coordinates": { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4 }
+            },
+            "required": ["page_number", "coordinates"]
+          },
+          "text": { "type": "string" },
+          "is_continued": { "type": "boolean", "default": false },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "table_data": {
+                "type": "object",
+                "properties": {
+                  "total_rows": { "type": "integer" },
+                  "total_cols": { "type": "integer" },
+                  "cells": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "r": { "type": "integer" },
+                        "c": { "type": "integer" },
+                        "rs": { "type": "integer" },
+                        "cs": { "type": "integer" },
+                        "value": { "type": "string" },
+                        "is_header": { "type": "boolean", "default": false }
+                      },
+                      "required": ["r", "c", "rs", "cs", "value"]
+                    }
+                  }
+                },
+                "required": ["total_rows", "total_cols", "cells"]
+              }
+            }
+          }
+        },
+        "required": ["block_id", "type", "bbox", "text"]
+      }
+    }
+  },
+  "required": ["document_type", "blocks"]
+}
