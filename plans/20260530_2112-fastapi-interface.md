@@ -1,5 +1,5 @@
 # FastAPI Interface Plan
-_Created: 2026-05-30 21:12_
+_Created: 2026-05-30 21:12 · Revised after devil's advocate review_
 
 ## Goal
 
@@ -22,25 +22,54 @@ Chosen approach:
 - `POST /extract` accepts the PDF and returns a `job_id` immediately.
 - The pipeline runs as a background `asyncio` task.
 - `GET /jobs/{job_id}` polls status (`queued | running | completed | failed`).
-- `GET /jobs/{job_id}/result` returns the tree on completion.
 
 **Alternative considered — SSE streaming**: Would surface per-node events in real
-time (closer to CLI `[GRAPH] Node '...' completed.` output) but complicates the
-client. Excluded from "basic" scope; the node event log is stored in the job
-record so it can be retrieved after completion.
+time (closer to CLI output) but complicates the client. Excluded from "basic"
+scope; the node event log is stored in the job record so it can be retrieved
+after completion.
+
+---
 
 ### 2. Job ID = pdf_hash
 
 The LangGraph checkpointer uses `thread_id = pdf_hash`. Making `job_id =
-pdf_hash` has two consequences:
+pdf_hash` ties the HTTP job identity to the checkpointer thread identity, with
+two consequences:
 
 - **Idempotency**: submitting the same PDF a second time returns the existing
-  `job_id` and, if the first run completed, the existing result.
-- **Checkpoint resume**: if a run was interrupted (server restart, etc.), the
-  second submission resumes from the last checkpoint automatically — same
-  behaviour as the CLI.
+  `job_id` and result.
+- **Checkpoint resume after server restart**: when the API server restarts, the
+  in-memory job store is cleared. If a client re-submits a PDF whose extraction
+  was interrupted (e.g., mid-burst), the runner detects the interrupted
+  checkpoint and resumes mid-flight rather than restarting from page 1.
 
-Collision risk is negligible (SHA-256, files not adversarially chosen).
+**Resume detection (fix for review finding #1)**
+
+Calling `graph.stream({"file_path": file_path}, config)` unconditionally
+re-enters the graph at `START`, re-running `native_extractor` and resetting
+`extracted_flat_blocks` — the checkpoint is not skipped. For true resume, pass
+`None` as input so LangGraph continues from the saved checkpoint without
+re-triggering `START`.
+
+The runner checks `snapshot.next` before calling `stream()`:
+
+```python
+async def _resolve_input(graph, file_path: str, config: dict, force: bool) -> dict | None:
+    if force:
+        return {"file_path": file_path}   # force=True → always restart from START
+    snapshot = await graph.aget_state(config)
+    # snapshot.next is () for a completed or never-started run;
+    # non-empty means the run was interrupted mid-execution.
+    if snapshot.values and snapshot.next:
+        return None  # resume interrupted run — do not re-trigger START
+    return {"file_path": file_path}   # no checkpoint or already completed → fresh start
+```
+
+`force` is passed from the endpoint's `?force=true` query parameter.
+
+Collision risk: SHA-256, files not adversarially chosen — negligible.
+
+---
 
 ### 3. Shared resources via FastAPI lifespan
 
@@ -50,41 +79,116 @@ app state, then reused by every request.
 
 ```
 lifespan startup:
-  open AsyncSqliteSaver  →  app.state.checkpointer
-  build_app(checkpointer) →  app.state.graph
-  Langfuse()              →  app.state.langfuse  (if keys present)
+  open AsyncSqliteSaver("api_checkpoint.db")  →  app.state.graph
+  build_app(checkpointer)                     →  app.state.graph
+  Langfuse()                                  →  app.state.langfuse  (if keys present)
+  mkdir tmp/uploads/
 
 lifespan shutdown:
-  langfuse.shutdown()   (flushes trace queue — only once, not per-request)
+  langfuse.shutdown()  (once — at process exit, not after each request)
   # AsyncSqliteSaver closes automatically via async context manager __aexit__
 ```
 
-**Why not open per-request**: `AsyncSqliteSaver.from_conn_string(...)` is an
-async context manager that opens the SQLite connection and runs WAL-mode setup.
-Opening it for every request adds ~10 ms overhead and risks write contention
-between concurrent requests.
+**Separate checkpoint DB (fix for review finding #5)**
 
-### 4. Langfuse lifecycle change from `main.py`
+The API uses `api_checkpoint.db`, not the CLI's `state_checkpoint.db`. Running
+both simultaneously against the same SQLite file causes WAL lock contention that
+surfaces as silent background-task failures rather than HTTP 500s — there is no
+signal to the operator. Separate files eliminate the interference entirely.
 
-`main.py` calls `langfuse.shutdown()` in the `finally` block of each run.
+---
+
+### 4. Langfuse — shared tracing utility (fix for review finding #4)
+
+`main.py` already implements `if langfuse: with span: ... else: run plain`.
+The original plan duplicated this branch verbatim in `runner.py`, creating a
+third maintenance site (two files with identical Langfuse logic).
+
+**Fix**: extract into `src/utils/tracing.py`:
+
+```python
+async def run_with_tracing(
+    graph,
+    input_data: dict | None,
+    config: dict,
+    display_name: str,
+    session_id: str,
+    langfuse=None,
+) -> tuple[AsyncIterator, Coroutine]:
+    """
+    Wraps graph.stream() with an optional Langfuse span.
+    Both main.py and runner.py call this instead of duplicating the branch.
+    Returns the stream iterator and a post-run coroutine for span metadata.
+    """
+```
+
+`main.py` is also updated to use this helper — the if/else Langfuse branch is
+removed from both entry points.
+
+**Lifecycle change from `main.py`**
+
+`main.py` calls `langfuse.shutdown()` in the `finally` block of each CLI run.
 In a long-running server this would kill the background flush thread after the
 first request. The API moves `shutdown()` to the lifespan cleanup so it fires
 exactly once — at process exit — after all spans are enqueued.
 
-Each extraction still opens a span and calls `span.update()` post-run, but
-without the per-run `shutdown()`.
+**`propagate_attributes` context isolation (review finding #7 — resolved)**
 
-### 5. Temp file handling
+`propagate_attributes(session_id=...)` sets a Python `ContextVar`. Each
+`run_extraction` coroutine is launched as an `asyncio.create_task()`, which
+copies the current context at task-creation time (`contextvars.copy_context()`).
+LangGraph's Send fan-out also uses `asyncio.create_task()` for worker nodes,
+so each worker inherits its parent job's context. Concurrent jobs cannot bleed
+their session IDs into each other's spans. **Safe by design.**
 
-Uploaded PDFs are written to `tmp/uploads/{pdf_hash}.pdf`. The path is passed
-to the pipeline as `state["file_path"]`. The background task deletes the file in
-a `finally` block after the pipeline finishes or raises.
+---
 
-Using the pdf_hash as the filename means two concurrent uploads of the same PDF
-write to the same path — safe because the content is identical (hash match).
-The second upload's write is effectively a no-op.
+### 5. Temp file handling and atomic job creation (fix for review findings #2 and #3)
 
-Temp directory is created at startup if absent (`tmp/uploads/` relative to CWD).
+The original plan wrote the file first, then checked the job store — allowing
+two concurrent first-time submissions of the same PDF to both start background
+tasks, with the first task's `finally` deleting the file while the second was
+mid-read.
+
+**Revised flow (endpoint handler)**:
+
+```python
+content = await file.read()           # read full upload (≤32 MB by guard)
+job_id = hashlib.sha256(content).hexdigest()
+
+# Atomically claim the job record — no await between check and set,
+# so no concurrent request can interleave here.
+new_record = JobRecord(job_id=job_id, file_name=file.filename, status="queued", ...)
+existing = jobs.setdefault(job_id, new_record)
+
+if existing is not new_record:
+    # Lost the race — another request already owns this job_id.
+    # Return the existing record without writing to disk or starting a task.
+    return JobResponse.from_record(existing)
+
+# Won the race — we are the sole owner of this job.
+# Write the file only once; no other concurrent request will write it.
+tmp_path = Path(f"tmp/uploads/{job_id}.pdf")
+await asyncio.to_thread(tmp_path.write_bytes, content)
+
+# Optionally call force-clear on the job store entry and re-create
+# the record above if force=True (handled before the setdefault block).
+
+asyncio.create_task(run_extraction(job_id, str(tmp_path), graph, langfuse, force))
+```
+
+Since `asyncio` is cooperative and `dict.setdefault()` is a synchronous
+operation (no `await`), only one coroutine can execute it at a time — the first
+caller wins atomically. The second caller returns 202 with the existing record
+and never writes to disk or starts a task. There is now exactly one `finally`
+block responsible for deleting the temp file.
+
+**`force=True` handling**: before the `setdefault` block, check if an existing
+record is in `completed` or `failed` state. If yes and `force=True`, delete the
+record from `jobs` and proceed as a fresh submission. If the existing record is
+`running` and `force=True`, return 409 (see §7).
+
+---
 
 ### 6. In-memory job store
 
@@ -92,38 +196,99 @@ A module-level `dict[str, JobRecord]` is the job store. No persistence across
 restarts; acceptable for a "basic testing" interface.
 
 ```python
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Literal
+
 @dataclass
 class JobRecord:
     job_id: str
     file_name: str
-    status: Literal["queued", "running", "completed", "failed"]
     created_at: datetime
-    completed_at: datetime | None
-    total_pages: int | None
-    document_type: str | None
-    warnings: list[str]
-    error: str | None
-    result: dict | None
-    events: list[str]        # "[GRAPH] Node 'X' completed." lines
+    status: Literal["queued", "running", "completed", "failed"] = "queued"
+    completed_at: datetime | None = None
+    total_pages: int | None = None
+    document_type: str | None = None
+    warnings: list[str] = field(default_factory=list)
+    error: str | None = None
+    result: dict | None = None
+    events: list[str] = field(default_factory=list)
 ```
+
+`status` defaults to `"queued"` so `GET /jobs/{job_id}` returns a valid record
+immediately after 202 — before the background task has a chance to set
+`"running"`. This closes the window where a status field would be unset.
 
 Access is from a single `asyncio` event loop (FastAPI's), so a plain `dict` is
 safe without locks.
 
-### 7. Duplicate-run guard
+---
 
-If a job for `job_id` already exists and is `running`, the `POST /extract`
-endpoint returns `202 Accepted` with the existing job record rather than
-starting a second pipeline invocation for the same PDF. If the prior run
-`completed` or `failed`, the client may pass `?force=true` to clear the
-old record and re-run (useful for testing after schema changes).
+### 7. Duplicate-run guard and DELETE behaviour (fix for review finding #3)
+
+**POST /extract — duplicate guard**:
+
+| Existing job state | `force` | Action |
+|---|---|---|
+| `running` | any | Return 202 with existing record — do not start a second task |
+| `running` | `true` | Return 409 — cannot force-replace a running job; wait for it to finish |
+| `completed` or `failed` | `false` | Return 202 with existing record and result |
+| `completed` or `failed` | `true` | Clear record, start fresh |
+
+**DELETE /jobs/{job_id}**:
+
+| Job state | Action |
+|---|---|
+| `queued` or `running` | Return 409 Conflict — deletion of active jobs is not supported |
+| `completed` or `failed` | Remove record, delete temp file (`missing_ok=True`), return 204 |
+
+Returning 409 for running jobs eliminates the stale-reference race documented
+in the original review (finding #3). The background task always has a valid
+`jobs[job_id]` entry to mutate because deletion only happens after the task
+completes. There is no need for a per-write `jobs.get(job_id) is job` guard.
+
+---
 
 ### 8. File-size guard
 
-The Anthropic API rejects requests larger than 32 MB. The API checks the upload
-size before saving to disk and returns `413 Content Too Large` immediately.
+FastAPI's `UploadFile` does not expose a streaming size check before `read()`.
+The guard is applied to the in-memory `content` immediately after `await
+file.read()`, before any disk write or hashing:
 
-### 9. No authentication
+```python
+content = await file.read()
+if len(content) > 32 * 1024 * 1024:
+    raise HTTPException(status_code=413, detail="File exceeds 32 MB limit.")
+```
+
+A fast path: check `request.headers.get("content-length")` before calling
+`read()` and reject immediately if the declared size exceeds the limit. A
+malicious client can spoof `Content-Length`, so the in-memory check remains the
+authoritative guard.
+
+---
+
+### 9. Validation errors — let the graph raise (fix for review finding #6)
+
+The original plan called `get_page_count(tmp_path)` pre-flight via
+`asyncio.to_thread` before returning 202. This duplicates work that
+`native_extractor_node` already does as its first action, causing two full
+`pypdf.PdfReader` parses per request.
+
+**Fix**: remove the pre-flight call entirely. Let `native_extractor_node` raise
+`ValueError` inside the background task. The runner catches it, sets
+`job.status = "failed"` and `job.error = str(exc)`, and the client sees it on
+the next `GET /jobs/{job_id}` poll.
+
+The only synchronous validation the endpoint performs is:
+- Content-Type check (`application/pdf`)
+- Size check (> 32 MB)
+
+Both are O(1) header/length operations requiring no PDF parsing.
+
+---
+
+### 10. No authentication
 
 Out of scope for a basic testing interface. Add an API key middleware layer
 (FastAPI dependency) when moving to production.
@@ -135,10 +300,8 @@ Out of scope for a basic testing interface. Add an API key middleware layer
 | Package | Version | Why |
 |---|---|---|
 | `fastapi` | `>=0.115.0` | Web framework |
-| `uvicorn[standard]` | `>=0.34.0` | ASGI server (includes `httptools` + `uvloop` for performance) |
-| `python-multipart` | `>=0.0.20` | Required by FastAPI for `UploadFile` / multipart form data |
-
-No new AI or data-processing dependencies.
+| `uvicorn[standard]` | `>=0.34.0` | ASGI server (`httptools` + `uvloop`) |
+| `python-multipart` | `>=0.0.20` | Required by FastAPI for `UploadFile` |
 
 ---
 
@@ -146,19 +309,23 @@ No new AI or data-processing dependencies.
 
 ```
 PDFScout/
-├── api.py                  # FastAPI app entry point (new)
+├── api.py                      # FastAPI app entry point (new)
+├── API_README.md               # API reference documentation (new)
 ├── src/
-│   └── api/
-│       ├── __init__.py     # new (empty)
-│       ├── models.py       # Pydantic response models (new)
-│       ├── jobs.py         # JobRecord dataclass + in-memory store (new)
-│       └── runner.py       # background extraction task (new)
+│   ├── api/
+│   │   ├── __init__.py         # new (empty)
+│   │   ├── models.py           # Pydantic response models (new)
+│   │   ├── jobs.py             # JobRecord dataclass + in-memory store (new)
+│   │   └── runner.py           # background extraction task (new)
+│   └── utils/
+│       ├── pdf_utils.py        # existing
+│       └── tracing.py          # shared Langfuse tracing helper (new)
 └── tmp/
-    └── uploads/            # temp PDF storage (auto-created, gitignored)
+    └── uploads/                # temp PDF storage (auto-created, gitignored)
 ```
 
 `api.py` at the root mirrors `main.py`; `src/api/` holds the implementation
-modules.
+modules. `src/utils/tracing.py` is shared by both `main.py` and `runner.py`.
 
 ---
 
@@ -166,8 +333,7 @@ modules.
 
 ### `GET /health`
 
-```
-200 OK
+```json
 {
   "status": "ok",
   "model": "claude-sonnet-4-6",
@@ -176,8 +342,6 @@ modules.
   "langfuse_enabled": false
 }
 ```
-
-No authentication needed.
 
 ---
 
@@ -188,16 +352,19 @@ No authentication needed.
 | Field | Type | Description |
 |---|---|---|
 | `file` | `UploadFile` | PDF file (required) |
-| `force` | `bool` | Re-run even if a completed/failed job exists for this PDF (default: `false`) |
+| `force` | `bool` | Re-run a completed/failed job (default: `false`) |
 
 **Responses**:
 
 | Code | Meaning |
 |---|---|
-| `202 Accepted` | Job created (or existing running job returned) |
-| `400 Bad Request` | Not a PDF (`application/pdf` check) |
+| `202 Accepted` | Job created or existing record returned |
+| `400 Bad Request` | Not a PDF (`content-type` check) |
+| `409 Conflict` | `force=true` on a running job |
 | `413 Content Too Large` | File exceeds 32 MB |
-| `422 Unprocessable Entity` | File is encrypted or has zero pages (detected before background task starts) |
+
+Encrypted PDFs and zero-page PDFs are detected inside the graph; the job status
+goes to `failed` with the error in `job.error`. No 422 from the endpoint itself.
 
 `202` body:
 ```json
@@ -209,38 +376,13 @@ No authentication needed.
 }
 ```
 
-**Implementation note**: The endpoint reads the entire upload into memory to
-compute the hash (needed to check for an existing job before saving), then
-writes to disk only if the job is new. For files near 32 MB this holds 32 MB in
-RAM momentarily — acceptable for a test interface.
-
 ---
 
 ### `GET /jobs/{job_id}`
 
-Returns the full `JobRecord`.
-
-```json
-{
-  "job_id": "a3f1c9d2...",
-  "file_name": "invoice.pdf",
-  "status": "running",
-  "created_at": "2026-05-30T21:12:00Z",
-  "completed_at": null,
-  "total_pages": null,
-  "document_type": null,
-  "warnings": [],
-  "error": null,
-  "events": [
-    "[GRAPH] Node 'native_extractor' completed.",
-    "[GRAPH] Node 'classifier' completed."
-  ],
-  "result": null
-}
-```
-
-On `completed`, `result` holds the full `hierarchical_document_tree` dict.
-On `failed`, `error` holds the exception message.
+Returns the full `JobRecord`. On `completed`, `result` holds the
+`hierarchical_document_tree`. On `failed`, `error` holds the exception message.
+`events` accumulates per-node completion lines as the job runs.
 
 | Code | Meaning |
 |---|---|
@@ -251,29 +393,39 @@ On `failed`, `error` holds the exception message.
 
 ### `DELETE /jobs/{job_id}`
 
-Removes the job record from the in-memory store and deletes the temp file if
-still present. Returns `204 No Content`. Does not cancel a running pipeline
-(LangGraph tasks are not cancellable mid-flight without additional scaffolding).
+| Job state | Response |
+|---|---|
+| `queued` or `running` | 409 Conflict |
+| `completed` or `failed` | 204 No Content — record and temp file removed |
 
 ---
 
 ## Background task (`src/api/runner.py`)
 
-```
-async def run_extraction(job_id, file_path, graph, checkpointer, langfuse):
+```python
+async def run_extraction(job_id: str, file_path: str, graph, langfuse, force: bool):
     job = jobs[job_id]
     job.status = "running"
     try:
         config = {"configurable": {"thread_id": job_id}}
+        input_data = await _resolve_input(graph, file_path, config, force)
 
-        if langfuse:
-            with langfuse.start_as_current_span(name=f"PDFScout — {job.file_name}") as span:
-                with propagate_attributes(session_id=job_id):
-                    await _stream_graph(graph, file_path, config, job)
-                _update_span(span, job)
-        else:
-            await _stream_graph(graph, file_path, config, job)
+        await run_with_tracing(
+            graph=graph,
+            input_data=input_data,
+            config=config,
+            display_name=job.file_name,
+            session_id=job_id,
+            langfuse=langfuse,
+            on_event=lambda node: job.events.append(f"[GRAPH] Node '{node}' completed."),
+        )
 
+        final_state = await graph.aget_state(config)
+        tree = final_state.values.get("hierarchical_document_tree") if final_state else None
+        job.result = tree
+        job.warnings = tree.get("extraction_warnings", []) if tree else []
+        job.document_type = tree.get("document_type") if tree else None
+        job.total_pages = final_state.values.get("total_pages") if final_state else None
         job.status = "completed"
         job.completed_at = datetime.utcnow()
     except Exception as exc:
@@ -282,91 +434,72 @@ async def run_extraction(job_id, file_path, graph, checkpointer, langfuse):
         job.completed_at = datetime.utcnow()
     finally:
         Path(file_path).unlink(missing_ok=True)
-
-async def _stream_graph(graph, file_path, config, job):
-    async for event in graph.stream({"file_path": file_path}, config):
-        for node_name in event:
-            job.events.append(f"[GRAPH] Node '{node_name}' completed.")
-    final_state = await graph.aget_state(config)
-    tree = final_state.values.get("hierarchical_document_tree") if final_state else None
-    job.result = tree
-    job.warnings = tree.get("extraction_warnings", []) if tree else []
-    job.document_type = tree.get("document_type") if tree else None
-    job.total_pages = final_state.values.get("total_pages") if final_state else None
 ```
 
-**Why not `asyncio.create_task` directly in the endpoint**: FastAPI's
-`BackgroundTasks` runs in the same event loop as the request but after the
-response is sent. For simplicity, we use `asyncio.create_task()` directly so
-we have a handle to store in the job record (future cancellation support).
+`_resolve_input` is the resume-detection helper from §2.
+`run_with_tracing` is the shared helper from `src/utils/tracing.py` (§4).
+The task is launched via `asyncio.create_task()` in the endpoint handler, not
+via FastAPI `BackgroundTasks`, so a handle is available for future cancellation.
 
 ---
 
 ## `api.py` (entry point)
 
-```python
-uvicorn api:app --host 0.0.0.0 --port 8000
-```
-
-Or via uv:
-
 ```bash
-uv run uvicorn api:app --reload
+uv run uvicorn api:app --host 0.0.0.0 --port 8000
+uv run uvicorn api:app --reload   # development
 ```
 
 The `lifespan` context manager:
 1. Creates `tmp/uploads/`
-2. Opens `AsyncSqliteSaver` (same `state_checkpoint.db` as CLI — runs share checkpoints)
-3. Compiles LangGraph app
-4. Initialises Langfuse if keys present
+2. Opens `AsyncSqliteSaver("api_checkpoint.db")`
+3. Compiles LangGraph app via `build_app(checkpointer)`
+4. Initialises `Langfuse()` if `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` present
 5. On shutdown: calls `langfuse.shutdown()` (once)
 
 ---
 
-## Error handling
+## Error handling summary
 
-| Exception | HTTP code | Source |
+| Condition | HTTP code | Where caught |
 |---|---|---|
-| `ValueError: PDF is encrypted` | 422 | `get_page_count()` |
-| `ValueError: PDF yielded zero pages` | 422 | `native_extractor_node` |
-| File size > 32 MB | 413 | Upload handler |
-| Content-Type not `application/pdf` | 400 | Upload handler |
-| Any other `Exception` in background task | — | `job.status = "failed"`, `job.error = str(exc)` |
-
-The encrypted PDF and zero-pages errors are synchronous (detected by `pypdf`
-before the first API call) so they can be raised pre-emptively in the endpoint
-handler rather than inside the background task, giving an immediate non-202
-response.
-
-**Implementation note for early validation**: Call `get_page_count(tmp_path)`
-synchronously (via `asyncio.to_thread`) before returning `202`. If it raises,
-delete the temp file and return the appropriate error code.
+| `Content-Type` not `application/pdf` | 400 | Upload handler |
+| File > 32 MB | 413 | Upload handler |
+| `force=true` on a running job | 409 | Duplicate-run guard |
+| DELETE on a running/queued job | 409 | DELETE handler |
+| Encrypted PDF | — | `job.status = "failed"` |
+| Zero-page PDF | — | `job.status = "failed"` |
+| Any other pipeline exception | — | `job.status = "failed"` |
 
 ---
 
 ## Open issues / devil's advocate concerns
 
-| # | Concern | Decision |
+| # | Concern | Resolution |
 |---|---|---|
-| 1 | In-memory store is lost on restart | Acceptable for "basic testing." Document it. |
-| 2 | Concurrent bursts from multiple jobs can exceed `CONCURRENCY_LIMIT` | The semaphore in `worker_node.py` is process-global — it caps total concurrent Anthropic calls across all jobs. No additional throttling needed. |
-| 3 | `DELETE /jobs/{job_id}` on a running job | Documents as "does not cancel the pipeline." The task finishes and writes to a now-absent job record; that's a no-op since we check existence before writing. Need a guard: check `job_id in jobs` before each write in `runner.py`. |
-| 4 | Same PDF submitted twice concurrently (before hash computed) | Both requests compute the hash, first wins the `jobs[job_id] = ...` assignment, second sees the existing record and returns 202 without starting a new task. The race window is tiny (hash + dict write). |
-| 5 | `graph.aget_state()` vs `graph.get_state()` | The compiled graph exposes both. Background task is an async coroutine — use `aget_state()` (non-blocking). |
-| 6 | Langfuse `span.update()` metadata after `propagate_attributes` exits | Same as `main.py`: `span.update()` is called inside the `with span` block but outside `with propagate_attributes` — correct, targets only the parent span. |
+| 1 | In-memory store lost on restart | Accepted for "basic testing." Checkpoint in `api_checkpoint.db` allows resume; only the job metadata (status, events) is lost. |
+| 2 | Concurrent bursts from multiple jobs exceed `CONCURRENCY_LIMIT` | The `asyncio.Semaphore` in `worker_node.py` is process-global — caps total Anthropic calls across all jobs. No additional throttling needed. |
+| 3 | DELETE on running job races with background task | Resolved — DELETE returns 409 for active jobs. Task always has a valid store entry. |
+| 4 | Same PDF submitted twice concurrently | Resolved — `setdefault` is synchronous (no await), atomic in the asyncio event loop. First caller wins; second returns 202 without starting a task or writing the file. |
+| 5 | `graph.aget_state()` vs `graph.get_state()` | Use `aget_state()` (async) throughout the background task coroutine. |
+| 6 | Langfuse `span.update()` after `propagate_attributes` exits | Same as `main.py`: `span.update()` is inside `with span` but outside `with propagate_attributes` — targets only the parent span. Correct. |
 | 7 | `tmp/uploads/` gitignored? | Yes — add `tmp/` to `.gitignore`. |
-| 8 | Upload file content-type spoofing | Only check `content_type == "application/pdf"`; a client can fake it. The `pypdf` early validation catches corrupted/non-PDF content before it reaches Claude. |
+| 8 | Content-Type spoofing | Content-Type check is a hint only; `pypdf.PdfReader` in `native_extractor_node` will raise on non-PDF bytes and mark the job failed. |
+| 9 | resume logic when snapshot.next is non-empty but file was deleted | If the server crashed after extraction finished but before cleanup, `snapshot.next` is `()` — the run completed, so no resume is attempted. If the server crashed mid-burst, `file_path` points to a file that may or may not still exist. The runner re-uploads the file (from the new request) before starting the resume, so the file is always present at resume time. |
+| 10 | `propagate_attributes` context bleed across concurrent jobs | Resolved — asyncio tasks copy context at creation time; each job's task and its LangGraph-spawned child tasks have isolated ContextVar copies. Safe by design. |
 
 ---
 
 ## Implementation steps (ordered)
 
-1. `uv add fastapi "uvicorn[standard]" python-multipart` — update `pyproject.toml` and `uv.lock`
+1. `uv add fastapi "uvicorn[standard]" python-multipart`
 2. Add `tmp/` to `.gitignore`
-3. Create `src/api/__init__.py` (empty)
-4. Create `src/api/models.py` — Pydantic `JobResponse` and `HealthResponse` models
-5. Create `src/api/jobs.py` — `JobRecord` dataclass + `jobs: dict[str, JobRecord]` module-level store
-6. Create `src/api/runner.py` — `run_extraction()` coroutine
-7. Create `api.py` — FastAPI app with lifespan, routes inline (small enough for a single file)
-8. Update `README.md` — add "API Server" section under "Usage" with `uvicorn` command
-9. Update `CHANGELOG.md` — document as a new feature (minor version bump deferred until implementation is complete and reviewed)
+3. Create `src/utils/tracing.py` — `run_with_tracing()` shared helper; update `main.py` to use it
+4. Create `src/api/__init__.py` (empty)
+5. Create `src/api/models.py` — Pydantic `JobResponse` and `HealthResponse`
+6. Create `src/api/jobs.py` — `JobRecord` dataclass + `jobs` store
+7. Create `src/api/runner.py` — `run_extraction()` + `_resolve_input()`
+8. Create `api.py` — FastAPI app with lifespan and routes
+9. Create `API_README.md` — dedicated API reference (endpoints, request/response shapes, job lifecycle, `uvicorn` startup command, env vars)
+10. Update `README.md` — add "API Server" section under "Usage" linking to `API_README.md`
+11. Update `CHANGELOG.md` — document as new feature (version bump on implementation completion)
