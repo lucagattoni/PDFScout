@@ -1,5 +1,6 @@
 # Langfuse Integration Plan
-Date: 2026-05-30
+Date: 2026-05-30  
+Revised: 2026-05-30 (devil's advocate review applied)
 
 ## Goal
 
@@ -8,13 +9,16 @@ should produce a single trace in Langfuse showing the full node execution tree,
 every Claude API call with its inputs/outputs and token counts, and key metadata
 (pdf_hash, document_type, page count) so runs are searchable and comparable.
 
+Checkpoint resumes of the same PDF must merge into the same trace, not create
+a new orphan trace per invocation.
+
 ---
 
 ## What Langfuse Gives Us
 
 Langfuse integrates with LangGraph via LangChain's callback system. The
-`CallbackHandler` is passed to each `graph.stream()` / `graph.astream()` call
-through LangGraph's standard `config={"callbacks": [...]}` parameter.
+`CallbackHandler` is passed to each `graph.stream()` call through LangGraph's
+standard `config={"callbacks": [...]}` parameter.
 
 **Automatically traced with zero extra code:**
 - The overall graph run → a single Langfuse **trace**
@@ -25,50 +29,57 @@ through LangGraph's standard `config={"callbacks": [...]}` parameter.
   captured inside the LLM span
 
 **Not automatic — requires manual enrichment:**
-- Custom trace metadata (pdf_hash, document_type, total_pages, file path)
-- User ID / session ID tagging for filtering
-- Extraction warnings surfaced as span metadata
+- Custom trace metadata (pdf_hash, document_type, total_pages, file path) — set
+  via `start_as_current_span(update_attributes={...})` for values known upfront,
+  and via `span.update(metadata={...})` post-run for values resolved by the graph
+- Session ID tagging (`session_id=pdf_hash`) — enables filtering all runs for
+  the same PDF in the Langfuse UI (no user_id concept in a CLI tool)
+- Extraction warnings — joined as a newline string in post-run `span.update()`
+  (Langfuse v4 coerces metadata values to `str`, max 200 chars; a raw list would
+  be serialised as its `repr` which is unreadable)
+- Deterministic trace ID for checkpoint resume merging
 
 ---
 
 ## Package
 
 ```
-langfuse==4.x   (latest: 4.7.1)
+langfuse>=4.0.0   (latest: 4.7.1)
 ```
 
-Import path for the callback handler:
+Import paths:
 ```python
+from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 ```
 
-> **Note:** Langfuse v4 requires Pydantic v2. It will be pulled in as a
-> transitive dependency — no conflict with our current deps since we removed
-> Pydantic from direct dependencies in the Claude PDF Chat migration.
+> **Note:** Langfuse v4 requires Pydantic v2. Pydantic v2.13.4 is already a
+> transitive dependency (via langgraph) — no conflict.
 
 ---
 
 ## Environment Variables
 
-Three new variables must be added to `.env` and `.env.example`:
-
 | Variable | Description |
 |---|---|
-| `LANGFUSE_PUBLIC_KEY` | Public key from the Langfuse project settings (`pk-lf-...`) |
-| `LANGFUSE_SECRET_KEY` | Secret key from the Langfuse project settings (`sk-lf-...`) |
-| `LANGFUSE_HOST` | API host. Defaults to `https://cloud.langfuse.com`. Override for self-hosted deployments. |
+| `LANGFUSE_PUBLIC_KEY` | Public key from Langfuse project settings (`pk-lf-...`) |
+| `LANGFUSE_SECRET_KEY` | Secret key from Langfuse project settings (`sk-lf-...`) |
+| `LANGFUSE_BASE_URL` | API host. Defaults to `https://cloud.langfuse.com`. Override for self-hosted. |
 
-`CallbackHandler()` reads all three from the environment automatically — no
-constructor arguments needed for the default cloud setup.
+> **Important:** The canonical v4 variable is `LANGFUSE_BASE_URL`, not
+> `LANGFUSE_HOST`. Both are accepted but `LANGFUSE_BASE_URL` is the primary name.
+
+`CallbackHandler()` reads all three from the environment automatically when
+keys are present.
 
 ---
 
 ## Architecture of a Trace
 
-When PDFScout runs on a 5-page invoice:
+When PDFScout runs on a 5-page invoice (including a checkpoint resume):
 
 ```
-Trace: "PDFScout — invoice — a3f1c9..."
+Trace ID: uuid5(pdf_hash)  ← same ID on every invocation of this PDF
   ├─ Span: native_extractor_node
   ├─ Span: classifier_node
   │    └─ LLM: claude-sonnet-4-6  [classify prompt → "invoice"]
@@ -84,9 +95,10 @@ Trace: "PDFScout — invoice — a3f1c9..."
        └─ LLM: claude-sonnet-4-6  [set_block_relations tool]
 ```
 
-Token counts per LLM span show cache hits vs. cache misses directly (Anthropic
-returns `cache_read_input_tokens` in usage; Langfuse captures the full usage
-object).
+If this is a resume run (e.g., interrupted at page 3), the new run's spans
+appear under the same trace ID in Langfuse rather than a separate trace.
+Token counts per LLM span reveal cache hits vs. cache misses (Anthropic returns
+`cache_read_input_tokens` in the usage object; Langfuse captures it verbatim).
 
 ---
 
@@ -103,123 +115,199 @@ object).
 ```
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
 
-### 3. `main.py` — create handler, enrich trace, flush after run
-
-This is the only file that changes in the application code.
+### 3. `main.py` — full implementation
 
 ```python
+import atexit
+import os
+import sys
+import asyncio
+import json
+from dotenv import load_dotenv
+from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from src.graph import build_app
+from src.utils.pdf_utils import hash_file
+
+load_dotenv()
+
+# Graceful degradation: tracing only activates when both keys are present.
+# Absent keys → empty callbacks list → pipeline runs without any tracing.
+_LANGFUSE_ENABLED = bool(
+    os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")
+)
+
+if _LANGFUSE_ENABLED:
+    _langfuse = Langfuse()
+    # Safety-net: flush on normal interpreter exit even if main() raises before
+    # reaching its own shutdown() call (e.g. keyboard interrupt, unhandled exception).
+    atexit.register(_langfuse.shutdown)
+
 
 async def main():
-    ...
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        print("CRITICAL ENVIRONMENT ERROR: ANTHROPIC_API_KEY environment variable missing.")
+        sys.exit(1)
+
+    if len(sys.argv) < 2:
+        print("EXECUTION ERROR: Missing file path. Usage: uv run main.py <path_to_pdf>")
+        sys.exit(1)
+
+    target_pdf = sys.argv[1]
     pdf_hash = hash_file(target_pdf)
 
-    # Create one handler per pipeline run so each PDF gets its own trace
-    langfuse_handler = CallbackHandler()
+    # Derive a deterministic trace ID from the PDF hash so every invocation
+    # of the same file — including checkpoint resumes — merges into one trace.
+    trace_id = _langfuse.create_trace_id(seed=pdf_hash) if _LANGFUSE_ENABLED else None
 
-    config = {
-        "configurable": {"thread_id": pdf_hash},
-        "callbacks": [langfuse_handler],
-    }
+    initial_inputs = {"file_path": target_pdf}
+    print(f"Initializing extraction pipeline for: {target_pdf} (thread: {pdf_hash[:8]}...)")
 
-    async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
-        app = build_app(checkpointer)
-        async for event in app.stream(initial_inputs, config):
-            for node_name in event:
-                print(f"[GRAPH] Node '{node_name}' completed.")
+    if _LANGFUSE_ENABLED:
+        with _langfuse.start_as_current_span(
+            name=f"PDFScout — {os.path.basename(target_pdf)}",
+            trace_context={"trace_id": trace_id},
+            update_attributes={
+                "session_id": pdf_hash,
+                "metadata": {
+                    "file": os.path.basename(target_pdf),
+                    "pdf_hash": pdf_hash,
+                },
+            },
+        ) as span:
+            callbacks = [CallbackHandler()]
+            config = {"configurable": {"thread_id": pdf_hash}, "callbacks": callbacks}
 
-        final_state = await app.get_state(config)
-        tree_result = final_state.values.get("hierarchical_document_tree")
+            try:
+                async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
+                    app = build_app(checkpointer)
+                    async for event in app.stream(initial_inputs, config):
+                        for node_name in event:
+                            print(f"[GRAPH] Node '{node_name}' completed.")
+                    final_state = await app.get_state(config)
+                    tree_result = final_state.values.get("hierarchical_document_tree")
 
-    # Flush before exit — LangGraph's astream is async but CallbackHandler
-    # batches sends in a background thread; flush() blocks until the queue drains
-    langfuse_handler.flush()
-    ...
-```
+                # Enrich trace with values resolved during the graph run.
+                # Must happen inside the with block so the span is still open.
+                # Langfuse v4 coerces metadata values to str (max 200 chars),
+                # so lists are joined rather than passed raw.
+                state_values = final_state.values if final_state else {}
+                warnings = tree_result.get("extraction_warnings", []) if tree_result else []
+                span.update(metadata={
+                    "file": os.path.basename(target_pdf),
+                    "pdf_hash": pdf_hash,
+                    "document_type": tree_result.get("document_type") if tree_result else None,
+                    "total_pages": str(state_values.get("total_pages", "")),
+                    "extraction_warnings": "\n".join(warnings) if warnings else "",
+                })
+            finally:
+                # flush() inside the with block guarantees child LLM spans are
+                # queued before the parent span's end-time is recorded and sent.
+                _langfuse.shutdown()
+    else:
+        config = {"configurable": {"thread_id": pdf_hash}}
+        async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
+            app = build_app(checkpointer)
+            async for event in app.stream(initial_inputs, config):
+                for node_name in event:
+                    print(f"[GRAPH] Node '{node_name}' completed.")
+            final_state = await app.get_state(config)
+            tree_result = final_state.values.get("hierarchical_document_tree")
 
-**Trace metadata enrichment** (set after classifier resolves document_type):
+    if tree_result and tree_result.get("extraction_warnings"):
+        print("\nWARNINGS:")
+        for w in tree_result["extraction_warnings"]:
+            print(f"  ! {w}")
 
-Langfuse v4 removed `update_trace` from `CallbackHandler`. The v4 way to attach
-metadata to the enclosing trace is to wrap the graph run in a
-`langfuse.start_as_current_span()` context and call `span.update_trace()` on it:
+    print("\nExtraction complete. Output tree:\n")
+    print(json.dumps(tree_result, indent=2))
 
-```python
-from langfuse import Langfuse
 
-langfuse = Langfuse()
-
-with langfuse.start_as_current_span(
-    name=f"PDFScout — {os.path.basename(target_pdf)}",
-    update_attributes={
-        "session_id": pdf_hash,
-        "metadata": {
-            "file": os.path.basename(target_pdf),
-            "pdf_hash": pdf_hash,
-        }
-    }
-):
-    langfuse_handler = CallbackHandler()
-    config = {
-        "configurable": {"thread_id": pdf_hash},
-        "callbacks": [langfuse_handler],
-    }
-    async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
-        app = build_app(checkpointer)
-        async for event in app.stream(initial_inputs, config):
-            for node_name in event:
-                print(f"[GRAPH] Node '{node_name}' completed.")
-        final_state = await app.get_state(config)
-        tree_result = final_state.values.get("hierarchical_document_tree")
-
-langfuse_handler.flush()
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ---
 
-## Known Limitations & Gotchas
+## Design Decisions & Rationale
 
-### Async blocking
-Langfuse does not implement `AsyncCallbackHandler`. The standard `CallbackHandler`
-dispatches its HTTP sends on a background thread, so the async event loop is not
-blocked. However, within-callback synchronous work (serialising observation
-payloads) runs inline. For PDFScout's workload (≤600 pages, no latency SLA)
-this is not a concern.
+### flush() sequencing
+`_langfuse.shutdown()` (stronger than `flush()` — it also joins background
+ingestion threads) is called in two places:
 
-### flush() is mandatory before process exit
-The SDK batches observations and flushes on a timer. Without an explicit
-`langfuse_handler.flush()` after the graph run completes, the last batch may
-never be sent if the process exits before the timer fires. **Always call flush
-before `asyncio.run()` returns.**
+1. In `try/finally` inside the `with start_as_current_span()` block — this is
+   the primary call. Placing it **inside** the `with` block ensures all LLM
+   child span payloads are queued before the parent span's end-time is committed.
+   Calling it outside would create a race where the parent span arrives at
+   Langfuse before its children.
 
-### Checkpoint resume creates a new trace
-LangGraph's SQLite checkpointer lets a run resume mid-graph. Each `main.py`
-invocation — including resumes — creates a new `CallbackHandler` and therefore
-a new trace. If a document takes two runs to complete (e.g. interrupted on page
-4), there will be two partial traces for the same `pdf_hash`. This is an
-intentional trade-off; filtering by `session_id=pdf_hash` in Langfuse groups
-them. A future improvement could use `langfuse.start_as_current_span()` with an
-explicit `trace_id` derived from `pdf_hash` to merge them.
+2. Via `atexit.register(_langfuse.shutdown)` at module level — this is the
+   last-resort backstop for unexpected exits (unhandled exceptions, KeyboardInterrupt)
+   that bail out before reaching the `finally` clause. `atexit` fires on normal
+   interpreter termination; it does NOT fire on SIGKILL or `os._exit()`.
 
-### No async span nesting (known Langfuse bug #10721)
-In some async LangGraph patterns, `CallbackHandler` observations don't nest
-correctly under an active parent span. For PDFScout this is low-risk because
-we're adding the `start_as_current_span` wrapper ourselves; child spans from
-the graph should still nest under it.
+### Deterministic trace ID for checkpoint resume
+`_langfuse.create_trace_id(seed=pdf_hash)` generates a UUID5 from the PDF's
+SHA-256 hash. The same hash always produces the same trace ID. When a run is
+interrupted and resumed, both invocations write spans under the same trace ID
+in Langfuse, giving a complete view of the full extraction across sessions
+rather than two orphaned partial traces.
+
+### Graceful degradation
+Tracing is opt-in. If `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` are
+absent from the environment, `_LANGFUSE_ENABLED` is `False` and the pipeline
+runs exactly as before — no import error, no crash, no changed behaviour.
+
+### Post-run metadata enrichment
+`document_type`, `total_pages`, and `extraction_warnings` are only available
+after the graph completes. All three are read from `final_state.values` and
+`tree_result` inside the `with` block (before the span closes) and written via
+`span.update(metadata={...})`.
+
+`extraction_warnings` is joined with `"\n"` before storing — Langfuse v4
+coerces metadata values to `str` with a 200-char cap. A raw list would be
+serialised as its Python `repr`, which is not readable or filterable. The joined
+string is truncated by the SDK if it exceeds 200 chars; for most documents the
+warning list is short enough to fit.
+
+`user_id` is not set — there is no user concept in a CLI tool. `session_id` is
+set to `pdf_hash`, which groups all runs for the same PDF together in the
+Langfuse UI.
+
+---
+
+## Known Limitations
+
+### Burst worker span nesting (Langfuse bug #10721)
+LangGraph's Send API spawns burst `parser_worker` tasks as concurrent asyncio
+tasks. Python `contextvars` context is propagated to tasks created via
+`asyncio.create_task()`, but LangGraph's internal task management for Send
+nodes may or may not propagate the Langfuse span context. Bug #10721 confirms
+that in some async LangGraph patterns, callback observations don't nest
+correctly under an active parent span. **This is unresolved.** Worst case:
+burst worker LLM spans appear as root-level observations in Langfuse rather
+than nested under the correct node span. The overall trace is still complete
+and searchable; only the nesting may be flat.
+
+### atexit does not cover all exit paths
+`atexit` fires on normal interpreter exit and `sys.exit()`. It does NOT fire on
+SIGKILL, `os._exit()`, or Python fatal internal errors. For a CLI tool this is
+acceptable. If PDFScout is ever embedded in a long-running service, replace the
+`atexit` approach with an explicit `shutdown()` call in the service's teardown.
 
 ---
 
 ## Execution Order
 
 1. `uv add "langfuse>=4.0.0"` — add dependency
-2. Update `.env.example` — add the three `LANGFUSE_*` variables
-3. Update `main.py` — import `Langfuse` and `CallbackHandler`; wrap `app.stream`
-   in `start_as_current_span`; pass `callbacks` in `config`; call `flush()`
-4. Update `README.md` — add Langfuse to the observability section under
-   Installation (copy keys, set env vars)
-5. Test locally with a real PDF and verify the trace appears in the Langfuse UI
+2. Update `.env.example` — add `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`
+3. Replace `main.py` with the implementation above
+4. Update `README.md` — add Observability section (see below)
+5. Test locally: set keys, run against a real PDF, verify trace appears in Langfuse UI
 
 ---
 
@@ -230,18 +318,19 @@ Add a new **Observability** section between Installation and Usage:
 ```markdown
 ## Observability
 
-PDFScout ships with [Langfuse](https://langfuse.com/) tracing. Every pipeline
-run produces a trace showing node execution, Claude API calls, token usage
-(including prompt-cache hits), and extraction metadata.
+PDFScout ships with optional [Langfuse](https://langfuse.com/) tracing. When
+enabled, every pipeline run produces a single trace showing node execution,
+Claude API calls, token usage (including prompt-cache hits), and extraction
+metadata. Checkpoint resumes of the same PDF merge into the same trace.
 
-To enable it, add the following to your `.env`:
+To enable, add to your `.env`:
 
 \`\`\`
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com   # omit for cloud default
+LANGFUSE_BASE_URL=https://cloud.langfuse.com   # omit to use cloud default
 \`\`\`
 
 Get keys from your [Langfuse project settings](https://cloud.langfuse.com).
-Tracing is skipped gracefully if the keys are absent.
+If the keys are absent the pipeline runs normally with no tracing.
 ```
