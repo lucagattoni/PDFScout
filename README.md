@@ -191,6 +191,22 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ---
 
+## Observability
+
+PDFScout ships with optional [Langfuse](https://langfuse.com/) tracing. When enabled, every pipeline run produces a single trace showing node execution, Claude API calls, token usage (including prompt-cache hits), and extraction metadata. All runs for the same PDF are grouped in the Langfuse Sessions view via a shared `session_id`.
+
+To enable, add to your `.env`:
+
+```
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+Get keys from your [Langfuse project settings](https://cloud.langfuse.com). If the keys are absent the pipeline runs normally with no tracing.
+
+---
+
 ## Usage
 
 ```bash
