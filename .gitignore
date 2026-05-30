@@ -3,3 +3,4 @@ __pycache__/
 *.pyo
 .venv/
 state_checkpoint.db
+.env

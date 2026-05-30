@@ -2,9 +2,12 @@ import os
 import sys
 import asyncio
 import json
+from dotenv import load_dotenv
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from src.graph import build_app
 from src.utils.pdf_utils import hash_file
+
+load_dotenv()
 
 
 async def main():

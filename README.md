@@ -178,14 +178,22 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.13.
 git clone https://github.com/lucagattoni/PDFScout.git
 cd PDFScout
 uv sync
+cp .env.example .env   # then fill in your API key
 ```
+
+Edit `.env` and set your Anthropic API key:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`.env` is gitignored and never committed. `.env.example` documents the required variables.
 
 ---
 
 ## Usage
 
 ```bash
-export ANTHROPIC_API_KEY="your-api-key"
 uv run main.py path/to/document.pdf
 ```
 
@@ -232,9 +240,10 @@ Checkpoint state is stored in `state_checkpoint.db` (SQLite, created automatical
 ```
 PDFScout/
 ├── .python-version             # Pins Python 3.13
+├── .env.example                # Required environment variables template
 ├── pyproject.toml              # uv-managed dependencies
 ├── uv.lock                     # Locked dependency graph
-├── main.py                     # Entry point
+├── main.py                     # Entry point (loads .env via python-dotenv)
 │
 ├── schemas/                    # JSON Schema Draft-07 blueprints
 │   ├── baseline_core.json      # Generic fallback: 8-type enum, no domain metadata
@@ -250,6 +259,9 @@ PDFScout/
     │
     ├── extractors/
     │   └── page_counter.py     # pypdf page count + encrypted PDF guard
+    │
+    ├── utils/
+    │   └── pdf_utils.py        # Shared hash_file and encode_pdf_async helpers
     │
     └── nodes/                  # Graph node implementations
         ├── extractor_node.py   # PDF hashing + page count
