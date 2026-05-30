@@ -1,6 +1,6 @@
 # Langfuse Integration Plan
 Date: 2026-05-30  
-Revised: 2026-05-30 (three rounds of devil's advocate review applied)
+Revised: 2026-05-30 (four rounds of devil's advocate review applied)
 
 ## Goal
 
@@ -9,8 +9,10 @@ should produce a single trace in Langfuse showing the full node execution tree,
 every Claude API call with its inputs/outputs and token counts, and key metadata
 (pdf_hash, document_type, page count) so runs are searchable and comparable.
 
-Checkpoint resumes of the same PDF must merge into the same trace, not create
-a new orphan trace per invocation.
+Checkpoint resumes of the same PDF must be groupable in the Langfuse UI.
+They will appear as separate traces (the `trace_context` mechanism for merging
+them is broken in v4 — see Known Limitations), but all linked by a shared
+`session_id` so the Sessions view shows the full extraction history per PDF.
 
 ---
 
@@ -32,10 +34,10 @@ standard `config={"callbacks": [...]}` parameter.
 
 | What | How | When |
 |---|---|---|
-| `session_id = pdf_hash` | `update_attributes={"session_id": pdf_hash}` on the opening span — confirmed top-level Langfuse field, enables grouping all runs for the same file in the UI | Before graph runs |
-| `file`, `pdf_hash`, `document_type`, `total_pages` | `span.update(metadata={...})` — `update_attributes` only accepts top-level fields; arbitrary key/value pairs belong in `metadata` | After graph completes, inside `with` block |
+| `session_id = pdf_hash` | `propagate_attributes(session_id=pdf_hash)` inside the span block — v4 sets trace-level fields via this context manager, not via a parameter on `start_as_current_span` | Inside span, before graph runs |
+| `file`, `pdf_hash`, `document_type`, `total_pages` | `span.update(metadata={...})` — arbitrary key/value pairs belong in `metadata`, coerced to `str` by SDK | After graph completes, inside `with` block |
 | `extraction_warnings` | `"\n".join(extraction_warnings)` in the same `span.update()` — Langfuse v4 coerces metadata values to `str` (max 200 chars); a raw list serialises as `repr` which is neither readable nor filterable | After graph completes, inside `with` block |
-| Deterministic trace ID | `_langfuse.create_trace_id(seed=pdf_hash)` → `trace_context={"trace_id": trace_id}` — same PDF hash always yields the same UUID so checkpoint resume spans merge into the existing trace | Before graph runs |
+| Resume grouping | `session_id=pdf_hash` via `propagate_attributes` — `trace_context` is broken in v4 (creates phantom observations, bug #12896); Sessions view groups all traces for the same PDF by `session_id` instead | Inside span, before graph runs |
 
 ---
 
@@ -47,7 +49,7 @@ langfuse>=4.0.0   (latest: 4.7.1)
 
 Import paths:
 ```python
-from langfuse import Langfuse
+from langfuse import Langfuse, propagate_attributes
 from langfuse.langchain import CallbackHandler
 ```
 
@@ -74,10 +76,10 @@ keys are present.
 
 ## Architecture of a Trace
 
-When PDFScout runs on a 5-page invoice (including a checkpoint resume):
+When PDFScout runs on a 5-page invoice:
 
 ```
-Trace ID: uuid5(pdf_hash)  ← same ID on every invocation of this PDF
+Trace (session_id=pdf_hash)  ← grouped with resume runs via Sessions view
   ├─ Span: native_extractor_node
   ├─ Span: classifier_node
   │    └─ LLM: claude-sonnet-4-6  [classify prompt → "invoice"]
@@ -93,10 +95,11 @@ Trace ID: uuid5(pdf_hash)  ← same ID on every invocation of this PDF
        └─ LLM: claude-sonnet-4-6  [set_block_relations tool]
 ```
 
-If this is a resume run (e.g., interrupted at page 3), the new run's spans
-appear under the same trace ID in Langfuse rather than a separate trace.
-Token counts per LLM span reveal cache hits vs. cache misses (Anthropic returns
-`cache_read_input_tokens` in the usage object; Langfuse captures it verbatim).
+If this is a resume run (e.g., interrupted at page 3), the new run produces
+a separate trace in Langfuse, but both traces share `session_id=pdf_hash` and
+appear together in the Sessions view. Token counts per LLM span reveal cache
+hits vs. cache misses (Anthropic returns `cache_read_input_tokens` in the
+usage object; Langfuse captures it verbatim).
 
 ---
 
@@ -124,7 +127,7 @@ import sys
 import asyncio
 import json
 from dotenv import load_dotenv
-from langfuse import Langfuse
+from langfuse import Langfuse, propagate_attributes
 from langfuse.langchain import CallbackHandler
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from src.graph import build_app
@@ -160,26 +163,28 @@ async def main():
         config["callbacks"] = callbacks
 
     if _LANGFUSE_ENABLED:
-        # Deterministic trace ID: same PDF → same ID on every run, so checkpoint
-        # resumes merge into the existing trace rather than creating a new one.
-        trace_id = _langfuse.create_trace_id(seed=pdf_hash)
         try:
             with _langfuse.start_as_current_span(
                 name=f"PDFScout — {os.path.basename(target_pdf)}",
-                trace_context={"trace_id": trace_id},
-                update_attributes={"session_id": pdf_hash},
             ) as span:
-                async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
-                    app = build_app(checkpointer)
-                    async for event in app.stream({"file_path": target_pdf}, config):
-                        for node_name in event:
-                            print(f"[GRAPH] Node '{node_name}' completed.")
-                    final_state = await app.get_state(config)
+                # propagate_attributes is the v4 API for setting session_id,
+                # user_id, and other trace-level fields on the current span and
+                # all child observations. start_as_current_span has no
+                # update_attributes parameter in v4.
+                # session_id=pdf_hash groups all runs for the same PDF in the
+                # Langfuse Sessions view (replaces the broken trace_context
+                # merge approach — see Known Limitations).
+                with propagate_attributes(session_id=pdf_hash):
+                    async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
+                        app = build_app(checkpointer)
+                        async for event in app.stream({"file_path": target_pdf}, config):
+                            for node_name in event:
+                                print(f"[GRAPH] Node '{node_name}' completed.")
+                        final_state = await app.get_state(config)
 
-                # Post-run metadata enrichment — all fields go here, including
-                # those known upfront (file, pdf_hash). update_attributes only
-                # accepts confirmed top-level span fields (session_id, user_id,
-                # tags); passing a nested "metadata" dict there is unverified.
+                # Post-run metadata enrichment — inside the with span block so
+                # the span is still open, but outside propagate_attributes since
+                # span.update() targets this span only, not children.
                 # Langfuse v4 coerces metadata values to str (max 200 chars);
                 # use "\n".join() for lists rather than passing them raw.
                 state_values = final_state.values if final_state else {}
@@ -253,62 +258,73 @@ Calling `shutdown()` twice can cause a hang on `ThreadPoolExecutor` teardown
 backstop for unexpected exits; `try/finally` covers the primary path (normal
 exit, exceptions, `KeyboardInterrupt`).
 
-### Deterministic trace ID for checkpoint resume
-`_langfuse.create_trace_id(seed=pdf_hash)` generates a UUID5 from the PDF's
-SHA-256 hash. The same hash always produces the same trace ID. When a run is
-interrupted and resumed, both invocations write spans under the same trace ID
-in Langfuse, giving a complete view of the full extraction across sessions
-rather than two orphaned partial traces.
+### Checkpoint resume grouping via session_id
+Checkpoint resumes produce separate traces. The `trace_context` mechanism for
+pinning a deterministic trace ID is broken in v4 (see Known Limitations) and
+has been dropped. Instead, `propagate_attributes(session_id=pdf_hash)` tags
+every trace for the same PDF with an identical `session_id`. The Langfuse
+Sessions view groups all traces sharing a `session_id`, giving a complete
+view of the full extraction history per PDF across runs.
 
 ### Graceful degradation
 Tracing is opt-in. If `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` are
 absent from the environment, `_LANGFUSE_ENABLED` is `False` and the pipeline
 runs exactly as before — no import error, no crash, no changed behaviour.
 
-### Custom trace metadata — all in one span.update() call
+### Custom trace metadata — propagate_attributes + span.update()
 
-All custom metadata is written via a single `span.update(metadata={...})` call
-inside the `with` block, after the graph completes but before `__exit__` fires.
-This includes fields known upfront (`file`, `pdf_hash`) as well as fields
-resolved by the graph (`document_type`, `total_pages`, `extraction_warnings`).
+**`session_id`** is set via `propagate_attributes(session_id=pdf_hash)` — a
+context manager nested inside the span block. This is the v4 API for setting
+trace-level fields (`session_id`, `user_id`, `tags`, `version`). It propagates
+automatically to all child observations created within the block, including the
+LLM spans generated by the Langfuse `CallbackHandler`.
 
-`update_attributes` (the opening span parameter) only accepts confirmed top-level
-Langfuse span fields: `session_id`, `user_id`, `tags`, `input`, `output`. Passing
-a nested `"metadata"` dict inside `update_attributes` is **not a documented API
-shape** and may be silently ignored or raise a `TypeError`. Keeping all metadata
-in `span.update()` is the safe, verified approach.
+`start_as_current_span()` has **no `update_attributes` parameter** in v4.
+Passing it would raise a `TypeError` or be silently ignored.
+
+**All other custom metadata** (`file`, `pdf_hash`, `document_type`,
+`total_pages`, `extraction_warnings`) is written via `span.update(metadata={...})`
+after the graph completes but before `__exit__` fires. This is placed outside
+the `propagate_attributes` block — `span.update()` targets only this span, not
+children, so the nesting doesn't matter.
 
 `extraction_warnings` is joined with `"\n"` — Langfuse v4 coerces all metadata
 values to `str` with a 200-char cap. A raw list serialises as its Python `repr`
-(`"['...', '...']"`), which is neither readable nor filterable. The joined string
-is the correct form; the full warning list is also printed to stdout by the
-existing warnings block, so nothing is lost if the string is truncated.
+which is neither readable nor filterable. The full warning list is also printed
+to stdout by the existing warnings block so nothing is lost if truncated.
 
-`user_id` is not set — there is no user concept in a CLI tool. `session_id` is
-set to `pdf_hash`, grouping all runs for the same file in the Langfuse UI.
+`user_id` is not set — no user concept exists in a CLI tool.
 
 ---
 
 ## Known Limitations
 
+### trace_context for merging resumes is broken in v4 (bugs #12896, #8930, #10430)
+The only v4 mechanism for pinning a custom trace ID is `trace_context={"trace_id": ...}`
+on `start_as_current_span`. It has three active, unfixed bugs:
+- **#12896**: Creates a phantom parent `NonRecordingSpan` with no name/input/output
+  on every trace, making "Is Root Observation" always `False` in the UI.
+- **#8930**: Setting a custom trace ID creates a nameless parent span.
+- **#10430**: The last span using `trace_context` overwrites the trace name,
+  clobbering any `name=` argument passed to `start_as_current_span`.
+
+**Consequence**: checkpoint resumes produce separate traces in Langfuse rather
+than being merged into one. They are grouped via `session_id=pdf_hash` in the
+Sessions view instead, which achieves the same observability goal without the
+phantom-observation side effects.
+
 ### Burst worker span nesting (Langfuse bug #10721)
 LangGraph's Send API spawns burst `parser_worker` tasks as concurrent asyncio
-tasks. Python `contextvars` context is propagated to tasks created via
-`asyncio.create_task()`, but LangGraph's internal task management for Send
-nodes may or may not propagate the Langfuse span context. Bug #10721 confirms
-that in some async LangGraph patterns, callback observations don't nest
-correctly under an active parent span. **This is unresolved.** Worst case:
-burst worker LLM spans appear as root-level observations in Langfuse rather
-than nested under the correct node span. The overall trace is still complete
-and searchable; only the nesting may be flat.
+tasks. Bug #10721 confirms that in some async LangGraph patterns, callback
+observations don't nest correctly under an active parent span. **Unresolved.**
+Worst case: burst worker LLM spans appear flat in the trace rather than nested
+under their node span. The overall trace is still complete and searchable.
 
 ### Unrecoverable exits lose the last batch
 Neither `try/finally` nor the SDK's built-in `atexit` fires on SIGKILL or
 `os._exit()`. Observations buffered in the flush queue at that moment are lost.
-For a CLI tool this is acceptable — the only way to hit SIGKILL is an external
-`kill -9`, which is an operator action. If PDFScout is ever embedded in a
-long-running service, the service's graceful-shutdown handler should call
-`_langfuse.shutdown()` explicitly on SIGTERM.
+For a CLI tool this is acceptable. If PDFScout is ever embedded in a long-running
+service, call `_langfuse.shutdown()` explicitly on SIGTERM.
 
 ---
 
