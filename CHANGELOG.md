@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.0] — 2026-05-30
+
+### Added
+- **FastAPI HTTP interface** (`api.py`) — exposes the extraction pipeline as an
+  async HTTP API. `POST /extract` accepts PDF uploads and returns a `job_id`
+  immediately; `GET /jobs/{job_id}` polls status and retrieves the result.
+  `DELETE /jobs/{job_id}` cleans up completed jobs.
+- `src/api/` module — `jobs.py` (in-memory job store), `models.py` (Pydantic
+  response models), `runner.py` (background extraction task with resume
+  detection).
+- `src/utils/tracing.py` — `tracing_span()` async context manager, shared by
+  both the CLI and the API to open a Langfuse span without duplicating the
+  `if/else` branch in each entry point. `main.py` updated to use it.
+- `API_README.md` — full endpoint reference, job lifecycle diagram, operational
+  notes, and configuration guide.
+- `GET /health` — returns model, supported doc types, and Langfuse status.
+- Checkpoint resume via API — re-submitting a PDF whose extraction was
+  interrupted (e.g., server restart) resumes from the last checkpoint rather
+  than restarting from page 1.
+- Idempotent job IDs — `job_id` is the SHA-256 hash of the PDF; submitting the
+  same file twice returns the existing result without restarting the pipeline.
+
+### Changed
+- `pyproject.toml` — added `fastapi`, `uvicorn[standard]`, `python-multipart`.
+- `.gitignore` — added `tmp/` (API upload staging directory) and
+  `api_checkpoint.db` (API-specific SQLite checkpoint).
+
 ## [0.2.0] — 2026-05-30
 
 ### Added

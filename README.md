@@ -211,6 +211,8 @@ Get keys from your [Langfuse project settings](https://cloud.langfuse.com). If t
 
 ## Usage
 
+### CLI
+
 ```bash
 uv run main.py path/to/document.pdf
 ```
@@ -250,6 +252,15 @@ uv run main.py large_document.pdf
 ```
 
 Checkpoint state is stored in `state_checkpoint.db` (SQLite, created automatically).
+
+### API Server
+
+```bash
+uv run uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+See **[API_README.md](API_README.md)** for the full endpoint reference, job
+lifecycle, and operational notes.
 
 ---
 
