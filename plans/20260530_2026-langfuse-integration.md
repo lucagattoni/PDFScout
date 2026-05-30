@@ -29,15 +29,13 @@ standard `config={"callbacks": [...]}` parameter.
   captured inside the LLM span
 
 **Not automatic — requires manual enrichment:**
-- Custom trace metadata (pdf_hash, document_type, total_pages, file path) — set
-  via `start_as_current_span(update_attributes={...})` for values known upfront,
-  and via `span.update(metadata={...})` post-run for values resolved by the graph
-- Session ID tagging (`session_id=pdf_hash`) — enables filtering all runs for
-  the same PDF in the Langfuse UI (no user_id concept in a CLI tool)
-- Extraction warnings — joined as a newline string in post-run `span.update()`
-  (Langfuse v4 coerces metadata values to `str`, max 200 chars; a raw list would
-  be serialised as its `repr` which is unreadable)
-- Deterministic trace ID for checkpoint resume merging
+
+| What | How | When |
+|---|---|---|
+| `session_id = pdf_hash` | `update_attributes={"session_id": pdf_hash}` on the opening span — confirmed top-level Langfuse field, enables grouping all runs for the same file in the UI | Before graph runs |
+| `file`, `pdf_hash`, `document_type`, `total_pages` | `span.update(metadata={...})` — `update_attributes` only accepts top-level fields; arbitrary key/value pairs belong in `metadata` | After graph completes, inside `with` block |
+| `extraction_warnings` | `"\n".join(extraction_warnings)` in the same `span.update()` — Langfuse v4 coerces metadata values to `str` (max 200 chars); a raw list serialises as `repr` which is neither readable nor filterable | After graph completes, inside `with` block |
+| Deterministic trace ID | `_langfuse.create_trace_id(seed=pdf_hash)` → `trace_context={"trace_id": trace_id}` — same PDF hash always yields the same UUID so checkpoint resume spans merge into the existing trace | Before graph runs |
 
 ---
 
