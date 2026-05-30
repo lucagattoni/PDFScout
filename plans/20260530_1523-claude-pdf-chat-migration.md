@@ -47,7 +47,7 @@ Source: https://platform.claude.com/docs/en/build-with-claude/pdf-support
 }
 ```
 
-**Prompt caching upgrade:** Previously `cache_control` was applied to the `native_text_metadata` JSON string. After migration it is applied directly to the `document` block containing the encoded PDF. This is strictly better — Claude caches its actual processed representation of the PDF (image + text per page), not a secondary text extraction of it.
+**Prompt caching upgrade:** Previously `cache_control` was applied to a `text` block containing the `native_text_metadata` JSON string. After migration it is applied directly to the `document` block containing the encoded PDF. This is strictly better — Claude caches its actual processed representation of the PDF (image + text per page), not a secondary text extraction of it.
 
 ---
 
@@ -109,36 +109,40 @@ Unmaintained since 2017. Incompatible with modern Python and PDF standards. Excl
 | Component | Reason |
 |---|---|
 | `pdfplumber` package | Replaced entirely by Claude PDF Chat |
+| `pydantic` package | The only Pydantic models (`NativeWord`, `NativePageMetadata`) live in `src/extractors/base.py`. That file is deleted. After migration, no code imports from pydantic. |
 | `src/extractors/base.py` | `BaseNativeExtractor`, `NativeWord`, `NativePageMetadata` Pydantic models are no longer needed |
 | `src/extractors/plumber_engine.py` | `PlumberExtractor` is no longer needed |
-| `src/extractors/__init__.py` | Directory has no remaining content |
 | `PDFParserState.native_text_metadata` | Was the pdfplumber output; no longer computed or used |
 
 ### 4.2 What Is Added
 
 | Component | Description |
 |---|---|
-| `pypdf` package | Page counting only |
-| `PDFParserState.pdf_base64` | Base64-encoded PDF bytes, computed once in `native_extractor_node` and reused by all subsequent Claude-calling nodes |
+| `pypdf` package | Page counting + encrypted PDF detection only |
+| `src/extractors/page_counter.py` | Thin wrapper: calls `pypdf.PdfReader`, raises on encrypted PDFs |
+| `coordinates` schema `description` field | All three JSON schemas gain an explicit `"description": "Bounding box as [ymin, xmin, ymax, xmax] integers in page coordinate space."` on the `coordinates` property. Previously the order was enforced in pdfplumber code; now it must be encoded in the schema so Claude generates coordinates in the expected order for `geometric_pre_sorter`. |
 
 ### 4.3 What Changes (but stays)
 
 | Component | Old behaviour | New behaviour |
 |---|---|---|
-| `native_extractor_node` | Opens PDF with pdfplumber, extracts words + coordinates for all pages, computes hash | Opens PDF with pypdf for page count, encodes PDF to base64, computes hash. No text extraction. |
-| `classifier_node` | Sends `first_page_text` (4000 chars of pdfplumber output) to Claude | Sends PDF as `document` block; asks Claude to return the document type token |
-| `worker_node` | Sends `native_text_metadata` JSON as a `text` block with `cache_control` | Sends PDF as a `document` block with `cache_control: ephemeral`, asks to extract page N |
-| `src/extractors/` directory | Houses Strategy pattern + pdfplumber impl | Houses only a thin `page_counter.py` — a single function wrapping pypdf |
+| `native_extractor_node` | Opens PDF with pdfplumber, extracts words + coordinates for all pages | Opens PDF with pypdf for page count and encrypted-PDF guard; computes hash. No text extraction. No base64 encoding. |
+| `classifier_node` | Sends `first_page_text` (4000 chars of pdfplumber output) to Claude | Reads `file_path` from state, encodes to base64, sends PDF as `document` block |
+| `worker_node` | Sends `native_text_metadata` JSON as a `text` block with `cache_control`; imports `json` | Reads `file_path` from state, encodes to base64, sends PDF as `document` block with `cache_control: ephemeral`. `import json` is removed. |
+
+**Why workers re-read from `file_path` rather than storing `pdf_base64` in state:**
+
+Storing `pdf_base64` in `PDFParserState` would cause `{**state, ...}` in `dispatch_pages` to copy the full encoded PDF into every `Send` message — one copy per page. A 10 MB PDF becomes ~13 MB of base64 × N-1 copies simultaneously in memory, plus each copy is checkpointed to SQLite. Reading from `file_path` (always present in state) per worker call eliminates this entirely at the cost of one extra disk read per API call, which is negligible for a local file.
 
 ### 4.4 What Stays Unchanged
 
-- `schemas/` — all three JSON Schema files unchanged
+- `schemas/` — three JSON Schema files (gains `description` on `coordinates` only)
 - `src/config.py` — unchanged
-- `src/state.py` — one field removed (`native_text_metadata`), one added (`pdf_base64`)
+- `src/state.py` — one field removed (`native_text_metadata`); no field added
 - `src/schema_registry.py` — unchanged
 - `src/edges.py` — unchanged
 - `src/nodes/retry_node.py` — unchanged
-- `src/nodes/hierarchy_node.py` — unchanged (geometric_pre_sorter still valid; Claude still returns blocks with bbox coordinates)
+- `src/nodes/hierarchy_node.py` — unchanged (`geometric_pre_sorter` still valid; coordinate order is now enforced via the schema description)
 - `src/graph.py` — unchanged
 - `main.py` — unchanged
 
@@ -152,7 +156,7 @@ class PDFParserState(TypedDict):
     file_path: str
     pdf_hash: str
     total_pages: int
-    pdf_base64: str                          # NEW — base64-encoded PDF, set by native_extractor
+    # native_text_metadata REMOVED — pdfplumber extraction eliminated
 
     # Polymorphic Blueprint Configuration
     document_type: str
@@ -169,10 +173,6 @@ class PDFParserState(TypedDict):
     hierarchical_document_tree: dict[str, Any] | None
 ```
 
-`native_text_metadata` is removed. `pdf_base64` is computed once in `native_extractor_node` and flows through state to all nodes that call the API.
-
-> **Memory note:** Storing base64-encoded PDF bytes in state means the full encoded payload is held in memory and checkpointed to SQLite. A 10 MB PDF becomes ~13.3 MB of base64 text in state. This is acceptable for typical documents. For very large PDFs (approaching the 32 MB API limit), the Files API should be considered as an upgrade path (see Section 8).
-
 ---
 
 ## 6. File-by-File Implementation Plan
@@ -180,7 +180,7 @@ class PDFParserState(TypedDict):
 ### Step 1 — Update dependencies
 
 ```bash
-uv remove pdfplumber
+uv remove pdfplumber pydantic
 uv add "pypdf>=6.0.0"
 ```
 
@@ -188,6 +188,7 @@ uv add "pypdf>=6.0.0"
 ```toml
 # Remove:
 "pdfplumber>=0.11.9",
+"pydantic>=2.13.4",
 
 # Add:
 "pypdf>=6.0.0",
@@ -195,7 +196,25 @@ uv add "pypdf>=6.0.0"
 
 ---
 
-### Step 2 — Replace `src/extractors/` contents
+### Step 2 — Add coordinate order description to all three schemas
+
+Add `"description"` to the `coordinates` property in `schemas/invoice.json`, `schemas/scientific_paper.json`, and `schemas/baseline_core.json`:
+
+```json
+"coordinates": {
+    "type": "array",
+    "description": "Bounding box as [ymin, xmin, ymax, xmax] integers in page coordinate space.",
+    "items": { "type": "integer" },
+    "minItems": 4,
+    "maxItems": 4
+}
+```
+
+This is required because `geometric_pre_sorter` in `hierarchy_node.py` unpacks `ymin, xmin, _, _ = b["bbox"]["coordinates"]`. Previously this order was enforced by pdfplumber's coordinate mapping code. After migration, Claude generates the coordinates and must be explicitly told the expected format.
+
+---
+
+### Step 3 — Replace `src/extractors/` contents
 
 **Delete:**
 - `src/extractors/base.py`
@@ -211,7 +230,8 @@ def get_page_count(file_path: str) -> int:
     reader = PdfReader(file_path)
     if reader.is_encrypted:
         raise ValueError(
-            f"PDF at '{file_path}' is encrypted. Claude PDF Chat does not support password-protected PDFs."
+            f"PDF at '{file_path}' is encrypted. "
+            "Claude PDF Chat does not support password-protected PDFs."
         )
     return len(reader.pages)
 ```
@@ -220,16 +240,15 @@ def get_page_count(file_path: str) -> int:
 
 ---
 
-### Step 3 — Update `src/state.py`
+### Step 4 — Update `src/state.py`
 
-Remove `native_text_metadata`. Add `pdf_base64`.
+Remove `native_text_metadata`. No field is added.
 
 ```python
 class PDFParserState(TypedDict):
     file_path: str
     pdf_hash: str
     total_pages: int
-    pdf_base64: str                           # base64-encoded PDF bytes
 
     document_type: str
     target_json_schema: dict[str, Any]
@@ -245,10 +264,9 @@ class PDFParserState(TypedDict):
 
 ---
 
-### Step 4 — Rewrite `src/nodes/extractor_node.py`
+### Step 5 — Rewrite `src/nodes/extractor_node.py`
 
 ```python
-import base64
 import hashlib
 from typing import Any
 from src.extractors.page_counter import get_page_count
@@ -266,7 +284,7 @@ def _hash_file(file_path: str) -> str:
 async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     file_path = state["file_path"]
     pdf_hash = _hash_file(file_path)
-    total_pages = get_page_count(file_path)  # raises on encrypted or empty PDFs
+    total_pages = get_page_count(file_path)  # raises on encrypted PDFs
 
     if total_pages == 0:
         raise ValueError(
@@ -274,13 +292,9 @@ async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
             "The file may be empty or corrupted."
         )
 
-    with open(file_path, "rb") as f:
-        pdf_base64 = base64.standard_b64encode(f.read()).decode("utf-8")
-
     return {
         "pdf_hash": pdf_hash,
         "total_pages": total_pages,
-        "pdf_base64": pdf_base64,
         "current_page": 1,
         "retry_count": 0,
         "last_validation_error": None,
@@ -291,16 +305,22 @@ async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
 
 ---
 
-### Step 5 — Rewrite `src/nodes/classifier_node.py`
+### Step 6 — Rewrite `src/nodes/classifier_node.py`
 
-Replaces first-page text approach with direct PDF document block.
+Reads `file_path` from state and encodes on the fly. Replaces first-page text approach with a full PDF document block.
 
 ```python
+import base64
 import os
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from src.config import MODEL, SUPPORTED_DOC_TYPES, FALLBACK_DOC_TYPE
 from src.schema_registry import SchemaRegistry
+
+
+def _encode_pdf(file_path: str) -> str:
+    with open(file_path, "rb") as f:
+        return base64.standard_b64encode(f.read()).decode("utf-8")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -335,7 +355,8 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
 
 async def classifier_node(state: dict) -> dict:
     client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    doc_type = await _classify(client, state["pdf_base64"])
+    pdf_base64 = _encode_pdf(state["file_path"])
+    doc_type = await _classify(client, pdf_base64)
 
     if doc_type not in SUPPORTED_DOC_TYPES:
         doc_type = FALLBACK_DOC_TYPE
@@ -346,12 +367,13 @@ async def classifier_node(state: dict) -> dict:
 
 ---
 
-### Step 6 — Rewrite `src/nodes/worker_node.py`
+### Step 7 — Rewrite `src/nodes/worker_node.py`
 
-Replaces the `native_text_metadata` JSON text block with a `document` block. `cache_control: ephemeral` moves to the document block — this is the correct cache target now.
+Reads `file_path` from state, encodes on the fly. Removes `import json` (was only used to serialize `native_text_metadata`). Moves `cache_control: ephemeral` from the old text block to the document block.
 
 ```python
 import asyncio
+import base64
 import os
 from typing import Any
 from anthropic import AsyncAnthropic
@@ -360,6 +382,11 @@ from src.config import MODEL, CONCURRENCY_LIMIT
 from src.schema_registry import SchemaRegistry
 
 _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+
+
+def _encode_pdf(file_path: str) -> str:
+    with open(file_path, "rb") as f:
+        return base64.standard_b64encode(f.read()).decode("utf-8")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -379,6 +406,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
         _, tool_definition = SchemaRegistry().get_schema_and_tool(state["document_type"])
+        pdf_base64 = _encode_pdf(state["file_path"])
 
         content = [
             {
@@ -386,16 +414,17 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 "source": {
                     "type": "base64",
                     "media_type": "application/pdf",
-                    "data": state["pdf_base64"]
+                    "data": pdf_base64
                 },
-                "cache_control": {"type": "ephemeral"}   # caches the PDF at the provider
+                "cache_control": {"type": "ephemeral"}
             },
             {
                 "type": "text",
                 "text": (
                     f"CRITICAL TASK: Extract structure elements EXCLUSIVELY located on physical "
-                    f"Page {current_page}. Use the tool '{tool_definition['name']}' to return "
-                    f"structured data matching the schema parameters."
+                    f"Page {current_page}. Coordinates must follow [ymin, xmin, ymax, xmax] order. "
+                    f"Use the tool '{tool_definition['name']}' to return structured data matching "
+                    f"the schema parameters."
                 )
             }
         ]
@@ -414,6 +443,8 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"extracted_flat_blocks": tool_block.input.get("blocks", [])}
 ```
 
+Note: the coordinate order reminder (`Coordinates must follow [ymin, xmin, ymax, xmax] order.`) is added to the task prompt to reinforce the schema description, since `geometric_pre_sorter` depends on this ordering.
+
 ---
 
 ## 7. Dependency Diff
@@ -421,15 +452,15 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
 | Package | Before | After | Reason |
 |---|---|---|---|
 | `pdfplumber` | ≥ 0.11.9 | **Removed** | Replaced by Claude PDF Chat |
-| `pypdf` | — | ≥ 6.0.0 | Page count only |
+| `pydantic` | ≥ 2.13.4 | **Removed** | Only Pydantic models were `NativeWord`/`NativePageMetadata` in the deleted extractor files; zero remaining usage |
+| `pypdf` | — | ≥ 6.0.0 | Page count + encrypted PDF detection only |
 | `langgraph` | ≥ 1.2.2 | unchanged | |
 | `langgraph-checkpoint-sqlite` | ≥ 3.1.0 | unchanged | |
 | `anthropic` | ≥ 0.105.2 | unchanged | |
-| `pydantic` | ≥ 2.13.4 | unchanged | |
 | `jsonschema` | ≥ 4.26.0 | unchanged | |
 | `tenacity` | ≥ 9.1.4 | unchanged | |
 
-`pdfplumber` itself pulls in `pdfminer.six`, `Pillow`, `pypdfium2`, `cryptography`, and `cffi`. Removing it significantly reduces the install footprint.
+`pdfplumber` pulls in `pdfminer.six`, `Pillow`, `pypdfium2`, `cryptography`, and `cffi`. Removing it alongside `pydantic` significantly reduces the install footprint.
 
 ---
 
@@ -437,10 +468,10 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
 
 | Constraint | Detail |
 |---|---|
-| Encrypted PDFs | Not supported by Claude PDF Chat. pypdf's `is_encrypted` check in `page_counter.py` gives an early, clean error before wasting an API call. |
-| Max request size | 32 MB total payload. Large PDFs approaching this limit should use the Files API (upload once → reference by `file_id`) instead of base64 in state. |
-| Max pages | 600 per request (100 for 200k-context models). `native_extractor_node` should guard against this: `if total_pages > 600: raise ValueError(...)`. |
-| State size | `pdf_base64` in SQLite checkpoint ≈ 1.33× the original PDF size. Acceptable for typical documents; consider Files API for >10 MB PDFs. |
+| Encrypted PDFs | Not supported by Claude PDF Chat. `pypdf`'s `is_encrypted` check in `page_counter.py` gives an early, clean error before wasting an API call. |
+| Max request size | 32 MB total payload. PDFs approaching this limit should use the Files API (upload once → reference by `file_id`) instead of per-call base64 encoding. |
+| Max pages | 600 per request (100 for 200k-context models). `native_extractor_node` guards against zero pages; a `total_pages > 600` guard should be added for very large documents. |
+| Disk reads per worker | Each `classifier_node` and `window_parser_node` call reads and encodes the full PDF file from disk. For local files this is negligible. For network-mounted or slow storage, consider the Files API upgrade path. |
 | Cache TTL | Anthropic prompt cache TTL remains 5 minutes. No change from before. |
 | Scanned PDFs | Fully supported — this is the primary motivation for the migration. |
 
@@ -448,10 +479,10 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
 
 ## 9. Files API Upgrade Path (Future)
 
-For workflows involving large PDFs or repeated analysis of the same document, the Files API eliminates per-request base64 overhead:
+For workflows involving large PDFs or repeated analysis of the same document, the Files API eliminates per-request encoding overhead:
 
-1. Upload PDF once → receive `file_id`
-2. Store `file_id` in state instead of `pdf_base64`
+1. Upload PDF once in `native_extractor_node` → receive `file_id`
+2. Store `file_id` in state instead of re-reading from disk
 3. All nodes reference `{"type": "file", "file_id": file_id}` in the `document` source
 4. Requires `betas=["files-api-2025-04-14"]` header on messages
 
@@ -461,16 +492,18 @@ This is a clean follow-on change after the base64 migration stabilizes.
 
 ## 10. Execution Order
 
-1. `uv remove pdfplumber && uv add "pypdf>=6.0.0"`
+1. `uv remove pdfplumber pydantic && uv add "pypdf>=6.0.0"`
 2. Update `pyproject.toml`
-3. Delete `src/extractors/base.py` and `src/extractors/plumber_engine.py`
-4. Create `src/extractors/page_counter.py`
-5. Update `src/state.py` — remove `native_text_metadata`, add `pdf_base64`
-6. Rewrite `src/nodes/extractor_node.py`
-7. Rewrite `src/nodes/classifier_node.py`
-8. Rewrite `src/nodes/worker_node.py`
-9. Run import check: `uv run python -c "from src.graph import build_app; build_app()"`
-10. Run schema validation smoke test
-11. Run end-to-end test with a real PDF (text-based + scanned)
-12. Verify `cache_read_input_tokens` on burst page invocations
-13. Update `README.md` — remove pdfplumber from Limitations section, update architecture description
+3. Add `"description"` to `coordinates` in `schemas/invoice.json`, `schemas/scientific_paper.json`, `schemas/baseline_core.json`
+4. Delete `src/extractors/base.py` and `src/extractors/plumber_engine.py`
+5. Create `src/extractors/page_counter.py`
+6. Update `src/state.py` — remove `native_text_metadata`
+7. Rewrite `src/nodes/extractor_node.py`
+8. Rewrite `src/nodes/classifier_node.py`
+9. Rewrite `src/nodes/worker_node.py`
+10. Run import check: `uv run python -c "from src.graph import build_app; build_app()"`
+11. Confirm zero pydantic imports: `grep -r "pydantic" src/` should return empty
+12. Run schema validation smoke test
+13. Run end-to-end test with a real PDF (text-based + scanned)
+14. Verify `cache_read_input_tokens` on burst page invocations
+15. Update `README.md` — remove pdfplumber from Limitations, replace with Claude PDF Chat architecture description
