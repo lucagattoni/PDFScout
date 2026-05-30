@@ -168,6 +168,8 @@ Schemas live in `schemas/` as JSON Schema Draft-07 files. The `SchemaRegistry` l
 
 When the classifier returns an unknown document type, the registry silently falls back to `baseline_core.json`. The tool definition passed to Claude strips `$schema` and `title` fields, which are rejected by Anthropic's `input_schema` spec.
 
+See **[schemas/README.md](schemas/README.md)** for a full guide on adding new document types.
+
 ---
 
 ## Installation
