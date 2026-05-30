@@ -1,6 +1,6 @@
 # Langfuse Integration Plan
 Date: 2026-05-30  
-Revised: 2026-05-30 (two rounds of devil's advocate review applied)
+Revised: 2026-05-30 (three rounds of devil's advocate review applied)
 
 ## Goal
 
@@ -142,18 +142,6 @@ _LANGFUSE_ENABLED = bool(
 _langfuse = Langfuse() if _LANGFUSE_ENABLED else None
 
 
-async def _run_graph(target_pdf: str, pdf_hash: str) -> dict | None:
-    """Runs the LangGraph pipeline and returns the final state's tree result."""
-    config = {"configurable": {"thread_id": pdf_hash}}
-    async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
-        app = build_app(checkpointer)
-        async for event in app.stream({"file_path": target_pdf}, config):
-            for node_name in event:
-                print(f"[GRAPH] Node '{node_name}' completed.")
-        final_state = await app.get_state(config)
-    return final_state
-
-
 async def main():
     if "ANTHROPIC_API_KEY" not in os.environ:
         print("CRITICAL ENVIRONMENT ERROR: ANTHROPIC_API_KEY environment variable missing.")
@@ -167,57 +155,59 @@ async def main():
     pdf_hash = hash_file(target_pdf)
     print(f"Initializing extraction pipeline for: {target_pdf} (thread: {pdf_hash[:8]}...)")
 
+    # Conditionally inject the Langfuse callback — single graph execution path.
+    callbacks = [CallbackHandler()] if _LANGFUSE_ENABLED else []
+    config = {"configurable": {"thread_id": pdf_hash}}
+    if callbacks:
+        config["callbacks"] = callbacks
+
     if _LANGFUSE_ENABLED:
         # Deterministic trace ID: same PDF → same ID on every run, so checkpoint
         # resumes merge into the existing trace rather than creating a new one.
         trace_id = _langfuse.create_trace_id(seed=pdf_hash)
-
         try:
             with _langfuse.start_as_current_span(
                 name=f"PDFScout — {os.path.basename(target_pdf)}",
                 trace_context={"trace_id": trace_id},
-                update_attributes={
-                    "session_id": pdf_hash,
-                    "metadata": {
-                        "file": os.path.basename(target_pdf),
-                        "pdf_hash": pdf_hash,
-                    },
-                },
+                update_attributes={"session_id": pdf_hash},
             ) as span:
-                callbacks = [CallbackHandler()]
-                config_with_trace = {
-                    "configurable": {"thread_id": pdf_hash},
-                    "callbacks": callbacks,
-                }
                 async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
                     app = build_app(checkpointer)
-                    async for event in app.stream({"file_path": target_pdf}, config_with_trace):
+                    async for event in app.stream({"file_path": target_pdf}, config):
                         for node_name in event:
                             print(f"[GRAPH] Node '{node_name}' completed.")
-                    final_state = await app.get_state(config_with_trace)
+                    final_state = await app.get_state(config)
 
-                # Post-run enrichment while span is still open.
+                # Post-run metadata enrichment — all fields go here, including
+                # those known upfront (file, pdf_hash). update_attributes only
+                # accepts confirmed top-level span fields (session_id, user_id,
+                # tags); passing a nested "metadata" dict there is unverified.
                 # Langfuse v4 coerces metadata values to str (max 200 chars);
-                # warnings are joined rather than passed as a raw list.
+                # use "\n".join() for lists rather than passing them raw.
                 state_values = final_state.values if final_state else {}
                 tree_result = state_values.get("hierarchical_document_tree")
-                warnings = tree_result.get("extraction_warnings", []) if tree_result else []
+                extraction_warnings = (
+                    tree_result.get("extraction_warnings", []) if tree_result else []
+                )
                 span.update(metadata={
+                    "file": os.path.basename(target_pdf),
+                    "pdf_hash": pdf_hash,
                     "document_type": tree_result.get("document_type") if tree_result else "",
                     "total_pages": str(state_values.get("total_pages", "")),
-                    "extraction_warnings": "\n".join(warnings),
+                    "extraction_warnings": "\n".join(extraction_warnings),
                 })
             # ← with __exit__ fires here: span end-time is recorded and ENQUEUED
         finally:
             # shutdown() runs AFTER with __exit__, so the parent span end-event
             # is already in the queue and gets sent along with child spans.
-            # No manual atexit needed: the SDK registers its own at import time.
-            # Registering a second one risks a double-shutdown hang (bug #6515).
-            _langfuse.shutdown()
+            # Guard against None in case Langfuse() construction failed mid-way.
+            # No manual atexit: SDK registers its own; a second one risks a
+            # double-shutdown hang (confirmed bug #6515).
+            if _langfuse:
+                _langfuse.shutdown()
     else:
         async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
             app = build_app(checkpointer)
-            config = {"configurable": {"thread_id": pdf_hash}}
             async for event in app.stream({"file_path": target_pdf}, config):
                 for node_name in event:
                     print(f"[GRAPH] Node '{node_name}' completed.")
@@ -277,21 +267,27 @@ Tracing is opt-in. If `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` are
 absent from the environment, `_LANGFUSE_ENABLED` is `False` and the pipeline
 runs exactly as before — no import error, no crash, no changed behaviour.
 
-### Post-run metadata enrichment
-`document_type`, `total_pages`, and `extraction_warnings` are only available
-after the graph completes. All three are read from `final_state.values` and
-`tree_result` inside the `with` block (before the span closes) and written via
-`span.update(metadata={...})`.
+### Custom trace metadata — all in one span.update() call
 
-`extraction_warnings` is joined with `"\n"` before storing — Langfuse v4
-coerces metadata values to `str` with a 200-char cap. A raw list would be
-serialised as its Python `repr`, which is not readable or filterable. The joined
-string is truncated by the SDK if it exceeds 200 chars; for most documents the
-warning list is short enough to fit.
+All custom metadata is written via a single `span.update(metadata={...})` call
+inside the `with` block, after the graph completes but before `__exit__` fires.
+This includes fields known upfront (`file`, `pdf_hash`) as well as fields
+resolved by the graph (`document_type`, `total_pages`, `extraction_warnings`).
+
+`update_attributes` (the opening span parameter) only accepts confirmed top-level
+Langfuse span fields: `session_id`, `user_id`, `tags`, `input`, `output`. Passing
+a nested `"metadata"` dict inside `update_attributes` is **not a documented API
+shape** and may be silently ignored or raise a `TypeError`. Keeping all metadata
+in `span.update()` is the safe, verified approach.
+
+`extraction_warnings` is joined with `"\n"` — Langfuse v4 coerces all metadata
+values to `str` with a 200-char cap. A raw list serialises as its Python `repr`
+(`"['...', '...']"`), which is neither readable nor filterable. The joined string
+is the correct form; the full warning list is also printed to stdout by the
+existing warnings block, so nothing is lost if the string is truncated.
 
 `user_id` is not set — there is no user concept in a CLI tool. `session_id` is
-set to `pdf_hash`, which groups all runs for the same PDF together in the
-Langfuse UI.
+set to `pdf_hash`, grouping all runs for the same file in the Langfuse UI.
 
 ---
 
