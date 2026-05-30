@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Query, UploadFile
 from fastapi.responses import RedirectResponse
 from langfuse import Langfuse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -61,7 +61,13 @@ async def health() -> HealthResponse:
 
 
 @app.post("/extract", response_model=JobResponse, status_code=202)
-async def extract(file: UploadFile, force: bool = False) -> JobResponse:
+async def extract(
+    file: UploadFile,
+    force: bool = Query(
+        default=False,
+        description="Re-run a completed or failed job for this PDF. Has no effect on a running or queued job (returns 409 instead).",
+    ),
+) -> JobResponse:
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="File must be a PDF (content-type: application/pdf).")
 
