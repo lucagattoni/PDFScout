@@ -1,14 +1,9 @@
-import base64
 import os
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from src.config import MODEL, SUPPORTED_DOC_TYPES, FALLBACK_DOC_TYPE
 from src.schema_registry import SchemaRegistry
-
-
-def _encode_pdf(file_path: str) -> str:
-    with open(file_path, "rb") as f:
-        return base64.standard_b64encode(f.read()).decode("utf-8")
+from src.utils.pdf_utils import encode_pdf_async
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -43,7 +38,7 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
 
 async def classifier_node(state: dict) -> dict:
     client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    pdf_base64 = _encode_pdf(state["file_path"])
+    pdf_base64 = await encode_pdf_async(state["file_path"])
     doc_type = await _classify(client, pdf_base64)
 
     if doc_type not in SUPPORTED_DOC_TYPES:

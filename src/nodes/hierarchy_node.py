@@ -88,20 +88,34 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             for b in sorted_blocks
         ]
         response = await _call_api(client, manifest)
-        tool_block = next(b for b in response.content if b.type == "tool_use")
+        tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+        if tool_block is None:
+            raise ValueError(
+                f"API returned no tool_use block for hierarchy agent. "
+                f"Content types: {[b.type for b in response.content]}"
+            )
         relations = tool_block.input.get("relations", [])
         relation_map = {r["block_id"]: r["parent_id"] for r in relations}
+        orphan_warnings: list[str] = []
         for block in sorted_blocks:
-            block["parent_id"] = relation_map.get(block["block_id"])
+            if block["block_id"] not in relation_map:
+                orphan_warnings.append(
+                    f"block_id '{block['block_id']}' missing from relation_map; promoted to root."
+                )
+                block["parent_id"] = None
+            else:
+                block["parent_id"] = relation_map[block["block_id"]]
     else:
+        orphan_warnings = []
         for block in sorted_blocks:
             block["parent_id"] = None
 
     return {
+        "extraction_warnings": orphan_warnings,
         "hierarchical_document_tree": {
             "document_type": state["document_type"],
             "pdf_hash": state["pdf_hash"],
-            "extraction_warnings": state.get("extraction_warnings", []),
+            "extraction_warnings": state.get("extraction_warnings", []) + orphan_warnings,
             "structured_payload": sorted_blocks
         }
     }

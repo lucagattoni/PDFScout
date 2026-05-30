@@ -1,18 +1,21 @@
 import json
 import os
 import jsonschema
+from pathlib import Path
 from typing import Any
 from src.config import FALLBACK_DOC_TYPE
 
+_SCHEMA_DIR = Path(__file__).parent.parent / "schemas"
+
 
 class SchemaRegistry:
-    def __init__(self, schema_dir: str = "schemas"):
-        self.schema_dir = schema_dir
+    def __init__(self, schema_dir: Path = _SCHEMA_DIR):
+        self.schema_dir = Path(schema_dir)
 
     def _load_schema(self, doc_type: str) -> dict[str, Any]:
-        path = os.path.join(self.schema_dir, f"{doc_type}.json")
-        if not os.path.exists(path):
-            path = os.path.join(self.schema_dir, f"{FALLBACK_DOC_TYPE}.json")
+        path = self.schema_dir / f"{doc_type}.json"
+        if not path.exists():
+            path = self.schema_dir / f"{FALLBACK_DOC_TYPE}.json"
         with open(path) as f:
             return json.load(f)
 

@@ -1,12 +1,13 @@
 from typing import Annotated, Any, TypedDict
 
 
-def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Appends sub-agent page payloads into a unified global accumulation array."""
+def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Appends sub-agent page payloads into a unified global accumulation array.
+    Passing None as new resets the buffer (used by extractor/retry nodes on fresh runs)."""
+    if new is None:
+        return []
     if not existing:
         return new
-    if not new:
-        return existing
     return existing + new
 
 

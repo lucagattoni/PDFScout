@@ -2,18 +2,9 @@ import os
 import sys
 import asyncio
 import json
-import hashlib
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from src.graph import build_app
-
-
-def _compute_hash(file_path: str) -> str:
-    """Chunked SHA-256 — avoids loading the full PDF into memory."""
-    hasher = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
+from src.utils.pdf_utils import hash_file
 
 
 async def main():
@@ -26,7 +17,7 @@ async def main():
         sys.exit(1)
 
     target_pdf = sys.argv[1]
-    pdf_hash = _compute_hash(target_pdf)
+    pdf_hash = hash_file(target_pdf)
     config = {"configurable": {"thread_id": pdf_hash}}
     initial_inputs = {"file_path": target_pdf}
 

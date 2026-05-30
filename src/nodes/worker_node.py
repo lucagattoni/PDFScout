@@ -1,18 +1,13 @@
 import asyncio
-import base64
 import os
 from typing import Any
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from src.config import MODEL, CONCURRENCY_LIMIT
 from src.schema_registry import SchemaRegistry
+from src.utils.pdf_utils import encode_pdf_async
 
 _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-
-
-def _encode_pdf(file_path: str) -> str:
-    with open(file_path, "rb") as f:
-        return base64.standard_b64encode(f.read()).decode("utf-8")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -32,7 +27,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
         _, tool_definition = SchemaRegistry().get_schema_and_tool(state["document_type"])
-        pdf_base64 = _encode_pdf(state["file_path"])
+        pdf_base64 = await encode_pdf_async(state["file_path"])
 
         content = [
             {
@@ -65,5 +60,10 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             })
 
         response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
-        tool_block = next(b for b in response.content if b.type == "tool_use")
+        tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+        if tool_block is None:
+            raise ValueError(
+                f"API returned no tool_use block for page {current_page}. "
+                f"Content types: {[b.type for b in response.content]}"
+            )
         return {"extracted_flat_blocks": tool_block.input.get("blocks", [])}
