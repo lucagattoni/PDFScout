@@ -1,6 +1,6 @@
 # Langfuse Integration Plan
 Date: 2026-05-30  
-Revised: 2026-05-30 (devil's advocate review applied)
+Revised: 2026-05-30 (two rounds of devil's advocate review applied)
 
 ## Goal
 
@@ -121,7 +121,6 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ### 3. `main.py` — full implementation
 
 ```python
-import atexit
 import os
 import sys
 import asyncio
@@ -136,16 +135,23 @@ from src.utils.pdf_utils import hash_file
 load_dotenv()
 
 # Graceful degradation: tracing only activates when both keys are present.
-# Absent keys → empty callbacks list → pipeline runs without any tracing.
+# Absent keys → pipeline runs unchanged, no import error, no crash.
 _LANGFUSE_ENABLED = bool(
     os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")
 )
+_langfuse = Langfuse() if _LANGFUSE_ENABLED else None
 
-if _LANGFUSE_ENABLED:
-    _langfuse = Langfuse()
-    # Safety-net: flush on normal interpreter exit even if main() raises before
-    # reaching its own shutdown() call (e.g. keyboard interrupt, unhandled exception).
-    atexit.register(_langfuse.shutdown)
+
+async def _run_graph(target_pdf: str, pdf_hash: str) -> dict | None:
+    """Runs the LangGraph pipeline and returns the final state's tree result."""
+    config = {"configurable": {"thread_id": pdf_hash}}
+    async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
+        app = build_app(checkpointer)
+        async for event in app.stream({"file_path": target_pdf}, config):
+            for node_name in event:
+                print(f"[GRAPH] Node '{node_name}' completed.")
+        final_state = await app.get_state(config)
+    return final_state
 
 
 async def main():
@@ -159,64 +165,64 @@ async def main():
 
     target_pdf = sys.argv[1]
     pdf_hash = hash_file(target_pdf)
-
-    # Derive a deterministic trace ID from the PDF hash so every invocation
-    # of the same file — including checkpoint resumes — merges into one trace.
-    trace_id = _langfuse.create_trace_id(seed=pdf_hash) if _LANGFUSE_ENABLED else None
-
-    initial_inputs = {"file_path": target_pdf}
     print(f"Initializing extraction pipeline for: {target_pdf} (thread: {pdf_hash[:8]}...)")
 
     if _LANGFUSE_ENABLED:
-        with _langfuse.start_as_current_span(
-            name=f"PDFScout — {os.path.basename(target_pdf)}",
-            trace_context={"trace_id": trace_id},
-            update_attributes={
-                "session_id": pdf_hash,
-                "metadata": {
-                    "file": os.path.basename(target_pdf),
-                    "pdf_hash": pdf_hash,
-                },
-            },
-        ) as span:
-            callbacks = [CallbackHandler()]
-            config = {"configurable": {"thread_id": pdf_hash}, "callbacks": callbacks}
+        # Deterministic trace ID: same PDF → same ID on every run, so checkpoint
+        # resumes merge into the existing trace rather than creating a new one.
+        trace_id = _langfuse.create_trace_id(seed=pdf_hash)
 
-            try:
+        try:
+            with _langfuse.start_as_current_span(
+                name=f"PDFScout — {os.path.basename(target_pdf)}",
+                trace_context={"trace_id": trace_id},
+                update_attributes={
+                    "session_id": pdf_hash,
+                    "metadata": {
+                        "file": os.path.basename(target_pdf),
+                        "pdf_hash": pdf_hash,
+                    },
+                },
+            ) as span:
+                callbacks = [CallbackHandler()]
+                config_with_trace = {
+                    "configurable": {"thread_id": pdf_hash},
+                    "callbacks": callbacks,
+                }
                 async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
                     app = build_app(checkpointer)
-                    async for event in app.stream(initial_inputs, config):
+                    async for event in app.stream({"file_path": target_pdf}, config_with_trace):
                         for node_name in event:
                             print(f"[GRAPH] Node '{node_name}' completed.")
-                    final_state = await app.get_state(config)
-                    tree_result = final_state.values.get("hierarchical_document_tree")
+                    final_state = await app.get_state(config_with_trace)
 
-                # Enrich trace with values resolved during the graph run.
-                # Must happen inside the with block so the span is still open.
-                # Langfuse v4 coerces metadata values to str (max 200 chars),
-                # so lists are joined rather than passed raw.
+                # Post-run enrichment while span is still open.
+                # Langfuse v4 coerces metadata values to str (max 200 chars);
+                # warnings are joined rather than passed as a raw list.
                 state_values = final_state.values if final_state else {}
+                tree_result = state_values.get("hierarchical_document_tree")
                 warnings = tree_result.get("extraction_warnings", []) if tree_result else []
                 span.update(metadata={
-                    "file": os.path.basename(target_pdf),
-                    "pdf_hash": pdf_hash,
-                    "document_type": tree_result.get("document_type") if tree_result else None,
+                    "document_type": tree_result.get("document_type") if tree_result else "",
                     "total_pages": str(state_values.get("total_pages", "")),
-                    "extraction_warnings": "\n".join(warnings) if warnings else "",
+                    "extraction_warnings": "\n".join(warnings),
                 })
-            finally:
-                # flush() inside the with block guarantees child LLM spans are
-                # queued before the parent span's end-time is recorded and sent.
-                _langfuse.shutdown()
+            # ← with __exit__ fires here: span end-time is recorded and ENQUEUED
+        finally:
+            # shutdown() runs AFTER with __exit__, so the parent span end-event
+            # is already in the queue and gets sent along with child spans.
+            # No manual atexit needed: the SDK registers its own at import time.
+            # Registering a second one risks a double-shutdown hang (bug #6515).
+            _langfuse.shutdown()
     else:
-        config = {"configurable": {"thread_id": pdf_hash}}
         async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
             app = build_app(checkpointer)
-            async for event in app.stream(initial_inputs, config):
+            config = {"configurable": {"thread_id": pdf_hash}}
+            async for event in app.stream({"file_path": target_pdf}, config):
                 for node_name in event:
                     print(f"[GRAPH] Node '{node_name}' completed.")
             final_state = await app.get_state(config)
-            tree_result = final_state.values.get("hierarchical_document_tree")
+        tree_result = final_state.values.get("hierarchical_document_tree") if final_state else None
 
     if tree_result and tree_result.get("extraction_warnings"):
         print("\nWARNINGS:")
@@ -235,20 +241,29 @@ if __name__ == "__main__":
 
 ## Design Decisions & Rationale
 
-### flush() sequencing
-`_langfuse.shutdown()` (stronger than `flush()` — it also joins background
-ingestion threads) is called in two places:
+### shutdown() sequencing — why try/finally wraps the with block, not vice versa
 
-1. In `try/finally` inside the `with start_as_current_span()` block — this is
-   the primary call. Placing it **inside** the `with` block ensures all LLM
-   child span payloads are queued before the parent span's end-time is committed.
-   Calling it outside would create a race where the parent span arrives at
-   Langfuse before its children.
+`_langfuse.shutdown()` must be called **after** the `with start_as_current_span()`
+block exits, not inside it. The reason:
 
-2. Via `atexit.register(_langfuse.shutdown)` at module level — this is the
-   last-resort backstop for unexpected exits (unhandled exceptions, KeyboardInterrupt)
-   that bail out before reaching the `finally` clause. `atexit` fires on normal
-   interpreter termination; it does NOT fire on SIGKILL or `os._exit()`.
+1. Code runs inside the `with` block, including `span.update()` for post-run
+   metadata enrichment.
+2. `with __exit__` fires when the block closes — this records the parent span's
+   end-time and **enqueues** it into the background flush queue.
+3. `shutdown()` in the `finally` clause drains the queue — the parent span
+   end-event is already there and gets sent along with all child LLM spans.
+
+If `shutdown()` were placed **inside** the `with` block (before `__exit__`), it
+would kill the background thread before `__exit__` had a chance to enqueue the
+parent span end-event — the root span would appear open/missing in Langfuse.
+
+**No manual `atexit` is registered.** The Langfuse SDK automatically registers
+its own `atexit` hook at import time. Adding a second `atexit.register` risks
+calling `shutdown()` twice: once from `finally` and once from `atexit`.
+Calling `shutdown()` twice can cause a hang on `ThreadPoolExecutor` teardown
+(confirmed in Langfuse bug #6515). The SDK's built-in `atexit` provides the
+backstop for unexpected exits; `try/finally` covers the primary path (normal
+exit, exceptions, `KeyboardInterrupt`).
 
 ### Deterministic trace ID for checkpoint resume
 `_langfuse.create_trace_id(seed=pdf_hash)` generates a UUID5 from the PDF's
@@ -293,11 +308,13 @@ burst worker LLM spans appear as root-level observations in Langfuse rather
 than nested under the correct node span. The overall trace is still complete
 and searchable; only the nesting may be flat.
 
-### atexit does not cover all exit paths
-`atexit` fires on normal interpreter exit and `sys.exit()`. It does NOT fire on
-SIGKILL, `os._exit()`, or Python fatal internal errors. For a CLI tool this is
-acceptable. If PDFScout is ever embedded in a long-running service, replace the
-`atexit` approach with an explicit `shutdown()` call in the service's teardown.
+### Unrecoverable exits lose the last batch
+Neither `try/finally` nor the SDK's built-in `atexit` fires on SIGKILL or
+`os._exit()`. Observations buffered in the flush queue at that moment are lost.
+For a CLI tool this is acceptable — the only way to hit SIGKILL is an external
+`kill -9`, which is an operator action. If PDFScout is ever embedded in a
+long-running service, the service's graceful-shutdown handler should call
+`_langfuse.shutdown()` explicitly on SIGTERM.
 
 ---
 
