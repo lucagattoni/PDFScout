@@ -12,6 +12,9 @@ uv init pdfscout
 cd pdfscout
 mkdir -p schemas src/extractors src/nodes
 
+# Create Python package markers
+touch src/__init__.py src/extractors/__init__.py src/nodes/__init__.py
+
 # Add strict version-controlled dependencies
 uv add "langgraph>=1.2.2" "langgraph-checkpoint-sqlite>=3.1.0" "anthropic>=0.105.2" "pydantic>=2.13.4" "pdfplumber>=0.11.9" "jsonschema>=4.26.0" "tenacity>=9.1.4"
 ```
@@ -283,6 +286,8 @@ def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]])
     return existing + new
 
 def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
+    if not existing:
+        return new
     return existing + new
 
 class PDFParserState(TypedDict):
@@ -334,10 +339,9 @@ class BaseNativeExtractor(ABC):
 ```python
 import pdfplumber
 from src.extractors.base import BaseNativeExtractor, NativePageMetadata, NativeWord
-from typing import List
 
 class PlumberExtractor(BaseNativeExtractor):
-    def extract_document(self, file_path: str) -> List[NativePageMetadata]:
+    def extract_document(self, file_path: str) -> list[NativePageMetadata]:
         document_metadata = []
         with pdfplumber.open(file_path) as pdf:
             for page_num, page in enumerate(pdf.pages, start=1):

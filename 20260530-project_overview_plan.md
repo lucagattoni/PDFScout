@@ -92,6 +92,7 @@ pdfscout/
     ├── schema_registry.py      # jsonschema loader and validation wrapper
     │
     ├── extractors/             # Spatial coordination layer (Strategy Pattern)
+    │   ├── __init__.py         # Required — marks extractors/ as a package
     │   ├── base.py             # Abstract base extraction contract
     │   └── plumber_engine.py   # Concrete implementation via pdfplumber
     │
@@ -102,9 +103,6 @@ pdfscout/
     │   ├── worker_node.py      # Core page extraction (pioneer + burst, shared function)
     │   ├── retry_node.py       # Increments retry_count and re-runs validation for actual error detail
     │   └── hierarchy_node.py   # Geometric pre-sorter + tool-calling tree mapping agent
-    │
-    ├── extractors/
-    │   ├── __init__.py         # Required — marks extractors/ as a package
     │
     ├── edges.py                # pioneer_validation_route routing function
     └── graph.py                # LangGraph construction, Send API dispatch, SQLite compilation
@@ -138,6 +136,8 @@ def merge_flat_blocks(existing: list[dict[str, Any]], new: list[dict[str, Any]])
     return existing + new
 
 def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
+    if not existing:
+        return new
     return existing + new
 
 class PDFParserState(TypedDict):
