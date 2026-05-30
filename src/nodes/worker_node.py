@@ -1,6 +1,6 @@
 import asyncio
+import base64
 import os
-import json
 from typing import Any
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -8,6 +8,11 @@ from src.config import MODEL, CONCURRENCY_LIMIT
 from src.schema_registry import SchemaRegistry
 
 _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+
+
+def _encode_pdf(file_path: str) -> str:
+    with open(file_path, "rb") as f:
+        return base64.standard_b64encode(f.read()).decode("utf-8")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -27,19 +32,25 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
         _, tool_definition = SchemaRegistry().get_schema_and_tool(state["document_type"])
+        pdf_base64 = _encode_pdf(state["file_path"])
 
         content = [
             {
-                "type": "text",
-                "text": f"GLOBAL NATIVE TEXT METADATA FOR ALL PAGES:\n{json.dumps(state['native_text_metadata'])}",
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": pdf_base64
+                },
                 "cache_control": {"type": "ephemeral"}
             },
             {
                 "type": "text",
                 "text": (
                     f"CRITICAL TASK: Extract structure elements EXCLUSIVELY located on physical "
-                    f"Page {current_page}. Use the tool '{tool_definition['name']}' to return "
-                    f"structured data matching the schema parameters."
+                    f"Page {current_page}. Coordinates must follow [ymin, xmin, ymax, xmax] order. "
+                    f"Use the tool '{tool_definition['name']}' to return structured data matching "
+                    f"the schema parameters."
                 )
             }
         ]

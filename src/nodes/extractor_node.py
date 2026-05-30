@@ -1,6 +1,6 @@
 import hashlib
 from typing import Any
-from src.extractors.plumber_engine import PlumberExtractor
+from src.extractors.page_counter import get_page_count
 
 
 def _hash_file(file_path: str) -> str:
@@ -15,20 +15,17 @@ def _hash_file(file_path: str) -> str:
 async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     file_path = state["file_path"]
     pdf_hash = _hash_file(file_path)
+    total_pages = get_page_count(file_path)  # raises on encrypted PDFs
 
-    extractor = PlumberExtractor()
-    metadata_objects = extractor.extract_document(file_path)
-
-    if not metadata_objects:
+    if total_pages == 0:
         raise ValueError(
             f"PDF at '{file_path}' yielded zero pages. "
-            "The file may be empty, image-only, or password-protected."
+            "The file may be empty or corrupted."
         )
 
     return {
         "pdf_hash": pdf_hash,
-        "total_pages": len(metadata_objects),
-        "native_text_metadata": [p.model_dump() for p in metadata_objects],
+        "total_pages": total_pages,
         "current_page": 1,
         "retry_count": 0,
         "last_validation_error": None,

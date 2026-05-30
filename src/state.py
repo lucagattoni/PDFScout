@@ -23,7 +23,6 @@ class PDFParserState(TypedDict):
     file_path: str
     pdf_hash: str
     total_pages: int
-    native_text_metadata: list[dict[str, Any]]
 
     # Polymorphic Blueprint Configuration
     document_type: str
