@@ -179,28 +179,31 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.13.
 ```bash
 git clone https://github.com/lucagattoni/PDFScout.git
 cd PDFScout
-uv sync
-cp .env.example .env   # then fill in your API key
+uv sync --group dev   # installs production deps + ruff, pytest, and other dev tools
+cp .env.example .env  # then fill in your API key
 ```
+
+---
+
+## Development
+
+| Command | Description |
+|---|---|
+| `make install` | Install all dependencies (production + dev) |
+| `make lint` | Check for linting violations and formatting drift (read-only) |
+| `make fix` | Auto-fix violations and reformat all files |
+| `make test` | Run the full test suite (113 tests, no API key required) |
+| `make coverage` | Run tests and print per-module coverage report |
+| `make ci` | Run `lint` then `test` — use before pushing |
+| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache` |
+
+Linting and formatting use [ruff](https://github.com/astral-sh/ruff). Configuration lives in `pyproject.toml` under `[tool.ruff]`.
 
 ---
 
 ## Testing
 
-Install dev dependencies and run the full suite:
-
-```bash
-uv sync --group dev
-uv run pytest
-```
-
-With coverage:
-
-```bash
-uv run pytest --cov=. --cov-report=term-missing
-```
-
-The suite has 113 tests across two layers:
+The suite has 113 tests across two layers (run with `make test`, coverage with `make coverage`):
 
 | Layer | Location | What it covers |
 |---|---|---|
@@ -306,7 +309,8 @@ lifecycle, and operational notes.
 PDFScout/
 ├── .python-version             # Pins Python 3.13
 ├── .env.example                # Required environment variables template
-├── pyproject.toml              # uv-managed dependencies (includes [dependency-groups] dev)
+├── Makefile                    # Developer shortcuts: install, lint, fix, test, coverage, ci, clean
+├── pyproject.toml              # uv-managed dependencies + ruff and pytest configuration
 ├── uv.lock                     # Locked dependency graph
 ├── main.py                     # Entry point (loads .env via python-dotenv)
 │

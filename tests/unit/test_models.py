@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.api.jobs import JobRecord
 from src.api.models import HealthResponse, JobResponse
@@ -7,7 +7,7 @@ from src.config import FALLBACK_DOC_TYPE, MODEL, SUPPORTED_DOC_TYPES
 
 class TestJobResponseFromRecord:
     def test_all_fields_mapped(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record = JobRecord(
             job_id="abc123",
             file_name="test.pdf",
@@ -35,7 +35,7 @@ class TestJobResponseFromRecord:
         assert response.events == ["[GRAPH] done"]
 
     def test_queued_defaults(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record = JobRecord(job_id="xyz", file_name="f.pdf", created_at=now)
         response = JobResponse.from_record(record)
         assert response.status == "queued"

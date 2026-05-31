@@ -1,4 +1,5 @@
 from typing import Any
+
 from src.extractors.page_counter import get_page_count
 from src.utils.pdf_utils import hash_file
 
@@ -10,8 +11,7 @@ async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     if total_pages == 0:
         raise ValueError(
-            f"PDF at '{file_path}' yielded zero pages. "
-            "The file may be empty or corrupted."
+            f"PDF at '{file_path}' yielded zero pages. The file may be empty or corrupted."
         )
 
     return {
@@ -21,5 +21,5 @@ async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
         "retry_count": 0,
         "last_validation_error": None,
         "extracted_flat_blocks": None,  # None sentinel resets the reducer buffer
-        "extraction_warnings": []
+        "extraction_warnings": [],
     }

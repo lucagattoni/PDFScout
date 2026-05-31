@@ -1,9 +1,11 @@
 import asyncio
 import os
 from typing import Any
+
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
-from src.config import MODEL, CONCURRENCY_LIMIT
+
+from src.config import CONCURRENCY_LIMIT, MODEL
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
 
@@ -18,7 +20,7 @@ async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dic
         temperature=0.0,
         tools=[tool_definition],
         tool_choice={"type": "tool", "name": tool_definition["name"]},
-        messages=messages
+        messages=messages,
     )
 
 
@@ -32,12 +34,8 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         content = [
             {
                 "type": "document",
-                "source": {
-                    "type": "base64",
-                    "media_type": "application/pdf",
-                    "data": pdf_base64
-                },
-                "cache_control": {"type": "ephemeral"}
+                "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64},
+                "cache_control": {"type": "ephemeral"},
             },
             {
                 "type": "text",
@@ -46,18 +44,20 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                     f"Page {current_page}. Coordinates must follow [ymin, xmin, ymax, xmax] order. "
                     f"Use the tool '{tool_definition['name']}' to return structured data matching "
                     f"the schema parameters."
-                )
-            }
+                ),
+            },
         ]
 
         if state.get("last_validation_error"):
-            content.append({
-                "type": "text",
-                "text": (
-                    f"PREVIOUS VALIDATION ERROR:\n{state['last_validation_error']}\n"
-                    f"Fix the schema alignment issue in your response."
-                )
-            })
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"PREVIOUS VALIDATION ERROR:\n{state['last_validation_error']}\n"
+                        f"Fix the schema alignment issue in your response."
+                    ),
+                }
+            )
 
         response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)

@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.nodes.worker_node import window_parser_node
 
@@ -52,7 +53,9 @@ class TestWindowParserNode:
         with pytest.raises(ValueError):
             await window_parser_node(sample_state)
 
-    async def test_validation_error_adds_third_content_item(self, sample_state, sample_block, mocker):
+    async def test_validation_error_adds_third_content_item(
+        self, sample_state, sample_block, mocker
+    ):
         state = {**sample_state, "last_validation_error": "Field 'type': invalid value"}
         response = _make_tool_use_response([sample_block])
         mock_client = _setup_mocks(mocker, response)

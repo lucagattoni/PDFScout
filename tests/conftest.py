@@ -18,6 +18,7 @@ def set_test_env():
 def clear_jobs_store():
     yield
     from src.api.jobs import jobs
+
     jobs.clear()
 
 
@@ -64,6 +65,7 @@ async def api_client(mock_graph):
     @asynccontextmanager
     async def override_lifespan(app):
         import api as _api_mod
+
         _api_mod._UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         app.state.graph = mock_graph
         app.state.langfuse = None

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from src.api.jobs import JobRecord, jobs
@@ -7,7 +7,7 @@ from src.api.jobs import JobRecord, jobs
 class TestGetJob:
     async def test_existing_job_returns_200(self, api_client):
         jobs["job-001"] = JobRecord(
-            job_id="job-001", file_name="test.pdf", created_at=datetime.now(timezone.utc)
+            job_id="job-001", file_name="test.pdf", created_at=datetime.now(UTC)
         )
         response = await api_client.get("/jobs/job-001")
         assert response.status_code == 200
@@ -21,7 +21,9 @@ class TestGetJob:
 class TestDeleteJob:
     async def test_delete_completed_job_returns_204(self, api_client):
         jobs["job-done"] = JobRecord(
-            job_id="job-done", file_name="test.pdf", created_at=datetime.now(timezone.utc),
+            job_id="job-done",
+            file_name="test.pdf",
+            created_at=datetime.now(UTC),
             status="completed",
         )
         with patch("pathlib.Path.unlink"):
@@ -31,7 +33,9 @@ class TestDeleteJob:
 
     async def test_delete_completed_calls_unlink(self, api_client):
         jobs["job-del"] = JobRecord(
-            job_id="job-del", file_name="test.pdf", created_at=datetime.now(timezone.utc),
+            job_id="job-del",
+            file_name="test.pdf",
+            created_at=datetime.now(UTC),
             status="completed",
         )
         with patch("pathlib.Path.unlink") as mock_unlink:
@@ -44,7 +48,9 @@ class TestDeleteJob:
 
     async def test_delete_running_returns_409(self, api_client):
         jobs["job-run"] = JobRecord(
-            job_id="job-run", file_name="test.pdf", created_at=datetime.now(timezone.utc),
+            job_id="job-run",
+            file_name="test.pdf",
+            created_at=datetime.now(UTC),
             status="running",
         )
         response = await api_client.delete("/jobs/job-run")
@@ -52,7 +58,9 @@ class TestDeleteJob:
 
     async def test_delete_queued_returns_409(self, api_client):
         jobs["job-q"] = JobRecord(
-            job_id="job-q", file_name="test.pdf", created_at=datetime.now(timezone.utc),
+            job_id="job-q",
+            file_name="test.pdf",
+            created_at=datetime.now(UTC),
             status="queued",
         )
         response = await api_client.delete("/jobs/job-q")

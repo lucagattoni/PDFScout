@@ -111,19 +111,23 @@ class TestGraphPipelineRetry:
         }
         worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         worker_client = worker_mock.return_value
-        worker_client.messages.create = AsyncMock(side_effect=[
-            _make_tool_use_response([invalid_block]),    # pioneer call 1 → invalid
-            _make_tool_use_response([_valid_block(1)]),  # pioneer call 2 (after retry) → valid
-            _make_tool_use_response([_valid_block(2)]),  # page 2 burst worker
-        ])
+        worker_client.messages.create = AsyncMock(
+            side_effect=[
+                _make_tool_use_response([invalid_block]),  # pioneer call 1 → invalid
+                _make_tool_use_response([_valid_block(1)]),  # pioneer call 2 (after retry) → valid
+                _make_tool_use_response([_valid_block(2)]),  # page 2 burst worker
+            ]
+        )
 
         hierarchy_mock = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
         hierarchy_client = hierarchy_mock.return_value
         hierarchy_client.messages.create = AsyncMock(
-            return_value=_make_relation_response([
-                {"block_id": "blk-p1", "parent_id": None},
-                {"block_id": "blk-p2", "parent_id": None},
-            ])
+            return_value=_make_relation_response(
+                [
+                    {"block_id": "blk-p1", "parent_id": None},
+                    {"block_id": "blk-p2", "parent_id": None},
+                ]
+            )
         )
 
         node_sequence, final_state = await _stream_graph(minimal_pdf_path)

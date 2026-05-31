@@ -1,5 +1,6 @@
-import pytest
 from io import BytesIO
+
+import pytest
 from pypdf import PdfWriter
 
 from src.extractors.page_counter import get_page_count

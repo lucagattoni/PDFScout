@@ -88,7 +88,10 @@ Running `ruff format .` will reformat the 26 files flagged by `ruff format --che
 ## 3. Makefile
 
 ```makefile
-.PHONY: lint fix test coverage ci
+.PHONY: install lint fix test coverage ci clean
+
+install:
+	uv sync --group dev
 
 lint:
 	uv run ruff check .
@@ -105,17 +108,25 @@ coverage:
 	uv run pytest --cov=. --cov-report=term-missing
 
 ci: lint test
+
+clean:
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	rm -rf .coverage htmlcov .pytest_cache
 ```
 
 **Target reference:**
 
 | Target | What it does | Mutates files? |
 |---|---|---|
+| `make install` | Install all dev dependencies via uv | No |
 | `make lint` | Check for violations and formatting drift | No |
 | `make fix` | Auto-fix violations and reformat all files | Yes |
 | `make test` | Run the full test suite | No |
 | `make coverage` | Run tests and print per-module coverage | No |
 | `make ci` | `lint` then `test` — full pre-push / CI check | No |
+| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache` | Yes |
+
+**Target order rationale:** `install` first (onboarding), then the read/write lint pair (`lint` → `fix`), then the test pair (`test` → `coverage`), then the composite (`ci`), then cleanup last (`clean`). Each group flows naturally into the next: install → check → fix → test → verify coverage → clean up.
 
 **Design decisions:**
 
@@ -124,6 +135,7 @@ ci: lint test
 - **`fix` is the explicit write counterpart to `lint`** — separating read-only (`lint`) from write (`fix`) prevents silent file mutations during CI while still giving developers a single command to apply all fixes locally.
 - **`coverage` is separate from `test`** — running coverage on every test invocation adds measurable overhead (~0.3 s) and clutters the terminal during rapid iteration. A dedicated target makes it an intentional, on-demand action.
 - **`ci` composes `lint` and `test`** — rather than duplicating the commands, it depends on the two existing targets. This means any future change to `lint` or `test` is automatically reflected in `ci`.
+- **`clean` uses `find … -exec rm -rf`** — safer than `find … | xargs rm` under filenames with spaces; the `+` form batches deletions into a single `rm` call per directory.
 - **`PHONY` declaration** — prevents `make` from confusing the target names with files or directories of the same name.
 
 ---
@@ -176,7 +188,7 @@ The **Testing** section already documents `uv sync --group dev` and the `pytest`
 6. Run `uv run ruff check .` and `uv run ruff format --check .` — both must exit 0 before continuing.
 7. Run `uv run pytest` — must stay green (113 tests passing).
 8. Create `Makefile`.
-9. Verify `make lint`, `make test`, `make fix`, `make coverage`, and `make ci` all behave correctly.
+9. Verify all seven targets (`make install`, `make lint`, `make fix`, `make test`, `make coverage`, `make ci`, `make clean`) behave correctly.
 10. Update `README.md` — add `uv sync --group dev` to the Installation section; add the Development section with the Makefile target reference table; condense the Testing section to forward-reference the new Development section.
 11. Commit and push.
 
@@ -187,7 +199,7 @@ The **Testing** section already documents `uv sync --group dev` and the `pytest`
 | File | Change |
 |---|---|
 | `pyproject.toml` | Add `ruff>=0.9` to dev deps; add `[tool.ruff]`, `[tool.ruff.lint]`, `[tool.ruff.format]` sections |
-| `Makefile` | New file — `lint`, `fix`, `test`, `coverage`, `ci` targets |
+| `Makefile` | New file — `install`, `lint`, `fix`, `test`, `coverage`, `ci`, `clean` targets |
 | `README.md` | Add `uv sync --group dev` to Installation; add Development section with Makefile reference table; condense Testing section |
 | `src/schema_registry.py` | Remove unused `import os` (auto-fixed by ruff) |
 | `tests/integration/test_api_runner.py` | Remove unused `import pytest` (auto-fixed by ruff) |

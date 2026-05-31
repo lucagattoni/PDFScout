@@ -12,6 +12,7 @@ async def tracing_span(langfuse, display_name: str, session_id: str):
     """
     if langfuse:
         from langfuse import propagate_attributes
+
         with langfuse.start_as_current_span(name=display_name) as span:
             with propagate_attributes(session_id=session_id):
                 yield span

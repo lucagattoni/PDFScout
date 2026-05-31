@@ -1,9 +1,11 @@
-import os
 import json
+import os
 from typing import Any
+
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
-from src.config import MODEL, COLUMN_BUCKET_PX
+
+from src.config import COLUMN_BUCKET_PX, MODEL
 
 RELATION_TOOL = {
     "name": "set_block_relations",
@@ -17,24 +19,26 @@ RELATION_TOOL = {
                     "type": "object",
                     "properties": {
                         "block_id": {"type": "string"},
-                        "parent_id": {"type": ["string", "null"]}
+                        "parent_id": {"type": ["string", "null"]},
                     },
-                    "required": ["block_id", "parent_id"]
-                }
+                    "required": ["block_id", "parent_id"],
+                },
             }
         },
-        "required": ["relations"]
-    }
+        "required": ["relations"],
+    },
 }
 
 
 def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Sorts blocks deterministically: page ASC → column bucket ASC → ymin ASC.
     COLUMN_BUCKET_PX controls how finely columns are grouped; tune in src/config.py."""
+
     def sort_key(b):
         page = b["bbox"]["page_number"]
         ymin, xmin, _, _ = b["bbox"]["coordinates"]
         return (page, xmin // COLUMN_BUCKET_PX, ymin)
+
     return sorted(blocks, key=sort_key)
 
 
@@ -46,19 +50,21 @@ async def _call_api(client: AsyncAnthropic, manifest: list) -> Any:
         temperature=0.0,
         tools=[RELATION_TOOL],
         tool_choice={"type": "tool", "name": "set_block_relations"},
-        messages=[{
-            "role": "user",
-            "content": (
-                "You are a Document Layout Tree Architect. Given a spatially ordered flat list of "
-                "structural blocks, assign parent-child relationships.\n"
-                "RULES:\n"
-                "1. Blocks (paragraphs, tables, list_items) directly following a 'heading' block "
-                "get parent_id = that heading's block_id.\n"
-                "2. If a block has is_continued=true, the first block of the next page is its child.\n"
-                "3. Top-level blocks (title, unpaired headings) get parent_id = null.\n\n"
-                f"Flat manifest:\n{json.dumps(manifest, indent=2)}"
-            )
-        }]
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "You are a Document Layout Tree Architect. Given a spatially ordered flat list of "
+                    "structural blocks, assign parent-child relationships.\n"
+                    "RULES:\n"
+                    "1. Blocks (paragraphs, tables, list_items) directly following a 'heading' block "
+                    "get parent_id = that heading's block_id.\n"
+                    "2. If a block has is_continued=true, the first block of the next page is its child.\n"
+                    "3. Top-level blocks (title, unpaired headings) get parent_id = null.\n\n"
+                    f"Flat manifest:\n{json.dumps(manifest, indent=2)}"
+                ),
+            }
+        ],
     )
 
 
@@ -83,7 +89,7 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
                 "type": b["type"],
                 "bbox": b["bbox"],
                 "is_continued": b.get("is_continued", False),
-                "text_preview": b["text"][:50]
+                "text_preview": b["text"][:50],
             }
             for b in sorted_blocks
         ]
@@ -116,6 +122,6 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             "document_type": state["document_type"],
             "pdf_hash": state["pdf_hash"],
             "extraction_warnings": state.get("extraction_warnings", []) + orphan_warnings,
-            "structured_payload": sorted_blocks
-        }
+            "structured_payload": sorted_blocks,
+        },
     }
