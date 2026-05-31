@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.api.jobs import JobRecord, jobs
 
@@ -39,9 +39,10 @@ class TestExtractEndpoint:
 
     async def test_existing_queued_no_force_returns_existing(self, api_client, minimal_pdf_bytes):
         import hashlib
+
         job_id = hashlib.sha256(minimal_pdf_bytes).hexdigest()
         jobs[job_id] = JobRecord(
-            job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc), status="queued"
+            job_id=job_id, file_name="test.pdf", created_at=datetime.now(UTC), status="queued"
         )
         body = (await api_client.post("/extract", files=_pdf_upload(minimal_pdf_bytes))).json()
         assert body["job_id"] == job_id
@@ -49,46 +50,59 @@ class TestExtractEndpoint:
 
     async def test_existing_running_no_force_returns_existing(self, api_client, minimal_pdf_bytes):
         import hashlib
+
         job_id = hashlib.sha256(minimal_pdf_bytes).hexdigest()
         jobs[job_id] = JobRecord(
-            job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc), status="running"
+            job_id=job_id, file_name="test.pdf", created_at=datetime.now(UTC), status="running"
         )
         body = (await api_client.post("/extract", files=_pdf_upload(minimal_pdf_bytes))).json()
         assert body["job_id"] == job_id
         assert body["status"] == "running"
 
-    async def test_existing_completed_no_force_returns_existing(self, api_client, minimal_pdf_bytes):
+    async def test_existing_completed_no_force_returns_existing(
+        self, api_client, minimal_pdf_bytes
+    ):
         import hashlib
+
         job_id = hashlib.sha256(minimal_pdf_bytes).hexdigest()
         jobs[job_id] = JobRecord(
-            job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc), status="completed"
+            job_id=job_id, file_name="test.pdf", created_at=datetime.now(UTC), status="completed"
         )
         body = (await api_client.post("/extract", files=_pdf_upload(minimal_pdf_bytes))).json()
         assert body["status"] == "completed"
 
     async def test_existing_completed_force_creates_new(self, api_client, minimal_pdf_bytes):
         import hashlib
+
         job_id = hashlib.sha256(minimal_pdf_bytes).hexdigest()
         jobs[job_id] = JobRecord(
-            job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc), status="completed"
+            job_id=job_id, file_name="test.pdf", created_at=datetime.now(UTC), status="completed"
         )
-        body = (await api_client.post("/extract?force=true", files=_pdf_upload(minimal_pdf_bytes))).json()
+        body = (
+            await api_client.post("/extract?force=true", files=_pdf_upload(minimal_pdf_bytes))
+        ).json()
         assert body["status"] in ("queued", "running", "completed")
 
     async def test_existing_running_force_returns_409(self, api_client, minimal_pdf_bytes):
         import hashlib
+
         job_id = hashlib.sha256(minimal_pdf_bytes).hexdigest()
         jobs[job_id] = JobRecord(
-            job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc), status="running"
+            job_id=job_id, file_name="test.pdf", created_at=datetime.now(UTC), status="running"
         )
-        response = await api_client.post("/extract?force=true", files=_pdf_upload(minimal_pdf_bytes))
+        response = await api_client.post(
+            "/extract?force=true", files=_pdf_upload(minimal_pdf_bytes)
+        )
         assert response.status_code == 409
 
     async def test_existing_queued_force_returns_409(self, api_client, minimal_pdf_bytes):
         import hashlib
+
         job_id = hashlib.sha256(minimal_pdf_bytes).hexdigest()
         jobs[job_id] = JobRecord(
-            job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc), status="queued"
+            job_id=job_id, file_name="test.pdf", created_at=datetime.now(UTC), status="queued"
         )
-        response = await api_client.post("/extract?force=true", files=_pdf_upload(minimal_pdf_bytes))
+        response = await api_client.post(
+            "/extract?force=true", files=_pdf_upload(minimal_pdf_bytes)
+        )
         assert response.status_code == 409

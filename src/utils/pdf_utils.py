@@ -14,7 +14,9 @@ def hash_file(file_path: str) -> str:
 
 async def encode_pdf_async(file_path: str) -> str:
     """Base64-encodes a PDF file without blocking the event loop."""
+
     def _read() -> str:
         with open(file_path, "rb") as f:
             return base64.standard_b64encode(f.read()).decode("utf-8")
+
     return await asyncio.to_thread(_read)

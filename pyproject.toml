@@ -25,6 +25,7 @@ dev = [
     "pytest-cov>=5.0",
     "httpx>=0.27",
     "asgi-lifespan>=2.1",
+    "ruff>=0.9",
 ]
 
 [tool.pytest.ini_options]
@@ -33,3 +34,26 @@ testpaths    = ["tests"]
 
 [tool.coverage.run]
 omit = ["tests/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (undefined names, unused imports)
+    "I",   # isort (import order)
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade (modernise syntax for Python 3.13)
+]
+ignore = [
+    "E501",  # line too long — formatter handles length; avoid double-reporting
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["F811"]  # pytest fixture parameters look like redefinitions to static analysis
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

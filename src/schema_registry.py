@@ -1,8 +1,9 @@
 import json
-import os
-import jsonschema
 from pathlib import Path
 from typing import Any
+
+import jsonschema
+
 from src.config import FALLBACK_DOC_TYPE
 
 _SCHEMA_DIR = Path(__file__).parent.parent / "schemas"
@@ -26,7 +27,7 @@ class SchemaRegistry:
         tool = {
             "name": f"extract_{doc_type}_structure",
             "description": f"Outputs structured semantic and layout blocks for a {doc_type} document.",
-            "input_schema": tool_schema
+            "input_schema": tool_schema,
         }
         return schema, tool
 

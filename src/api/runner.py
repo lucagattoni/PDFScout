@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.api.jobs import jobs
@@ -31,6 +31,7 @@ async def run_extraction(
         config = {"configurable": {"thread_id": job_id}}
         if langfuse:
             from langfuse.langchain import CallbackHandler
+
             config["callbacks"] = [CallbackHandler()]
 
         input_data = await _resolve_input(graph, file_path, config, force)
@@ -48,19 +49,21 @@ async def run_extraction(
             job.total_pages = final_state.values.get("total_pages")
 
             if span:
-                span.update(metadata={
-                    "file": job.file_name,
-                    "pdf_hash": job_id,
-                    "document_type": job.document_type or "",
-                    "total_pages": str(job.total_pages or ""),
-                    "extraction_warnings": "\n".join(job.warnings),
-                })
+                span.update(
+                    metadata={
+                        "file": job.file_name,
+                        "pdf_hash": job_id,
+                        "document_type": job.document_type or "",
+                        "total_pages": str(job.total_pages or ""),
+                        "extraction_warnings": "\n".join(job.warnings),
+                    }
+                )
 
         job.status = "completed"
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
     except Exception as exc:
         job.status = "failed"
         job.error = str(exc)
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
     finally:
         Path(file_path).unlink(missing_ok=True)

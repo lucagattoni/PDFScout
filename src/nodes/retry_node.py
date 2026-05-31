@@ -1,11 +1,15 @@
 from typing import Any
+
 import jsonschema
+
 from src.schema_registry import SchemaRegistry
 
 
 async def retry_incrementor_node(state: dict[str, Any]) -> dict[str, Any]:
     # Re-run validation to capture the actual error detail for the LLM's next attempt
-    active_blocks = [b for b in (state["extracted_flat_blocks"] or []) if b["bbox"]["page_number"] == 1]
+    active_blocks = [
+        b for b in (state["extracted_flat_blocks"] or []) if b["bbox"]["page_number"] == 1
+    ]
     error_detail: str
     if not active_blocks:
         error_detail = (

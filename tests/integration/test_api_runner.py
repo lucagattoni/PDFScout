@@ -1,7 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from src.api.jobs import JobRecord, jobs
 from src.api.runner import _resolve_input, run_extraction
@@ -27,9 +25,7 @@ def _make_graph_with_stream(events: list, final_snapshot):
 
 
 def _pre_seed_job(job_id: str, file_name: str = "test.pdf") -> JobRecord:
-    record = JobRecord(
-        job_id=job_id, file_name=file_name, created_at=datetime.now(timezone.utc)
-    )
+    record = JobRecord(job_id=job_id, file_name=file_name, created_at=datetime.now(UTC))
     jobs[job_id] = record
     return record
 
@@ -37,7 +33,9 @@ def _pre_seed_job(job_id: str, file_name: str = "test.pdf") -> JobRecord:
 class TestResolveInput:
     async def test_force_true_always_fresh(self):
         graph = MagicMock()
-        graph.aget_state = AsyncMock(return_value=make_snapshot(values={"x": 1}, next_nodes=("node",)))
+        graph.aget_state = AsyncMock(
+            return_value=make_snapshot(values={"x": 1}, next_nodes=("node",))
+        )
         result = await _resolve_input(graph, "/some/file.pdf", {}, force=True)
         assert result == {"file_path": "/some/file.pdf"}
 
@@ -71,14 +69,16 @@ class TestRunExtraction:
         (tmp_path / "test.pdf").write_bytes(b"fake")
         _pre_seed_job(job_id)
 
-        final_snap = make_snapshot(values={
-            "hierarchical_document_tree": {
-                "document_type": "baseline_core",
-                "extraction_warnings": [],
-                "structured_payload": [],
-            },
-            "total_pages": 1,
-        })
+        final_snap = make_snapshot(
+            values={
+                "hierarchical_document_tree": {
+                    "document_type": "baseline_core",
+                    "extraction_warnings": [],
+                    "structured_payload": [],
+                },
+                "total_pages": 1,
+            }
+        )
         graph = _make_graph_with_stream(
             [{"native_extractor": {}}, {"hierarchy_node": {}}],
             final_snap,
@@ -100,18 +100,21 @@ class TestRunExtraction:
         (tmp_path / "test.pdf").write_bytes(b"fake")
         _pre_seed_job(job_id)
 
-        final_snap = make_snapshot(values={
-            "hierarchical_document_tree": {
-                "document_type": "baseline_core",
-                "extraction_warnings": [],
-                "structured_payload": [],
-            },
-            "total_pages": 1,
-        })
+        final_snap = make_snapshot(
+            values={
+                "hierarchical_document_tree": {
+                    "document_type": "baseline_core",
+                    "extraction_warnings": [],
+                    "structured_payload": [],
+                },
+                "total_pages": 1,
+            }
+        )
         graph = _make_graph_with_stream([], final_snap)
         await run_extraction(job_id, file_path, graph, langfuse=None)
 
         from pathlib import Path
+
         assert not Path(file_path).exists()
 
     async def test_exception_path_fails_job(self, tmp_path):
@@ -151,6 +154,7 @@ class TestRunExtraction:
         await run_extraction(job_id, file_path, graph, langfuse=None)
 
         from pathlib import Path
+
         assert not Path(file_path).exists()
 
     async def test_langfuse_none_no_attribute_error(self, tmp_path):
@@ -159,14 +163,16 @@ class TestRunExtraction:
         (tmp_path / "test.pdf").write_bytes(b"fake")
         _pre_seed_job(job_id)
 
-        final_snap = make_snapshot(values={
-            "hierarchical_document_tree": {
-                "document_type": "baseline_core",
-                "extraction_warnings": [],
-                "structured_payload": [],
-            },
-            "total_pages": 1,
-        })
+        final_snap = make_snapshot(
+            values={
+                "hierarchical_document_tree": {
+                    "document_type": "baseline_core",
+                    "extraction_warnings": [],
+                    "structured_payload": [],
+                },
+                "total_pages": 1,
+            }
+        )
         graph = _make_graph_with_stream([], final_snap)
         # Should not raise AttributeError
         await run_extraction(job_id, file_path, graph, langfuse=None)

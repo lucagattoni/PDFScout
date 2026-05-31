@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,9 +24,7 @@ _UPLOAD_DIR = _API_ROOT / "tmp" / "uploads"
 _CHECKPOINT_DB = str(_API_ROOT / "api_checkpoint.db")
 _MAX_UPLOAD_BYTES = 32 * 1024 * 1024
 
-_LANGFUSE_ENABLED = bool(
-    os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")
-)
+_LANGFUSE_ENABLED = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
 
 
 @asynccontextmanager
@@ -61,7 +59,9 @@ async def health() -> HealthResponse:
     )
 
 
-@app.post("/extract", response_model=JobResponse, status_code=202, summary="Submit a PDF for extraction")
+@app.post(
+    "/extract", response_model=JobResponse, status_code=202, summary="Submit a PDF for extraction"
+)
 async def extract(
     file: UploadFile,
     force: bool = Query(
@@ -79,7 +79,9 @@ async def extract(
     Poll `GET /jobs/{job_id}` until `status` is `completed` or `failed`.
     """
     if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="File must be a PDF (content-type: application/pdf).")
+        raise HTTPException(
+            status_code=400, detail="File must be a PDF (content-type: application/pdf)."
+        )
 
     content = await file.read()
 
@@ -104,7 +106,7 @@ async def extract(
     new_record = JobRecord(
         job_id=job_id,
         file_name=file.filename or "upload.pdf",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     existing = jobs.setdefault(job_id, new_record)
     if existing is not new_record:
@@ -152,4 +154,4 @@ async def delete_job(job_id: str) -> None:
             detail=f"Cannot delete a {job.status} job. Wait for it to complete first.",
         )
     del jobs[job_id]
-    ((_UPLOAD_DIR / f"{job_id}.pdf")).unlink(missing_ok=True)
+    (_UPLOAD_DIR / f"{job_id}.pdf").unlink(missing_ok=True)

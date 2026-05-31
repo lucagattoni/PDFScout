@@ -1,5 +1,5 @@
-import pytest
 import jsonschema
+import pytest
 
 from src.schema_registry import SchemaRegistry
 
@@ -66,4 +66,6 @@ class TestValidate:
             "bbox": {"page_number": 1, "coordinates": [0, 0, 10, 10]},
         }
         with pytest.raises(jsonschema.ValidationError):
-            registry.validate("baseline_core", {"document_type": "baseline_core", "blocks": [bad_block]})
+            registry.validate(
+                "baseline_core", {"document_type": "baseline_core", "blocks": [bad_block]}
+            )

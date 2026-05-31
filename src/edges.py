@@ -1,14 +1,13 @@
-import jsonschema
 from typing import Any, Literal
+
+import jsonschema
+
 from src.schema_registry import SchemaRegistry
 
 
 def pioneer_validation_route(state: dict[str, Any]) -> Literal["retry_node", "burst_dispatcher"]:
     """Routes after pioneer_parser completes. Validates page 1 blocks only."""
-    active_blocks = [
-        b for b in state["extracted_flat_blocks"]
-        if b["bbox"]["page_number"] == 1
-    ]
+    active_blocks = [b for b in state["extracted_flat_blocks"] if b["bbox"]["page_number"] == 1]
 
     # Empty list means the model returned no blocks for page 1 or used the wrong page number
     if not active_blocks:

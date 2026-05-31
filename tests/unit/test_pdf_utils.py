@@ -1,6 +1,6 @@
 import base64
 
-from src.utils.pdf_utils import hash_file, encode_pdf_async
+from src.utils.pdf_utils import encode_pdf_async, hash_file
 
 
 class TestHashFile:
