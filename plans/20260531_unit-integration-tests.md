@@ -52,28 +52,35 @@ uv run pytest --cov=. --cov-report=term-missing
 
 ```
 tests/
+├── __init__.py
 ├── conftest.py                         # shared fixtures
 ├── unit/
+│   ├── __init__.py
 │   ├── test_state.py
 │   ├── test_schema_registry.py
 │   ├── test_edges.py
 │   ├── test_pdf_utils.py
 │   ├── test_page_counter.py
+│   ├── test_tracing.py
 │   ├── test_models.py
 │   ├── test_graph.py
 │   └── nodes/
+│       ├── __init__.py
 │       ├── test_extractor_node.py
 │       ├── test_classifier_node.py
 │       ├── test_worker_node.py
 │       ├── test_retry_node.py
 │       └── test_hierarchy_node.py
 └── integration/
+    ├── __init__.py
     ├── test_api_health.py
     ├── test_api_extract.py
     ├── test_api_jobs.py
     ├── test_api_runner.py
     └── test_graph_pipeline.py
 ```
+
+`__init__.py` files are required in every test subdirectory so pytest treats them as separate packages. Without them, two files with the same name in sibling directories (e.g., a future `conftest.py` in both `unit/` and `integration/`) would cause import collisions.
 
 `test_config.py` and `test_jobs.py` are intentionally excluded — testing that constants have specific values and that `@dataclass` defaults are set is testing the Python interpreter, not application behaviour. Those invariants are exercised indirectly by every other test that relies on them.
 
@@ -85,13 +92,15 @@ There is no committed `tests/fixtures/minimal.pdf`. The minimal PDF is generated
 
 ### 4.1 Environment
 
-Every node constructs `AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])` using `os.environ[...]` (not `os.getenv`), so the dict lookup happens before any mock intercepts the class. A session-scoped autouse fixture sets a dummy value so tests never hit a `KeyError`:
+Every node constructs `AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])` using `os.environ[...]` (not `os.getenv`), so the dict lookup happens before any mock intercepts the class. A session-scoped autouse fixture unconditionally overwrites the key so tests never hit a `KeyError` and a misconfigured patch can never accidentally call the real API using a valid key from the CI environment:
 
 ```python
 @pytest.fixture(autouse=True, scope="session")
 def set_fake_api_key():
-    os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-fake")
+    os.environ["ANTHROPIC_API_KEY"] = "sk-test-fake"
 ```
+
+`os.environ.setdefault` must not be used here: if `ANTHROPIC_API_KEY` is already set in the environment, `setdefault` leaves the real value in place. A patch that silently fails to apply would then call the real Anthropic API.
 
 ### 4.2 Global `jobs` Store Isolation
 
@@ -130,17 +139,32 @@ def minimal_pdf_path(tmp_path, minimal_pdf_bytes) -> str:
 
 ### 4.4 FastAPI Test Client
 
-The real `lifespan` in `api.py` opens a SQLite checkpoint database and optionally connects to Langfuse. Tests must not run that setup. The approach: provide an override lifespan via `app.router.lifespan_context` that injects a mock graph and skips all real I/O.
+The real `lifespan` in `api.py` opens a SQLite checkpoint database and optionally connects to Langfuse. Tests must not run that setup. The approach: temporarily override `app.router.lifespan_context` with a lightweight replacement that injects a mock graph, then restore the original on teardown.
+
+The `mock_graph.stream` method must be an async generator, not a coroutine. An `AsyncMock` with a plain `return_value` returns a coroutine when called, which `async for` cannot iterate. The helper below produces a proper async generator:
 
 ```python
+async def _empty_stream(*args, **kwargs):
+    return
+    yield   # makes this an async generator function
+
 @pytest.fixture
-async def api_client(mocker):
+async def mock_graph():
+    graph = AsyncMock()
+    graph.stream = _empty_stream
+    # aget_state must return an object with .values (dict) and .next (empty tuple)
+    snapshot = MagicMock()
+    snapshot.values = {}
+    snapshot.next = ()
+    graph.aget_state = AsyncMock(return_value=snapshot)
+    return graph
+
+@pytest.fixture
+async def api_client(mock_graph):
     from asgi_lifespan import LifespanManager
     import api as app_module
-    from src.api.jobs import jobs
 
-    mock_graph = AsyncMock()
-    mock_graph.stream.return_value = async_iter([])   # helper to make an async generator
+    original_lifespan = app_module.app.router.lifespan_context
 
     @asynccontextmanager
     async def override_lifespan(app):
@@ -149,13 +173,20 @@ async def api_client(mocker):
         yield
 
     app_module.app.router.lifespan_context = override_lifespan
-    async with LifespanManager(app_module.app) as manager:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=manager.app),
-            base_url="http://test",
-        ) as client:
-            yield client, mock_graph
+    try:
+        async with LifespanManager(app_module.app) as manager:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=manager.app),
+                base_url="http://test",
+            ) as client:
+                yield client
+    finally:
+        app_module.app.router.lifespan_context = original_lifespan
 ```
+
+The `finally` block restores the original lifespan. Without it, the module-level `app` object is permanently mutated for the entire test session.
+
+`mock_graph` and `api_client` are separate fixtures so tests that need to configure the mock graph's behaviour (e.g., to simulate a running job's stream) can request `mock_graph` directly alongside `api_client`.
 
 `asgi-lifespan` is required for this (`asgi-lifespan>=2.1` in dev deps).
 
@@ -244,7 +275,22 @@ All tests use `document_type="baseline_core"`. Blocks must have `bbox.page_numbe
 
 ---
 
-### 5.6 `tests/unit/test_models.py` — Pydantic Models
+### 5.6 `tests/unit/test_tracing.py` — `tracing_span`
+
+The function has two branches:
+
+- `langfuse=None` → context manager yields `None` without calling any Langfuse API.
+- `langfuse` is a mock with `.start_as_current_span()` as a context manager → context manager yields the mock span; `propagate_attributes` is called with the correct `session_id`.
+
+The second branch requires a mock Langfuse client that supports:
+- `langfuse.start_as_current_span(name=...)` as a sync context manager yielding a `span` object.
+- `propagate_attributes(session_id=...)` as a sync context manager (patch `src.utils.tracing.propagate_attributes`).
+
+This is the only place the active Langfuse path is tested. The `run_extraction` tests all use `langfuse=None`, so without this unit test `tracing.py` cannot reach 100% coverage.
+
+---
+
+### 5.7 `tests/unit/test_models.py` — Pydantic Models
 
 **`JobResponse.from_record`**
 - All 10 fields from `JobRecord` map to their counterpart on `JobResponse`.
@@ -261,7 +307,8 @@ All tests use `document_type="baseline_core"`. Blocks must have `bbox.page_numbe
 
 **`burst_dispatcher_node`**
 - `retry_count=0` → returns `{}`.
-- `retry_count=3` → returns dict with `extraction_warnings` containing the degradation message.
+- `retry_count=2` → returns `{}` (boundary: just below threshold).
+- `retry_count=3` → returns dict with `extraction_warnings` containing the degradation message (boundary: at threshold, `>= 3`).
 
 **`dispatch_pages`**
 - `total_pages=1` → returns the string `"hierarchy_node"`.
@@ -348,7 +395,7 @@ The real `lifespan` in `api.py` calls `AsyncSqliteSaver.from_conn_string(...)` a
 
 ### 6.2 `tests/integration/test_api_health.py`
 
-- `GET /` → `307` redirect to `/docs`.
+- `GET /` with `follow_redirects=False` → `307` redirect with `location: /docs`. The test must disable redirect-following; `httpx.AsyncClient` follows redirects by default and would land on `/docs`, hiding the 307.
 - `GET /health` → `200`, body matches `HealthResponse` schema.
 - `status == "ok"`, `model == MODEL`, `fallback_doc_type == FALLBACK_DOC_TYPE`.
 - `supported_doc_types` is sorted alphabetically.
@@ -364,7 +411,9 @@ The real `lifespan` in `api.py` calls `AsyncSqliteSaver.from_conn_string(...)` a
 | Wrong content-type | send `text/plain` | `400` |
 | File > 32 MB | send 33 MB body | `413` |
 | Same file twice (no existing job) | two identical uploads | both `202`, same `job_id` |
-| Same file, job completed, no force | pre-seed `jobs` with completed record | `202`, returns existing job |
+| Same file, job queued, no force | pre-seed queued record | `202`, returns existing queued job without creating a new one |
+| Same file, job running, no force | pre-seed running record | `202`, returns existing running job |
+| Same file, job completed, no force | pre-seed completed record | `202`, returns existing completed job |
 | Same file, job completed, `force=true` | pre-seed completed record | `202`, new `status="queued"` |
 | Same file, job running, `force=true` | pre-seed running record | `409` |
 | Same file, job queued, `force=true` | pre-seed queued record | `409` |
@@ -379,31 +428,66 @@ The "concurrent idempotent uploads" case is removed. A single-event-loop `asynci
 |---|---|---|
 | `GET /jobs/{id}` — exists | pre-seed job | `200`, correct fields |
 | `GET /jobs/{bad-id}` — not found | — | `404` |
-| `DELETE /jobs/{id}` — completed | pre-seed completed job, create tmp file | `204`, removed from store, file deleted |
+| `DELETE /jobs/{id}` — completed | pre-seed completed job; patch `Path.unlink` | `204`, job removed from store, `unlink` called |
 | `DELETE /jobs/{bad-id}` — not found | — | `404` |
 | `DELETE /jobs/{id}` — running | pre-seed running job | `409` |
 | `DELETE /jobs/{id}` — queued | pre-seed queued job | `409` |
+
+The DELETE test for file cleanup patches `pathlib.Path.unlink` rather than creating a real file. `api.py` calls `(_UPLOAD_DIR / f"{job_id}.pdf").unlink(missing_ok=True)` where `_UPLOAD_DIR` is an absolute path inside the source tree. Writing to that path during tests would pollute the working tree. Patching `Path.unlink` on the specific instance (or via `mocker.patch.object`) verifies that the call is made with `missing_ok=True` without touching the filesystem.
 
 ---
 
 ### 6.5 `tests/integration/test_api_runner.py` — `run_extraction` and `_resolve_input`
 
-These test the background task directly, bypassing the HTTP layer.
+These test the background task directly, bypassing the HTTP layer. No HTTP client is needed; call `_resolve_input` and `run_extraction` as plain async functions.
 
 **`_resolve_input`**
 
-Patch target: `src.api.runner` module.
+`_resolve_input` takes `graph` as a parameter, so no patching is needed — pass an `AsyncMock` graph configured to return the appropriate snapshot. A snapshot is an object with `.values` (dict) and `.next` (tuple).
 
-- `force=True` → always returns `{"file_path": ...}` regardless of snapshot state.
-- `force=False`, snapshot is empty (never started) → returns `{"file_path": ...}`.
-- `force=False`, snapshot has non-empty `next` (interrupted run) → returns `None` (resume signal).
-- `force=False`, snapshot has values but empty `next` (completed run) → returns `{"file_path": ...}`.
+```python
+# helper used across all _resolve_input tests
+def make_snapshot(values=None, next_nodes=()):
+    snap = MagicMock()
+    snap.values = values or {}
+    snap.next = next_nodes
+    return snap
+```
+
+- `force=True`, any snapshot → returns `{"file_path": file_path}`.
+- `force=False`, `snapshot.values={}`, `snapshot.next=()` (never started) → returns `{"file_path": file_path}`.
+- `force=False`, `snapshot.values={"some": "state"}`, `snapshot.next=("pending_node",)` (interrupted) → returns `None`.
+- `force=False`, `snapshot.values={"some": "state"}`, `snapshot.next=()` (completed) → returns `{"file_path": file_path}`.
 
 **`run_extraction`**
 
-- Happy path: graph streams two node events, final state has `hierarchical_document_tree` → job transitions `queued → running → completed`, `job.result` set, temp file deleted.
-- Graph raises an exception mid-stream → job transitions to `"failed"`, `job.error` contains the message, temp file still deleted (finally block runs).
-- `langfuse=None` → Langfuse code path is skipped entirely (no attribute errors).
+The mock graph needs:
+- `stream`: an async generator that yields node-event dicts (e.g., `{"native_extractor": {...}}`).
+- `aget_state`: `AsyncMock` returning a snapshot whose `.values` dict contains `hierarchical_document_tree`, `total_pages`, etc.
+
+```python
+async def _node_events(*args, **kwargs):
+    yield {"native_extractor": {}}
+    yield {"hierarchy_node": {}}
+
+mock_graph.stream = _node_events
+mock_graph.aget_state = AsyncMock(return_value=make_snapshot(
+    values={
+        "hierarchical_document_tree": {
+            "document_type": "baseline_core",
+            "extraction_warnings": [],
+            "structured_payload": [],
+        },
+        "total_pages": 1,
+    }
+))
+```
+
+Test cases:
+
+- **Happy path**: job transitions `queued → running → completed`; `job.result` equals the tree dict; `job.total_pages=1`; `job.document_type="baseline_core"`; `job.warnings=[]`; two events recorded in `job.events`; temp file deleted (assert `Path(file_path).exists() == False`).
+- **Exception path**: `graph.stream` raises `RuntimeError("boom")` → `job.status="failed"`, `job.error="boom"`, temp file still deleted.
+- **`langfuse=None`**: no `AttributeError` raised; `tracing_span` yields `None`; `span.update` is never called.
 
 ---
 
@@ -429,10 +513,20 @@ These run the compiled `build_app(checkpointer=None)` graph with all external I/
 6. Assert final state has `hierarchical_document_tree.structured_payload` with 1 block carrying `parent_id=None`.
 
 **Pioneer retry then success (2 pages)**
-1. Worker mock is configured to return invalid blocks on the first call, valid blocks on the second.
-2. Stream the graph and collect all emitted node-name events.
-3. Assert the event sequence contains `"retry_node"` exactly once, then `"burst_dispatcher"`, then `"parser_worker"`. This verifies routing, not just final state.
-4. Assert final state `extraction_warnings=[]`.
+
+Both `pioneer_parser` and `parser_worker` nodes call the same `window_parser_node` function, which calls `_call_api` inside `src.nodes.worker_node`. Use `side_effect` on the `AsyncAnthropic` mock so successive calls return different responses:
+
+```python
+mock_client.messages.create = AsyncMock(side_effect=[
+    invalid_tool_use_response,   # call 1: pioneer (will trigger retry)
+    valid_tool_use_response,     # call 2: pioneer retry (passes validation)
+    valid_tool_use_response,     # call 3: page 2 burst worker
+])
+```
+
+1. Stream the graph and collect all emitted node-name events.
+2. Assert the event sequence contains `"retry_node"` exactly once, then `"burst_dispatcher"`, then `"parser_worker"`. Verifies routing, not just final state.
+3. Assert final state `extraction_warnings=[]`.
 
 **Pioneer max-retry degradation (1 page)**
 1. Worker mock always returns invalid blocks (all 3 retries fail).
