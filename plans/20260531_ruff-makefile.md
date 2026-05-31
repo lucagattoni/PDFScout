@@ -9,7 +9,8 @@
 
 - Add `ruff` as the single tool for linting *and* formatting across all Python files.
 - Eliminate the 2 existing `F401` unused-import violations and reformat all 26 files that diverge from ruff's style.
-- Expose a `Makefile` with `make lint` and `make test` as the canonical developer entry points — short commands that delegate to `uv run`, so they work regardless of how the developer's shell is set up.
+- Expose a `Makefile` with `make lint`, `make test`, `make fix`, `make coverage`, and `make ci` as the canonical developer entry points — short commands that delegate to `uv run`, so they work regardless of how the developer's shell is set up.
+- Update `README.md` to document the new developer workflow.
 
 ---
 
@@ -87,27 +88,85 @@ Running `ruff format .` will reformat the 26 files flagged by `ruff format --che
 ## 3. Makefile
 
 ```makefile
-.PHONY: lint test
+.PHONY: lint fix test coverage ci
 
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
 
+fix:
+	uv run ruff check --fix .
+	uv run ruff format .
+
 test:
 	uv run pytest
+
+coverage:
+	uv run pytest --cov=. --cov-report=term-missing
+
+ci: lint test
 ```
+
+**Target reference:**
+
+| Target | What it does | Mutates files? |
+|---|---|---|
+| `make lint` | Check for violations and formatting drift | No |
+| `make fix` | Auto-fix violations and reformat all files | Yes |
+| `make test` | Run the full test suite | No |
+| `make coverage` | Run tests and print per-module coverage | No |
+| `make ci` | `lint` then `test` — full pre-push / CI check | No |
 
 **Design decisions:**
 
 - **`uv run` prefix** — all commands go through `uv run` so they use the project's locked virtual environment rather than whatever Python/ruff is on the developer's `PATH`. This is consistent with how the project already runs everything (see README).
 - **`lint` runs both `ruff check` and `ruff format --check`** — linting and formatting are conceptually separate (`check` catches logic/style violations, `format --check` checks whitespace/layout) and ruff keeps them as distinct subcommands. Running both under a single `make lint` target matches the common developer expectation: "lint should tell me if the code is clean."
-- **No `make lint-fix` or `make format` target** — applying fixes is a deliberate act. Keeping the Makefile read-only (`--check` mode) avoids silent file mutations during CI. Developers run `uv run ruff check --fix .` and `uv run ruff format .` manually when they want to apply fixes.
-- **No `addopts` change to pytest config** — coverage is intentionally not baked into `make test`. Running coverage on every test invocation adds ~0.3 s of overhead and pollutes the terminal during rapid iteration. Use `uv run pytest --cov=. --cov-report=term-missing` explicitly when needed.
-- **`PHONY` declaration** — prevents `make` from confusing the target names with files or directories named `lint` or `test`.
+- **`fix` is the explicit write counterpart to `lint`** — separating read-only (`lint`) from write (`fix`) prevents silent file mutations during CI while still giving developers a single command to apply all fixes locally.
+- **`coverage` is separate from `test`** — running coverage on every test invocation adds measurable overhead (~0.3 s) and clutters the terminal during rapid iteration. A dedicated target makes it an intentional, on-demand action.
+- **`ci` composes `lint` and `test`** — rather than duplicating the commands, it depends on the two existing targets. This means any future change to `lint` or `test` is automatically reflected in `ci`.
+- **`PHONY` declaration** — prevents `make` from confusing the target names with files or directories of the same name.
 
 ---
 
-## 4. Implementation Order
+## 4. README Updates
+
+Two sections of `README.md` need updating.
+
+### 4.1 Installation section
+
+Add an `install` step that runs `uv sync --group dev` so new contributors get the full dev toolchain (including ruff) in one command. The current README only shows `uv sync` (production deps only).
+
+```markdown
+uv sync --group dev    # includes ruff, pytest, and other dev tools
+```
+
+### 4.2 New "Development" section
+
+Add a **Development** section after **Installation** (and before **Observability**) documenting the Makefile targets:
+
+```markdown
+## Development
+
+Install dev dependencies (ruff, pytest, and supporting libraries):
+
+\```bash
+uv sync --group dev
+\```
+
+| Command | Description |
+|---|---|
+| `make lint` | Check for linting violations and formatting drift (read-only) |
+| `make fix` | Auto-fix violations and reformat all files |
+| `make test` | Run the full test suite (113 tests, no API key required) |
+| `make coverage` | Run tests and print per-module coverage report |
+| `make ci` | Run `lint` then `test` — use before pushing |
+```
+
+The **Testing** section already documents `uv sync --group dev` and the `pytest` invocations. After this change that section can be condensed to a forward reference: "see the **Development** section for the `make test` and `make coverage` commands."
+
+---
+
+## 5. Implementation Order
 
 1. Add `ruff>=0.9` to `[dependency-groups] dev` in `pyproject.toml`.
 2. Add `[tool.ruff]`, `[tool.ruff.lint]`, and `[tool.ruff.format]` tables to `pyproject.toml`.
@@ -117,8 +176,9 @@ test:
 6. Run `uv run ruff check .` and `uv run ruff format --check .` — both must exit 0 before continuing.
 7. Run `uv run pytest` — must stay green (113 tests passing).
 8. Create `Makefile`.
-9. Verify `make lint` and `make test` both exit 0.
-10. Commit and push.
+9. Verify `make lint`, `make test`, `make fix`, `make coverage`, and `make ci` all behave correctly.
+10. Update `README.md` — add `uv sync --group dev` to the Installation section; add the Development section with the Makefile target reference table; condense the Testing section to forward-reference the new Development section.
+11. Commit and push.
 
 ---
 
@@ -127,7 +187,8 @@ test:
 | File | Change |
 |---|---|
 | `pyproject.toml` | Add `ruff>=0.9` to dev deps; add `[tool.ruff]`, `[tool.ruff.lint]`, `[tool.ruff.format]` sections |
-| `Makefile` | New file |
-| `src/schema_registry.py` | Remove unused `import os` (auto-fixed) |
-| `tests/integration/test_api_runner.py` | Remove unused `import pytest` (auto-fixed) |
+| `Makefile` | New file — `lint`, `fix`, `test`, `coverage`, `ci` targets |
+| `README.md` | Add `uv sync --group dev` to Installation; add Development section with Makefile reference table; condense Testing section |
+| `src/schema_registry.py` | Remove unused `import os` (auto-fixed by ruff) |
+| `tests/integration/test_api_runner.py` | Remove unused `import pytest` (auto-fixed by ruff) |
 | 26 Python source files | Reformatted by `ruff format` (whitespace/quote normalisation only) |
