@@ -643,7 +643,7 @@ Coverage numbers alone are insufficient for `src/api/runner.py` — the critical
 ## 8. Implementation Order
 
 1. **Infrastructure** — dev deps, `[tool.pytest.ini_options]`, `conftest.py` with all fixtures.
-2. **Pure-logic units** — `test_state`, `test_schema_registry`, `test_pdf_utils`, `test_page_counter`, `test_models`.
+2. **Pure-logic units** — `test_state`, `test_schema_registry`, `test_pdf_utils`, `test_page_counter`, `test_tracing`, `test_models`.
 3. **Edge and graph** — `test_edges`, `test_graph`.
 4. **Node units** — `test_extractor_node`, `test_retry_node`, `test_hierarchy_node`, `test_worker_node`, `test_classifier_node`.
 5. **API integration** — `test_api_health`, `test_api_jobs`, `test_api_extract`, `test_api_runner`.
