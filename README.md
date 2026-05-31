@@ -183,6 +183,42 @@ uv sync
 cp .env.example .env   # then fill in your API key
 ```
 
+---
+
+## Testing
+
+Install dev dependencies and run the full suite:
+
+```bash
+uv sync --group dev
+uv run pytest
+```
+
+With coverage:
+
+```bash
+uv run pytest --cov=. --cov-report=term-missing
+```
+
+The suite has 113 tests across two layers:
+
+| Layer | Location | What it covers |
+|---|---|---|
+| Unit | `tests/unit/` | State reducers, schema registry, routing edges, PDF utilities, page counter, tracing, Pydantic models, graph topology, and all five node functions — all external I/O mocked |
+| Integration | `tests/integration/` | All FastAPI endpoints (health, extract, jobs) via an ASGI test client; `run_extraction` background task; end-to-end LangGraph pipeline (happy path, pioneer retry-then-success, max-retry degradation) |
+
+No `ANTHROPIC_API_KEY` is required — the suite runs entirely in isolation with mocked Anthropic clients.
+
+**Coverage targets:**
+
+| Module | Coverage |
+|---|---|
+| `src/state.py`, `src/edges.py`, `src/schema_registry.py` | 100% |
+| `src/utils/`, `src/extractors/`, `src/api/jobs.py`, `src/api/models.py` | 100% |
+| `src/graph.py`, `src/nodes/*.py` | 100% |
+| `src/api/runner.py` | ≥ 90% |
+| `api.py` | ≥ 75% (lifespan I/O not exercised) |
+
 Edit `.env` and set your Anthropic API key:
 
 ```
@@ -270,7 +306,7 @@ lifecycle, and operational notes.
 PDFScout/
 ├── .python-version             # Pins Python 3.13
 ├── .env.example                # Required environment variables template
-├── pyproject.toml              # uv-managed dependencies
+├── pyproject.toml              # uv-managed dependencies (includes [dependency-groups] dev)
 ├── uv.lock                     # Locked dependency graph
 ├── main.py                     # Entry point (loads .env via python-dotenv)
 │
@@ -278,6 +314,30 @@ PDFScout/
 │   ├── baseline_core.json      # Generic fallback: 8-type enum, no domain metadata
 │   ├── invoice.json            # Invoice-specific metadata extensions
 │   └── scientific_paper.json   # Academic paper metadata additions
+│
+├── tests/
+│   ├── conftest.py             # Shared fixtures (env setup, mock graph, ASGI client, PDF helpers)
+│   ├── unit/
+│   │   ├── test_state.py       # merge_flat_blocks / merge_warnings reducers
+│   │   ├── test_schema_registry.py
+│   │   ├── test_edges.py       # pioneer_validation_route all branches
+│   │   ├── test_pdf_utils.py   # hash_file, encode_pdf_async
+│   │   ├── test_page_counter.py
+│   │   ├── test_tracing.py     # tracing_span (langfuse=None + active paths)
+│   │   ├── test_models.py      # JobResponse.from_record, HealthResponse
+│   │   ├── test_graph.py       # burst_dispatcher_node, dispatch_pages, build_app topology
+│   │   └── nodes/
+│   │       ├── test_extractor_node.py
+│   │       ├── test_classifier_node.py
+│   │       ├── test_worker_node.py
+│   │       ├── test_retry_node.py
+│   │       └── test_hierarchy_node.py
+│   └── integration/
+│       ├── test_api_health.py  # GET / redirect, GET /health
+│       ├── test_api_extract.py # POST /extract (idempotency, force, size limit, conflict)
+│       ├── test_api_jobs.py    # GET /jobs/{id}, DELETE /jobs/{id}
+│       ├── test_api_runner.py  # _resolve_input branches, run_extraction happy/fail paths
+│       └── test_graph_pipeline.py  # End-to-end graph (happy path, retry, max-retry degradation)
 │
 └── src/
     ├── config.py               # Centralized constants (MODEL, CONCURRENCY_LIMIT, etc.)
