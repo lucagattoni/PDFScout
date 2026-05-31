@@ -6,3 +6,5 @@ state_checkpoint.db
 api_checkpoint.db
 .env
 tmp/
+.coverage
+htmlcov/
