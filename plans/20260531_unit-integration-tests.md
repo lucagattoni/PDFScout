@@ -46,6 +46,13 @@ Coverage is **not** baked into `addopts` — it slows every run. Use an explicit
 uv run pytest --cov=. --cov-report=term-missing
 ```
 
+Add a `[tool.coverage.run]` section to exclude test files from the report (otherwise `--cov=.` includes `tests/` itself, inflating coverage numbers):
+
+```toml
+[tool.coverage.run]
+omit = ["tests/*"]
+```
+
 ---
 
 ## 3. Directory Layout
@@ -361,7 +368,7 @@ This is the only place the active Langfuse path is tested. The `run_extraction` 
 
 **`build_app`**
 - `build_app(checkpointer=None)` compiles without raising.
-- Compiled graph exposes all seven expected node names.
+- Compiled graph exposes all seven expected node names. Access them via `app.nodes` on the compiled `CompiledStateGraph` object — this returns a dict keyed by node name. Assert all of `{"native_extractor", "classifier", "pioneer_parser", "retry_node", "burst_dispatcher", "parser_worker", "hierarchy_node"}` are present.
 
 ---
 
@@ -392,12 +399,18 @@ Both must be patched. Without patching `encode_pdf_async`, the test reads the ac
 
 ### 5.11 `tests/unit/nodes/test_worker_node.py` — `window_parser_node`
 
-Patch target: `src.nodes.worker_node.AsyncAnthropic`.
+Patch targets:
+- `src.nodes.worker_node.AsyncAnthropic`
+- `src.nodes.worker_node.encode_pdf_async` — return a fixed base64 string; without this the test reads from disk.
+
+Both must be patched, matching the same reasoning applied to `test_classifier_node.py`.
+
+The content list sent to the API is accessible via `mock_client.messages.create.call_args`. Inspect `call_args.kwargs["messages"][0]["content"]` to assert how many items it contains and whether the validation error text is present.
 
 - Response contains `tool_use` block with `blocks=[block]` → returns `{"extracted_flat_blocks": [block]}`.
-- Response contains **no** `tool_use` block → raises `ValueError`.
-- State has `last_validation_error="some error"` → a content block containing that error text is present in the captured API call args.
-- State has `last_validation_error=None` → no extra content block is added (content list has exactly 2 items).
+- Response contains **no** `tool_use` block → raises `ValueError`. Because `_call_api` is decorated with `@retry(stop=stop_after_attempt(3))`, tenacity will call it 3 times before re-raising. To avoid sleeping between retries in tests, patch `src.nodes.worker_node.wait_exponential` to return `wait_fixed(0)`, or patch `_call_api` directly instead of patching `AsyncAnthropic`.
+- State has `last_validation_error="some error"` → content list has 3 items; third item's `text` contains the error string.
+- State has `last_validation_error=None` → content list has exactly 2 items.
 
 ---
 
@@ -415,6 +428,8 @@ Patch target: `src.nodes.worker_node.AsyncAnthropic`.
 ### 5.13 `tests/unit/nodes/test_hierarchy_node.py`
 
 Patch target: `src.nodes.hierarchy_node.AsyncAnthropic`.
+
+**Tenacity note:** `_call_api` in `hierarchy_node.py` is decorated with `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))`. For the "no `tool_use` block → raises `ValueError`" test, tenacity will retry 3 times with delays (up to ~7 seconds total). Patch `src.nodes.hierarchy_node.wait_exponential` to `wait_fixed(0)` before running that test case, or patch `src.nodes.hierarchy_node._call_api` directly to raise `ValueError` immediately. The same consideration applies to any test that exercises a failure path through the retry decorator.
 
 **`geometric_pre_sorter`**
 - Input: list with one block → output: list with the same block unchanged.
@@ -458,7 +473,7 @@ The real `lifespan` in `api.py` calls `AsyncSqliteSaver.from_conn_string(...)` a
 | Valid PDF upload | — | `202`, body has `job_id` and `status="queued"` |
 | Wrong content-type | send `text/plain` | `400` |
 | File > 32 MB | send 33 MB body | `413` |
-| Same file twice (no existing job) | two identical uploads | both `202`, same `job_id` |
+| Same file twice (no existing job) | two identical uploads | both `202`, same `job_id`. Assert only on `job_id`; the second response's `status` may already be `"completed"` because the mock graph's empty stream completes synchronously. |
 | Same file, job queued, no force | pre-seed queued record | `202`, returns existing queued job without creating a new one |
 | Same file, job running, no force | pre-seed running record | `202`, returns existing running job |
 | Same file, job completed, no force | pre-seed completed record | `202`, returns existing completed job |
@@ -531,11 +546,25 @@ mock_graph.aget_state = AsyncMock(return_value=make_snapshot(
 ))
 ```
 
+**Pre-conditions for all `run_extraction` tests:**
+
+`run_extraction` does `job = jobs[job_id]` at the start. The `jobs` dict must be pre-seeded with a matching `JobRecord` before each call:
+
+```python
+from src.api.jobs import jobs, JobRecord
+from datetime import datetime, timezone
+
+job_id = "test-job-id"
+jobs[job_id] = JobRecord(job_id=job_id, file_name="test.pdf", created_at=datetime.now(timezone.utc))
+```
+
+`aget_state` is called twice: once inside `_resolve_input` (to check for interrupted runs) and once after streaming (to get the final result). If the same `AsyncMock(return_value=...)` is used for both calls, the first call (in `_resolve_input`) sees `snapshot.values` as non-empty, but since `snapshot.next=()` it still returns `{"file_path": ...}` (fresh start). This is acceptable for happy-path tests. To test the resume path, use `side_effect=[fresh_snapshot, final_snapshot]` to differentiate the two calls.
+
 Test cases:
 
-- **Happy path**: job transitions `queued → running → completed`; `job.result` equals the tree dict; `job.total_pages=1`; `job.document_type="baseline_core"`; `job.warnings=[]`; two events recorded in `job.events`; temp file deleted (assert `Path(file_path).exists() == False`).
-- **Exception path**: override `graph.stream` with a function that raises `RuntimeError("boom")` on first `anext()` (use an async generator that does `raise RuntimeError("boom")` before its first `yield`). Assert `job.status="failed"`, `job.error="boom"`, temp file still deleted (`Path(file_path).exists() == False`).
-- **`langfuse=None`**: pass `langfuse=None` explicitly; assert no `AttributeError` is raised; assert `job.status="completed"` to confirm normal flow.
+- **Happy path**: job transitions `queued → running → completed`; `job.result` equals the tree dict; `job.total_pages=1`; `job.document_type="baseline_core"`; `job.warnings=[]`; two entries in `job.events`; temp file deleted (`Path(file_path).exists() == False`).
+- **Exception path**: override `graph.stream` with a function that raises `RuntimeError("boom")` on first `anext()` (async generator that raises before its first `yield`). Assert `job.status="failed"`, `job.error="boom"`, temp file deleted.
+- **`langfuse=None`**: pass `langfuse=None` explicitly; assert no `AttributeError`; assert `job.status="completed"`.
 
 ---
 
