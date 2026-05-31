@@ -1,3 +1,5 @@
+@https://raw.githubusercontent.com/lucagattoni/andrej-karpathy-skills/main/CLAUDE.md
+
 # PDFScout — Claude Code project rules
 
 ## Git workflow
