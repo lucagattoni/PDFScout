@@ -96,11 +96,17 @@ Every node constructs `AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])` 
 
 ```python
 @pytest.fixture(autouse=True, scope="session")
-def set_fake_api_key():
+def set_test_env():
     os.environ["ANTHROPIC_API_KEY"] = "sk-test-fake"
+    # Prevent api.py's module-level _LANGFUSE_ENABLED from being True
+    # if these vars happen to be present in the CI environment.
+    os.environ.pop("LANGFUSE_PUBLIC_KEY", None)
+    os.environ.pop("LANGFUSE_SECRET_KEY", None)
 ```
 
-`os.environ.setdefault` must not be used here: if `ANTHROPIC_API_KEY` is already set in the environment, `setdefault` leaves the real value in place. A patch that silently fails to apply would then call the real Anthropic API.
+`os.environ.setdefault` must not be used for `ANTHROPIC_API_KEY`: if the key is already set in the environment, `setdefault` leaves the real value in place, and a silently misapplied patch would call the real Anthropic API.
+
+Note: `_LANGFUSE_ENABLED` in `api.py` is evaluated at import time. Clearing the Langfuse vars here is only effective if `api.py` has not yet been imported when the fixture runs. In practice this is true because `conftest.py` is loaded before any test module. If this ordering is ever violated, the `langfuse_enabled` health test must assert against the computed constant (`from api import _LANGFUSE_ENABLED`) rather than a hardcoded `False`.
 
 ### 4.2 Global `jobs` Store Isolation
 
@@ -145,12 +151,14 @@ The `mock_graph.stream` method must be an async generator, not a coroutine. An `
 
 ```python
 async def _empty_stream(*args, **kwargs):
-    return
-    yield   # makes this an async generator function
+    # The `if False: yield` idiom makes this an async generator without
+    # the unreachable-code confusion of `return; yield`.
+    if False:
+        yield
 
 @pytest.fixture
-async def mock_graph():
-    graph = AsyncMock()
+def mock_graph():
+    graph = MagicMock()
     graph.stream = _empty_stream
     # aget_state must return an object with .values (dict) and .next (empty tuple)
     snapshot = MagicMock()
@@ -194,8 +202,42 @@ The `finally` block restores the original lifespan. Without it, the module-level
 
 | Fixture | Scope | Description |
 |---|---|---|
-| `sample_block` | function | One well-formed extracted block dict with `bbox.page_number=1` |
+| `sample_block` | function | One well-formed extracted block dict (see structure below) |
 | `sample_state` | function | Minimal `PDFParserState`-compatible dict for node tests |
+
+`sample_block` must match the fields the `baseline_core` schema validates against and that `geometric_pre_sorter` / `pioneer_validation_route` read:
+
+```python
+{
+    "block_id": "blk-001",
+    "type": "paragraph",
+    "text": "Hello world.",
+    "bbox": {
+        "page_number": 1,
+        "coordinates": [100, 50, 200, 80]   # [ymin, xmin, ymax, xmax]
+    },
+    "is_continued": False,
+    "metadata": {}
+}
+```
+
+`sample_state` must include all keys of `PDFParserState` that nodes read:
+
+```python
+{
+    "file_path": "<set per-test via minimal_pdf_path>",
+    "pdf_hash": "a" * 64,
+    "total_pages": 1,
+    "document_type": "baseline_core",
+    "target_json_schema": {},
+    "current_page": 1,
+    "retry_count": 0,
+    "last_validation_error": None,
+    "extracted_flat_blocks": [],
+    "extraction_warnings": [],
+    "hierarchical_document_tree": None,
+}
+```
 
 ---
 
@@ -284,7 +326,9 @@ The function has two branches:
 
 The second branch requires a mock Langfuse client that supports:
 - `langfuse.start_as_current_span(name=...)` as a sync context manager yielding a `span` object.
-- `propagate_attributes(session_id=...)` as a sync context manager (patch `src.utils.tracing.propagate_attributes`).
+- `propagate_attributes(session_id=...)` as a sync context manager.
+
+`propagate_attributes` is imported lazily inside the `if langfuse:` branch with `from langfuse import propagate_attributes` — it is not bound at the module level. Therefore it cannot be patched at `src.utils.tracing.propagate_attributes`. The correct patch target is `langfuse.propagate_attributes` (the source package).
 
 This is the only place the active Langfuse path is tested. The `run_extraction` tests all use `langfuse=None`, so without this unit test `tracing.py` cannot reach 100% coverage.
 
@@ -303,7 +347,7 @@ This is the only place the active Langfuse path is tested. The `run_extraction` 
 
 ---
 
-### 5.7 `tests/unit/test_graph.py` — Graph Topology
+### 5.8 `tests/unit/test_graph.py` — Graph Topology
 
 **`burst_dispatcher_node`**
 - `retry_count=0` → returns `{}`.
@@ -321,7 +365,7 @@ This is the only place the active Langfuse path is tested. The `run_extraction` 
 
 ---
 
-### 5.8 `tests/unit/nodes/test_extractor_node.py` — `native_extractor_node`
+### 5.9 `tests/unit/nodes/test_extractor_node.py` — `native_extractor_node`
 
 Patch target: `src.nodes.extractor_node.get_page_count`.
 
@@ -331,9 +375,13 @@ Patch target: `src.nodes.extractor_node.get_page_count`.
 
 ---
 
-### 5.9 `tests/unit/nodes/test_classifier_node.py` — `classifier_node`
+### 5.10 `tests/unit/nodes/test_classifier_node.py` — `classifier_node`
 
-Patch target: `src.nodes.classifier_node.AsyncAnthropic` (not `anthropic.AsyncAnthropic`).
+Patch targets:
+- `src.nodes.classifier_node.AsyncAnthropic` — intercept the API call.
+- `src.nodes.classifier_node.encode_pdf_async` — return a fixed base64 string so no file I/O occurs.
+
+Both must be patched. Without patching `encode_pdf_async`, the test reads the actual file from disk, making it an integration test rather than a unit test.
 
 - Response text `"invoice"` → `document_type="invoice"`, schema loaded correctly.
 - Response text `"scientific_paper"` → `document_type="scientific_paper"`.
@@ -342,7 +390,7 @@ Patch target: `src.nodes.classifier_node.AsyncAnthropic` (not `anthropic.AsyncAn
 
 ---
 
-### 5.10 `tests/unit/nodes/test_worker_node.py` — `window_parser_node`
+### 5.11 `tests/unit/nodes/test_worker_node.py` — `window_parser_node`
 
 Patch target: `src.nodes.worker_node.AsyncAnthropic`.
 
@@ -353,7 +401,7 @@ Patch target: `src.nodes.worker_node.AsyncAnthropic`.
 
 ---
 
-### 5.11 `tests/unit/nodes/test_retry_node.py` — `retry_incrementor_node`
+### 5.12 `tests/unit/nodes/test_retry_node.py` — `retry_incrementor_node`
 
 - `extracted_flat_blocks=None` (the reset sentinel) → treated as no blocks; error detail mentions "No blocks".
 - `extracted_flat_blocks=[]` (explicit empty list) → same "No blocks" path.
@@ -364,7 +412,7 @@ Patch target: `src.nodes.worker_node.AsyncAnthropic`.
 
 ---
 
-### 5.12 `tests/unit/nodes/test_hierarchy_node.py`
+### 5.13 `tests/unit/nodes/test_hierarchy_node.py`
 
 Patch target: `src.nodes.hierarchy_node.AsyncAnthropic`.
 
@@ -395,11 +443,11 @@ The real `lifespan` in `api.py` calls `AsyncSqliteSaver.from_conn_string(...)` a
 
 ### 6.2 `tests/integration/test_api_health.py`
 
-- `GET /` with `follow_redirects=False` → `307` redirect with `location: /docs`. The test must disable redirect-following; `httpx.AsyncClient` follows redirects by default and would land on `/docs`, hiding the 307.
+- `GET /` with `follow_redirects=False` → `307` redirect with `location: /docs`. Pass `follow_redirects=False` explicitly; while httpx ≥ 0.20 defaults to `False`, being explicit prevents the test from breaking if the client default ever changes.
 - `GET /health` → `200`, body matches `HealthResponse` schema.
 - `status == "ok"`, `model == MODEL`, `fallback_doc_type == FALLBACK_DOC_TYPE`.
 - `supported_doc_types` is sorted alphabetically.
-- `langfuse_enabled` is `False` (no Langfuse env vars set in CI).
+- `langfuse_enabled` is `False`. `api.py` evaluates `_LANGFUSE_ENABLED` at module import time via `os.getenv`, so if `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` are set in the environment the value will be `True` for the entire session. The `set_fake_api_key` autouse fixture must also explicitly unset these two vars (or the test must assert the value matches the actual computed constant rather than hardcoding `False`).
 
 ---
 
@@ -486,8 +534,8 @@ mock_graph.aget_state = AsyncMock(return_value=make_snapshot(
 Test cases:
 
 - **Happy path**: job transitions `queued → running → completed`; `job.result` equals the tree dict; `job.total_pages=1`; `job.document_type="baseline_core"`; `job.warnings=[]`; two events recorded in `job.events`; temp file deleted (assert `Path(file_path).exists() == False`).
-- **Exception path**: `graph.stream` raises `RuntimeError("boom")` → `job.status="failed"`, `job.error="boom"`, temp file still deleted.
-- **`langfuse=None`**: no `AttributeError` raised; `tracing_span` yields `None`; `span.update` is never called.
+- **Exception path**: override `graph.stream` with a function that raises `RuntimeError("boom")` on first `anext()` (use an async generator that does `raise RuntimeError("boom")` before its first `yield`). Assert `job.status="failed"`, `job.error="boom"`, temp file still deleted (`Path(file_path).exists() == False`).
+- **`langfuse=None`**: pass `langfuse=None` explicitly; assert no `AttributeError` is raised; assert `job.status="completed"` to confirm normal flow.
 
 ---
 
@@ -543,7 +591,7 @@ mock_client.messages.create = AsyncMock(side_effect=[
 | `src/schema_registry.py` | 100% | |
 | `src/edges.py` | 100% | |
 | `src/utils/pdf_utils.py` | 100% | |
-| `src/utils/tracing.py` | 100% | `langfuse=None` path in unit test; `langfuse` active path in `run_extraction` test |
+| `src/utils/tracing.py` | 100% | `langfuse=None` path + active Langfuse path both covered in `test_tracing.py` |
 | `src/extractors/page_counter.py` | 100% | |
 | `src/api/jobs.py` | 100% | |
 | `src/api/models.py` | 100% | |
