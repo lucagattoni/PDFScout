@@ -105,15 +105,18 @@ Every node constructs `AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])` 
 @pytest.fixture(autouse=True, scope="session")
 def set_test_env():
     os.environ["ANTHROPIC_API_KEY"] = "sk-test-fake"
-    # Prevent api.py's module-level _LANGFUSE_ENABLED from being True
-    # if these vars happen to be present in the CI environment.
-    os.environ.pop("LANGFUSE_PUBLIC_KEY", None)
-    os.environ.pop("LANGFUSE_SECRET_KEY", None)
+    # Set to empty string rather than popping. api.py calls load_dotenv() at import
+    # time before evaluating _LANGFUSE_ENABLED. load_dotenv() skips vars that are
+    # already present in os.environ (override=False default). Popping the key would
+    # leave it absent, allowing load_dotenv() to re-populate it from a local .env
+    # file. Setting to "" keeps it present so load_dotenv() leaves it alone.
+    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", "")
+    os.environ.setdefault("LANGFUSE_SECRET_KEY", "")
 ```
 
-`os.environ.setdefault` must not be used for `ANTHROPIC_API_KEY`: if the key is already set in the environment, `setdefault` leaves the real value in place, and a silently misapplied patch would call the real Anthropic API.
+`os.environ.setdefault` must not be used for `ANTHROPIC_API_KEY`: if the key is already set in the environment, `setdefault` leaves the real value in place, and a silently misapplied patch would call the real Anthropic API. For the Langfuse keys `setdefault` is appropriate — we only want to set them to empty if they're not already set (a real Langfuse-enabled CI environment should remain unaffected).
 
-Note: `_LANGFUSE_ENABLED` in `api.py` is evaluated at import time. Clearing the Langfuse vars here is only effective if `api.py` has not yet been imported when the fixture runs. In practice this is true because `conftest.py` is loaded before any test module. If this ordering is ever violated, the `langfuse_enabled` health test must assert against the computed constant (`from api import _LANGFUSE_ENABLED`) rather than a hardcoded `False`.
+Note: `_LANGFUSE_ENABLED` in `api.py` is evaluated at import time. This fixture must run before `api.py` is first imported. In practice this holds because `conftest.py` is loaded before any test module. If this ordering is ever violated, the `langfuse_enabled` health test must assert against the computed constant (`from api import _LANGFUSE_ENABLED`) rather than a hardcoded `False`.
 
 ### 4.2 Global `jobs` Store Isolation
 
@@ -408,7 +411,7 @@ Both must be patched, matching the same reasoning applied to `test_classifier_no
 The content list sent to the API is accessible via `mock_client.messages.create.call_args`. Inspect `call_args.kwargs["messages"][0]["content"]` to assert how many items it contains and whether the validation error text is present.
 
 - Response contains `tool_use` block with `blocks=[block]` → returns `{"extracted_flat_blocks": [block]}`.
-- Response contains **no** `tool_use` block → raises `ValueError`. Because `_call_api` is decorated with `@retry(stop=stop_after_attempt(3))`, tenacity will call it 3 times before re-raising. To avoid sleeping between retries in tests, patch `src.nodes.worker_node.wait_exponential` to return `wait_fixed(0)`, or patch `_call_api` directly instead of patching `AsyncAnthropic`.
+- Response contains **no** `tool_use` block → raises `ValueError`. Because `_call_api` is decorated with `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))`, tenacity will retry 3 times with exponential backoff before re-raising — potentially ~7 seconds of test delay. **Patching `src.nodes.worker_node.wait_exponential` will not work**: the `@retry` decorator is applied once at import time and the wait strategy is already baked in. The correct approach is `mocker.patch("tenacity.nap.sleep")` to replace tenacity's internal sleep function with a no-op, making all retries instant. Alternatively, patch `src.nodes.worker_node._call_api` directly to raise `ValueError` immediately, bypassing tenacity entirely.
 - State has `last_validation_error="some error"` → content list has 3 items; third item's `text` contains the error string.
 - State has `last_validation_error=None` → content list has exactly 2 items.
 
@@ -429,7 +432,7 @@ The content list sent to the API is accessible via `mock_client.messages.create.
 
 Patch target: `src.nodes.hierarchy_node.AsyncAnthropic`.
 
-**Tenacity note:** `_call_api` in `hierarchy_node.py` is decorated with `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))`. For the "no `tool_use` block → raises `ValueError`" test, tenacity will retry 3 times with delays (up to ~7 seconds total). Patch `src.nodes.hierarchy_node.wait_exponential` to `wait_fixed(0)` before running that test case, or patch `src.nodes.hierarchy_node._call_api` directly to raise `ValueError` immediately. The same consideration applies to any test that exercises a failure path through the retry decorator.
+**Tenacity note:** `_call_api` in `hierarchy_node.py` is decorated with `@retry(stop=stop_after_attempt(3), wait=wait_exponential(...))`. For the "no `tool_use` block → raises `ValueError`" test, tenacity will retry 3 times with delays (up to ~7 seconds total). As with `worker_node`, patching `src.nodes.hierarchy_node.wait_exponential` does not work — the decorator is already applied at import time. Use `mocker.patch("tenacity.nap.sleep")` or patch `src.nodes.hierarchy_node._call_api` directly.
 
 **`geometric_pre_sorter`**
 - Input: list with one block → output: list with the same block unchanged.
@@ -594,6 +597,10 @@ These run the compiled `build_app(checkpointer=None)` graph with all external I/
 Both `pioneer_parser` and `parser_worker` nodes call the same `window_parser_node` function, which calls `_call_api` inside `src.nodes.worker_node`. Use `side_effect` on the `AsyncAnthropic` mock so successive calls return different responses:
 
 ```python
+mock_anthropic_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
+# All AsyncAnthropic(...) calls return the same mock instance, so side_effect
+# accumulates across all calls to window_parser_node.
+mock_client = mock_anthropic_class.return_value
 mock_client.messages.create = AsyncMock(side_effect=[
     invalid_tool_use_response,   # call 1: pioneer (will trigger retry)
     valid_tool_use_response,     # call 2: pioneer retry (passes validation)
