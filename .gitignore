@@ -8,3 +8,5 @@ api_checkpoint.db
 tmp/
 .coverage
 htmlcov/
+node_modules/
+package-lock.json

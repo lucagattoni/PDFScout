@@ -31,7 +31,7 @@ State is persisted to SQLite after every node. If execution is interrupted, re-r
 
 The pipeline is a LangGraph state machine with two distinct execution phases — sequential for the pioneer page, concurrent for all remaining pages — joined by a map-reduce merge.
 
-```
+```text
 START
   └─► native_extractor          (local: pypdf page count + SHA-256 hash)
         └─► classifier           (Claude: returns document type token)
@@ -224,7 +224,7 @@ No `ANTHROPIC_API_KEY` is required — the suite runs entirely in isolation with
 
 Edit `.env` and set your Anthropic API key:
 
-```
+```text
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -238,7 +238,7 @@ PDFScout ships with optional [Langfuse](https://langfuse.com/) tracing. When ena
 
 To enable, add to your `.env`:
 
-```
+```text
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
@@ -258,7 +258,7 @@ uv run main.py path/to/document.pdf
 
 The output is printed as formatted JSON to stdout. Progress is logged per node:
 
-```
+```text
 Initializing extraction pipeline for: document.pdf (thread: a3f1c9d2...)
 [GRAPH] Node 'native_extractor' completed.
 [GRAPH] Node 'classifier' completed.
@@ -273,7 +273,7 @@ Extraction complete. Output tree:
 
 If the pioneer page failed validation after 3 retries, a warning is printed before the tree:
 
-```
+```text
 WARNINGS:
   ! Pioneer page (page 1) failed schema validation after 3 retries. Page 1 data may be incomplete or structurally invalid.
 ```
@@ -305,7 +305,7 @@ lifecycle, and operational notes.
 
 ## Project Structure
 
-```
+```text
 PDFScout/
 ├── .python-version             # Pins Python 3.13
 ├── .env.example                # Required environment variables template
