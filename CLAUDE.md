@@ -1,5 +1,3 @@
-@https://raw.githubusercontent.com/lucagattoni/andrej-karpathy-skills/main/CLAUDE.md
-
 # PDFScout — Claude Code project rules
 
 ## Git workflow
@@ -26,3 +24,12 @@
 
 - Always use the **devil's advocate** approach: actively try to find what can go
   wrong before accepting a design or implementation as sound.
+
+## New coding project setup
+
+When initialising any new coding project:
+
+1. Pull the latest commits from `main` on `~/Code/repos/github_lucagattoni/andrej-karpathy-skills`
+2. Copy the full content of its `CLAUDE.md` into the new project's `CLAUDE.md` (above the project-specific rules)
+
+If the project is not clearly about code, or if it's unclear, ask the user first.
