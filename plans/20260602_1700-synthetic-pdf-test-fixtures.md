@@ -11,7 +11,8 @@ _Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions app
 _Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_
 _Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_
 _Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_
-_Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_  
+_Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_
+_Updated: 2026-06-02 22:30 · v13 — pass 8 (automated): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change; generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-API-key); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent no-preceding-heading edge case specified_  
 
 ---
 
@@ -100,8 +101,11 @@ classification paths (`invoice` and `scientific_paper`).
    some nodes mocked for isolation — see each group for specifics) and Group F
    additionally has a **narrow tier** (direct function call, pre-built state, no PDF
    required, see §Narrow tests). Other groups do not benefit from narrow tests — see
-   §Narrow tests for the analysis. The `@pytest.mark.e2e` marker means "requires
-   `ANTHROPIC_API_KEY`", not "full pipeline with no mocks."
+   §Narrow tests for the analysis. The `@pytest.mark.e2e` marker means "excluded from
+   `make test`", not "full pipeline with no mocks." Groups B–H require a real
+   `ANTHROPIC_API_KEY` to pass; Group A tests also carry `@pytest.mark.e2e` (to exclude
+   from `make test`) but make no API calls. Any conftest skip logic for a missing real
+   key must target groups B–H only — not `@pytest.mark.e2e` at large.
 
 5. **Text matching is normalized by default.** `normalize_text=True` is the default in
    `_compare.py`. Tighten to exact matching only if a group's test passes normalization
@@ -302,8 +306,10 @@ def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -
     """
 
 def assert_table_data(block: dict, expected_rows: int, expected_cols: int,
-                      header_row_count: int = 1) -> None:
-    """Validates metadata.table_data cell count, dimensions, and header flags."""
+                      header_row_count: int = 1,
+                      expected_values: list[str] | None = None) -> None:
+    """Validates metadata.table_data dimensions and header flags. When expected_values
+    is provided, each string must appear in at least one cell's value field."""
 
 def assert_nearest_heading_parent(blocks: list[dict]) -> None:
     """
@@ -311,6 +317,8 @@ def assert_nearest_heading_parent(blocks: list[dict]) -> None:
     nearest preceding heading in the sorted block list. Requires blocks to already
     be in geometric sort order (as returned by the pipeline).
     Raises AssertionError if any paragraph's parent is not its nearest heading.
+    A paragraph with no preceding heading triggers AssertionError — the fixture
+    must ensure at least one heading appears before the first paragraph.
     """
 ```
 
@@ -458,7 +466,8 @@ state = {
     "document_type": "baseline_core",   # written to hierarchical_document_tree output
     "pdf_hash": "x" * 64,               # written to hierarchical_document_tree output
     "extracted_flat_blocks": [           # the input under test
-        # hand-crafted blocks go here
+        # Required per-block fields: block_id (str), type (str), text (str),
+        # bbox: {"page_number": int, "coordinates": [ymin, xmin, ymax, xmax]}
     ],
     "extraction_warnings": [],           # merged into output warnings
 }
@@ -737,13 +746,14 @@ without crashing.
 ### Phase 1 — Foundation: Groups A, B, C + infrastructure
 
 - `tests/fixtures/` directory structure; `tests/fixtures/pdfs/` in `.gitignore`
-- `generate_all.py` CLI: session-scoped pytest fixture checks SHA-256 against `manifest.json`; regenerates on missing file or hash mismatch; updates manifest entry after regeneration
+- `generate_all.py` CLI: hash-check function compares generator SHA-256 against `manifest.json`; regenerates PDFs on missing file or hash mismatch; updates manifest entry. The session-scoped autouse fixture that invokes this function must be defined in `tests/integration/conftest.py` — pytest does not auto-discover fixtures from non-conftest files in `generators/`
 - `_common.py` fpdf2 helpers: `make_pdf()` factory (FPDF subclass with pinned creation date and A4 defaults), `draw_text()`, `draw_table()`, `draw_figure_rect()` helpers; `COORD_SCALE` / `BBOX_ASSERTIONS_VIABLE` constants
 - Generators and golden files for A1–A3, B1–B2, C1–C9
 - `tests/integration/_compare.py`: `assert_blocks_match` (`normalize_text=True` default),
   `assert_table_data`
 - Integration tests for groups A, B, C
 - `make fixtures [GRP=x]` target; `make test-e2e` shortcut
+- **`tests/conftest.py`**: change `os.environ["ANTHROPIC_API_KEY"] = "sk-test-fake"` to `os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-fake")` — without this, any real key in the shell is overwritten and all B–H API calls fail with authentication errors
 - **Register all pytest markers in `pyproject.toml`**:
   `e2e`, `grp_a`, `grp_b`, `grp_c`, `grp_d`, `grp_e`, `grp_f`, `grp_g`, `grp_h`,
   `integration_chain`
@@ -883,4 +893,7 @@ _v6 — 2026-06-02 19:30 — narrow-test section rewritten after third devil's a
 _v7 — 2026-06-02 20:00 — generator library switched from reportlab to fpdf2: Design Principle 1 updated (fpdf2, determinism via set_creation_date); _common.py spec updated (make_pdf factory, draw_text, draw_table, draw_figure_rect); coordinate section rewritten — axis-flip formula eliminated, fpdf2 top-left matches Claude convention, calibration simplified to COORD_SCALE × mm; D/A calibration sub-section updated (top-left concern resolved, stale formula removed, three-fixture-in-Phase-0 contradiction fixed); binary-PDF storage resolved as approach 3 (regenerate + manifest hash): manifest.json added to committed artifacts, directory layout and Phase 1 checklist updated, generate_all.py spec updated with hash-check logic; G1 column position labels corrected (mm generator coords shown, "pt" label removed)_  
 _v8 — 2026-06-02 20:30 — D/A section removed (all 24 entries fully applied to plan body); open questions updated: stale F4/F5 reference fixed (F4 figure-caption removed, F5 → F4 multi-heading), §D/A reference removed, manifest.json added to golden-file review step; cost estimate F:5 → F:4; v5 restored to header_
 _v9 — 2026-06-02 21:00 — pass 4 D/A: A3 classifier-mock assertion removed (inapplicable in direct-call context); C and E hierarchy mocks clarified to empty-relations pattern (avoids dynamic block_id requirement; existing _make_relation_response helper reused); E classifier mock documented explicitly; G1 column assertion rewritten to bucket-based (no calibration dependency; works when BBOX_ASSERTIONS_VIABLE=False); G1 note explains why buckets beat page_width/2; assert_hierarchy_structure "all blocks" semantics added; grp_f excluded from manifest.json (no PDF output); integration-gap section aligned with Phase 4 (reuses B1, softer warnings check); full-chain table_data assertion resolved (stronger); pytest "run all e2e" command fixed (test_full_chain.py was excluded by glob); all 6 risks rewritten; 2 new risks added (model version drift; B1 PDF adequacy)_
-_v10 — 2026-06-02 21:30 — pass 5 (automated /refine-plan): 8 MEDIUM resolved: "tests fallback path" wording corrected to "cannot test baseline_core"; e2e marker clarified as API-key-required not no-mocks; A and F removed from positional-matching group (A has no blocks, F uses structural assertions); _make_relation_response moved to _compare.py spec with shared-helper note; model_version field added to golden file format + meta note; Group B mock setup fully specified (NOT mock classifier encode_pdf_async, DO mock worker AsyncAnthropic and hierarchy); C5/C6 note updated to match Risk 1 run-once-first guidance; Group D hierarchy mock specified as _make_relation_response([]); Group E orphan-warning note added; Phase 0 classifier mock return value specified; Phase 2 prompt prerequisite gate added; H1 text-length threshold 10→30; C8 text-presence intent explicitly documented_  
+_v10 — 2026-06-02 21:30 — pass 5 (automated /refine-plan): 8 MEDIUM resolved: "tests fallback path" wording corrected to "cannot test baseline_core"; e2e marker clarified as API-key-required not no-mocks; A and F removed from positional-matching group (A has no blocks, F uses structural assertions); _make_relation_response moved to _compare.py spec with shared-helper note; model_version field added to golden file format + meta note; Group B mock setup fully specified (NOT mock classifier encode_pdf_async, DO mock worker AsyncAnthropic and hierarchy); C5/C6 note updated to match Risk 1 run-once-first guidance; Group D hierarchy mock specified as _make_relation_response([]); Group E orphan-warning note added; Phase 0 classifier mock return value specified; Phase 2 prompt prerequisite gate added; H1 text-length threshold 10→30; C8 text-presence intent explicitly documented_
+_v11 — 2026-06-02 21:45 — pass 6 (automated /refine-plan): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_
+_v12 — 2026-06-02 22:00 — pass 7 (automated /refine-plan): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_
+_v13 — 2026-06-02 22:30 — pass 8 (automated /refine-plan): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change (setdefault fix); generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-key; Group A exception documented); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent edge case specified_  
