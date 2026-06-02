@@ -10,7 +10,8 @@ _Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF sto
 _Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_
 _Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_
 _Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_
-_Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_  
+_Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_
+_Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_  
 
 ---
 
@@ -262,9 +263,20 @@ pipeline completes without exception and `len(blocks) <= 1`.
 ### `_compare.py` helper spec
 
 ```python
+# --- Mock factories (shared across grp_b through grp_g tests) ---
+
+def _make_tool_use_response(blocks: list) -> MagicMock:
+    """Mock factory for worker/pioneer node API response. Move here from
+    test_graph_pipeline.py so grp_b tests can import without cross-test-file imports."""
+
+def _valid_block(page: int = 1) -> dict:
+    """Minimal valid block for use as a worker mock return value in grp_b tests."""
+
 def _make_relation_response(relations: list) -> MagicMock:
     """Mock factory for hierarchy node API response. Move here from test_graph_pipeline.py
-    so grp_c, grp_d, and grp_e tests can import it without cross-test-file imports."""
+    so grp_c through grp_g tests can import without cross-test-file imports."""
+
+# --- Assertion helpers ---
 
 def assert_blocks_match(
     expected: list[dict],
@@ -285,7 +297,7 @@ def assert_blocks_match(
 def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -> None:
     """
     Checks parent-child relationships without pinning exact block_id values.
-    HierarchyRule: (child_type: str, expected_parent_type: str | None)
+    HierarchyRule = NamedTuple(child_type: str, expected_parent_type: str | None)
     Each rule applies to ALL blocks of the given child_type, not just some.
     """
 
@@ -637,7 +649,7 @@ order within a page and in the same `xmin // 50` bucket (e.g., all `xmin = 70`) 
 | ID | Pre-built blocks | Expected hierarchy | Key assertions |
 |---|---|---|---|
 | F1 | `[heading, paragraph]` | paragraph under heading | `paragraph.parent_id` resolves to `heading.block_id`; heading `parent_id == null` |
-| F2 | `[heading, paragraph, paragraph, table]` | paragraphs + table under heading | all three blocks' `parent_id` → heading's `block_id` |
+| F2 | `[heading, paragraph, paragraph, table]` | paragraphs + table under heading | all three blocks' `parent_id` → heading's `block_id`; use `assert_hierarchy_structure` with rules `[HierarchyRule("paragraph", "heading"), HierarchyRule("table", "heading")]` |
 | F3 | `[title, heading, paragraph]` | title at root; heading at root; paragraph under heading | `title.parent_id == null`; `heading.parent_id == null`; `paragraph.parent_id` → heading |
 | F4 | `[heading-A, para-A1, para-A2, heading-B, para-B1, para-B2]` | each paragraph under its nearest preceding heading | `assert_nearest_heading_parent(blocks)` |
 
@@ -695,6 +707,11 @@ calculation explicitly.
 ### Group H — Graceful degradation (1 Claude call)
 
 Reduced to H1 only. H2 (long paragraph) moved to C9.
+
+Classifier is mocked to return `"baseline_core"`. Hierarchy is mocked with
+`_make_relation_response([])`. H1 is a smoke test for the full pipeline path; mocking
+classifier and hierarchy keeps the focus on whether the pipeline handles blank input
+without crashing.
 
 | ID | PDF content | Assertions |
 |---|---|---|
