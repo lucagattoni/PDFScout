@@ -4,8 +4,10 @@ _Created: 2026-06-02 17:00_
 _Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching strategy, compare helper spec_
 _Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_
 _Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-point devil's advocate review_
-_Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected (A terminology, B mislabeled, C wrong argument, D "partially useful" → not justified, E dead E3 reference removed, F structural argument added, G sharpened, H strengthened)_
-_Updated: 2026-06-02 20:00 · v7 — PDF generator switched from reportlab to fpdf2; binary-PDF storage resolved as approach 3 (regenerate + manifest hash): manifest.json committed, SHA-256 checked at session start_
+_Updated: 2026-06-02 19:00 · v5 — second devil's advocate pass: 18 further issues resolved_
+_Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected_
+_Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF storage resolved as approach 3 (manifest hash)_
+_Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_
 
 ---
 
@@ -114,7 +116,7 @@ tests/
       grp_c_blocktypes.py           # C1–C9
       grp_d_metadata.py             # D1–D5
       grp_e_multipage.py            # E1–E2
-      grp_f_hierarchy.py            # F1–F5 (pre-built state; no PDF generator needed)
+      grp_f_hierarchy.py            # F1–F4 (pre-built state; no PDF generator needed)
       grp_g_layout.py               # G1
       grp_h_edge.py                 # H1
       generate_all.py               # CLI + pytest session fixture
@@ -456,367 +458,6 @@ at its seams (e.g., state key name changes) while all individual groups pass.
 
 ---
 
-## Devil's advocate: known weaknesses and resolutions
-
-A systematic review of every assumption in this plan, organized by section.
-
----
-
-### On the goal: "ground truth" is a misnomer
-
-The plan previously used "ground truth at generation time." Ground truth implies
-mathematical certainty. What golden files actually contain is **expected output** based
-on a single (or a few) runs at a point in time. If the model updates, golden files
-become stale silently. Using "expected output" throughout is more accurate.
-
-**Resolution:** terminology changed throughout the plan.
-
----
-
-### On binary PDFs in git
-
-Committing PDF binaries creates diffs that are unreadable, review impossible, and
-repository size that compounds with every regeneration. A generator script change that
-fixes a typo produces a binary diff with no way to verify the fix.
-
-**Resolution:** three alternatives were evaluated:
-1. **Regenerate at test time** via a pytest `session`-scoped fixture. Generators run
-   once per test session if the PDF doesn't exist. PDFs are in `.gitignore`; only
-   generators and golden files are tracked.
-2. **Git LFS** for PDF storage. Keeps PDFs in git history but requires LFS setup on
-   every machine and CI; PR diffs still show only a hash change.
-3. **Regenerate + manifest hash.** A `manifest.json` commits the SHA-256 of each
-   expected PDF. At session start: if PDF exists and hash matches → use it; else
-   regenerate. Detects generator ↔ golden divergence explicitly; hash change visible
-   in PR diffs as a one-line JSON diff.
-
-**Decision: approach 3 (regenerate + manifest hash).** Rationale:
-- fpdf2 determinism is verified: `pdf.set_creation_date(datetime(2000, 1, 1,
-  tzinfo=timezone.utc))` pins the timestamp; the file ID is derived from buffer content
-  hash (not random/uuid); fpdf2's own regression suite relies on byte-for-byte stable
-  output.
-- The manifest catches generator ↔ golden divergence before any LLM call is made. If
-  a generator script changes without a corresponding golden update, the session fixture
-  fails immediately with a hash mismatch rather than producing a mysterious test failure
-  after a real API call.
-- Hash changes are reviewable in PRs as a one-line JSON diff in `manifest.json`.
-- The only residual caveat: pinning fpdf2's version in `pyproject.toml` (already
-  required for reproducible installs) ensures the hash does not change across machines.
-
-**Implementation requirements (added to Phase 1):**
-- `generate_all.py` writes `tests/fixtures/manifest.json` after each
-  generator run: `{generator_name: sha256_hex}`.
-- The pytest session fixture checks hash on startup; mismatch → regenerate and update.
-- `make fixtures` regenerates and updates `manifest.json`; the updated file is committed.
-- `manifest.json` is committed alongside golden files. PDFs remain in `.gitignore`.
-
-**Decision: PDFs are NOT committed. Only generators, golden files, and manifest.json
-are committed.** `tests/fixtures/pdfs/` goes in `.gitignore`.
-
----
-
-### On coordinate calibration: scale consistency assumption
-
-The calibration plan runs ONE fixture (C1) and derives a single `COORD_SCALE`. But
-Claude's internal coordinate space might:
-1. Vary by page content density (more complex pages might render at a different effective
-   DPI or scale)
-2. Produce a non-integer multiplier — applying a float scale to integer source coordinates
-   produces rounding that compounds per-block
-
-The axis-flip concern from earlier drafts is **resolved by the switch to fpdf2**: fpdf2
-uses top-left origin by definition, matching Claude's convention. No formula inversion is
-needed and no empirical check of the reference point is required.
-
-**Resolution:** Phase 0 (C1 only) derives the initial `COORD_SCALE`. Phase 1 (when D1
-and G1 exist) repeats the check across content types to verify scale consistency. If
-the factor differs between fixtures, `BBOX_ASSERTIONS_VIABLE = False` is set permanently.
-The calibration doc is committed as `tests/fixtures/generators/calibration_notes.md`.
-
----
-
-### On ±5 % bbox tolerance: wrong denominator
-
-±5 % of page HEIGHT is ≈ 42 pt on A4. For a block that's 20 pt tall, the allowed error
-is ±42 pt — more than two block heights. A block in the wrong region of the page would
-still pass. This tolerance validates almost nothing about block location.
-
-If bbox assertions are viable, use **±5 % of the block's own dimension** (height for y
-coords, width for x coords) rather than page dimension. This scales with block size and
-is semantically meaningful: a block is within 5 % of where it should be relative to
-itself. For blocks smaller than 10 pt, apply a floor of ±5 pt absolute.
-
-**Resolution:** tolerance formula in `_compare.py` uses ±5 % of block's own dimension
-as specified in the comparison contract. The "≈ ±36 pt on A4" statement has been
-removed from the plan body.
-
----
-
-### On exact text matching: will fail immediately
-
-Claude normalizes whitespace (collapses multiple spaces to one), may alter quote styles
-(straight → curly), and may include/exclude trailing punctuation. Starting with exact
-matching means tests fail from the first run and we spend time weakening assertions
-rather than testing behavior.
-
-**Resolution (already in Design Principle 5):** `normalize_text=True` is the default.
-Normalization: strip leading/trailing whitespace, collapse internal whitespace to single
-spaces, normalize Unicode quotes to ASCII. Do NOT lowercase (case changes are meaningful
-extraction errors).
-
----
-
-### On `block_count` in golden files: strict count causes false negatives
-
-If Claude merges two adjacent paragraphs into one block (acceptable behavior), a test
-asserting `block_count == 3` fails even though the content is fully present. This
-produces a false negative — the test flags a regression where none exists.
-
-**Resolution:** remove `block_count` from golden files. Assert instead:
-- For known-single-block tests (C1–C3, C5, C6): `len(blocks) >= 1` and the
-  expected text appears in some block.
-- For known-multi-block tests (C4, F2, etc.): `len(blocks) >= expected_minimum`,
-  not `len(blocks) == expected_exact`.
-
----
-
-### On Group B: Design Principle 4 contradiction
-
-Group B mocks all nodes except the classifier. Design Principle 4 says "full e2e."
-These are contradictory. Resolving in favour of Group B's design: **Group B tests
-the classifier in isolation (other nodes mocked)**. This is explicitly not full e2e.
-The full-chain integration test (see §Narrow tests) covers what Group B's e2e would
-have covered.
-
----
-
-### On B3: the assertion is trivially true
-
-The proposed fallback assertion for B3 is "document_type is a non-empty string." But
-`document_type` is always non-empty — the fallback path hardcodes it to `"baseline_core"`.
-This assertion would pass for any input, including a broken classifier that always
-falls back.
-
-**Resolution:** remove B3 as a standalone test. The fallback path is already exhaustively
-tested in `test_classifier_node.py:test_unknown_falls_back`. An e2e fixture for an
-ambiguous PDF adds no diagnostic value and is inherently unreliable (we can't control
-what the model returns for ambiguous content). **B3 is dropped. Group B has two tests:
-B1 (invoice) and B2 (scientific paper).**
-
----
-
-### On C5 and C6: block types without visual signals are unreliable
-
-C5 (footnote): a paragraph placed at page bottom without a horizontal rule, superscript
-references, or reduced font size is visually indistinguishable from a regular paragraph.
-The model will likely classify it as `paragraph`, not `footnote`.
-
-C6 (margin element): text in a narrow left-column without distinctive formatting (grey
-background, smaller font, or explicit sidebar styling) will likely be classified as
-`paragraph`.
-
-Both tests will be flaky because achieving the target block type depends on visual
-signals that are difficult to guarantee in programmatic PDF generation.
-
-**Resolution:** C5 and C6 are redesigned:
-- C5 becomes **C5_footnote_styled**: uses reduced font size (7pt vs. 11pt body), a
-  thin horizontal rule above it, and a superscript reference marker in the body text.
-  Multiple strong signals, not just position.
-- C6 becomes **C6_margin_styled**: uses a sidebar with a grey rectangle behind the
-  text and a clearly narrower column (< 25% of page width).
-- If after implementation both still prove flaky (> 20% failure rate across 10 runs),
-  they are removed from Group C and noted as "block types that require real-world
-  documents."
-
----
-
-### On C7: `baseline_core` schema doesn't validate `table_data` structure
-
-`window_parser_node` calls `SchemaRegistry().get_schema_and_tool(state["document_type"])`.
-For C7, the injected `document_type="baseline_core"` makes it use the `baseline_core`
-schema, which defines `metadata` as `{"type": "object"}` — completely open. The model
-can return any structure for `metadata.table_data` and the schema validation passes.
-This means the retry loop won't fire even on malformed table_data, and the test won't
-catch a broken table structure.
-
-**Resolution:** C7 is moved to Group D where the classifier is mocked to return
-`invoice`, forcing the invoice schema (which has `table_data` as a typed subfield).
-C7's slot in Group C is replaced by a simpler table-presence test: assert a `table`
-block exists with non-empty `text`. D1 handles the structured `table_data` assertion.
-
----
-
-### On C8: a grey rectangle may not be classified as `figure`
-
-A filled rectangle drawn with fpdf2 (`pdf.rect()` with fill) produces a grey shape
-with no semantic metadata in the PDF content stream. Claude reads the page visually —
-a grey box without a "Figure N:" label or caption is likely classified as nothing
-(skipped) or as a generic `paragraph` with empty text.
-
-**Resolution:** C8 generates a PDF with:
-1. A grey filled rectangle (figure placeholder)
-2. "Figure 1: Synthetic chart placeholder" in caption text immediately below it (bold, smaller font)
-The caption provides the critical signal. Assert: at least one `figure` OR a block
-whose text starts with "Figure 1:". The `figure` type detection is an aspirational
-assertion; the caption text assertion is the hard one.
-
----
-
-### On Group D: optional metadata subfields are not guaranteed
-
-The `scientific_paper` schema's `bibliographic`, `section`, `reference`, and
-`figure_table` subfields are in `properties` but NOT in `required` within `metadata`.
-The extraction prompt does not instruct the model to populate specific metadata
-subfields — it says only "return structured data matching the schema parameters."
-Without explicit instructions, the model may return all content in `text` without
-populating any metadata subfields, and schema validation still passes.
-
-**Resolution:** D2–D5 assertions change from "assert subfield is populated" to
-"assert subfield is populated OR text contains the expected content." This
-acknowledges that the model may put the information in `text` rather than structured
-metadata. If a subfield is consistently unpopulated across runs, the extraction prompt
-needs updating (a prompt change), not a test change.
-
-D5's `referenced_block_id` assertion is **dropped** — block IDs are non-deterministic
-and cannot be pinned.
-
----
-
-### On D3 section metadata format: model may format differently
-
-D3 asserts `section_number == "2"` and `section_title == "Methodology"`. The model
-might return `section_number == "2."` (with period) or `section_title == "2. Methodology"`
-(with the number included). These are not schema violations but are value mismatches.
-
-**Resolution:** use normalized substring matching: assert `"2" in section_number` and
-`"Methodology" in section_title` rather than exact equality.
-
----
-
-### On E2: `len(blocks) == 5` is fragile
-
-A 5-page doc where each page has 1 paragraph does not guarantee exactly 5 blocks.
-The extractor for any page might return 0 blocks (triggering a retry for page 1, or
-silently producing nothing for pages 2–5). Asserting exact count will produce false
-negatives whenever the model splits or merges content.
-
-**Resolution:** assert `for page in range(1, 6): any block with bbox.page_number == page`.
-This tests "all pages were extracted" without assuming one block per page.
-
----
-
-### On E3: `is_continued` is not prompted
-
-The extraction prompt says only "Extract structure elements EXCLUSIVELY located on
-physical Page N." There is no instruction to set `is_continued`. The field's schema
-default is `false`. The model will reliably return `false` because it receives no
-signal to do otherwise.
-
-**Resolution:** E3 is **suspended** pending a decision on the extraction prompt. Before
-implementing E3, confirm in the extraction prompt that `is_continued` should be set
-when content continues. If the prompt is not updated, E3 will always fail and should
-not be committed. Document this as a known gap in the extraction prompt.
-
----
-
-### On F3: contradicts the hierarchy node's documented rules
-
-The hierarchy node prompt states: "Top-level blocks (title, unpaired headings) get
-`parent_id = null`." F3 expects "heading is child of title" — i.e., heading should
-have `parent_id` pointing to the title. The documented rule says headings are always
-root-level (parent_id = null).
-
-Either F3's assertion is wrong (the heading SHOULD be null per the prompt) or the
-hierarchy prompt needs to be extended to describe title→heading nesting explicitly.
-
-**Resolution:** F3 is redesigned. The 3-level test is replaced by verifying that
-the hierarchy node correctly keeps a standalone title at root AND simultaneously
-assigns paragraphs under a heading when both are present. This is two separate
-assertions within the same test, not a 3-level nesting assertion.
-
----
-
-### On F4: type-of-parent check cannot distinguish heading-1 from heading-2
-
-F4 has 2 headings each with 2 paragraphs. `assert_hierarchy_structure` checking
-"paragraph's parent is some heading" passes even if ALL paragraphs point to the same
-heading (which is wrong). The structural rule requires that each paragraph points to
-its NEAREST preceding heading.
-
-**Resolution:** F4 assertion uses position-based checking: sort blocks by ymin,
-identify heading positions, then for each paragraph verify its `parent_id` matches
-the `block_id` of the nearest preceding block with `type == "heading"` in the sorted
-list. This requires a new helper: `assert_nearest_heading_parent(blocks)`.
-
----
-
-### On G2: duplicates existing unit test coverage
-
-G2 ("10 paragraphs in monotonic top-to-bottom order") tests the same behavior as
-`test_hierarchy_node.py:test_sorts_by_ymin_within_column` — which already covers the
-geometric_pre_sorter. G2 adds an API call cost to verify behavior that is already
-deterministically unit-tested.
-
-**Resolution:** G2 is dropped. Group G has one test: G1 (two-column layout).
-
----
-
-### On H1: the assertion is too weak
-
-Allowing `len(blocks) <= 2` on a blank page means the test only catches exceptions,
-not behavioral regressions. If the model hallucinates 5 blocks on a blank page, the
-test still passes.
-
-**Resolution:** H1 asserts `len(blocks) <= 1`. If a block is returned, it must have
-`text.strip() == ""` or `len(text.strip()) < 10` (any "hallucinated" content is
-short). H1 is fundamentally a smoke test, not a quality test — name it accordingly.
-
----
-
-### On H2: duplicate of C1 extension
-
-H2 (500-word full-page paragraph) tests extraction quality on longer text. This is
-C1 with more words — not a distinct concern. H2 is moved to **C9** (long paragraph
-extraction) and Group H is reduced to H1 only.
-
----
-
-### On `COLUMN_BUCKET_PX` dependency
-
-G1 relies on `COLUMN_BUCKET_PX = 50` being the column bucket width. If `src/config.py`
-changes this constant, G1 may silently start failing. The test should import
-`COLUMN_BUCKET_PX` from `src.config` and document the column placement calculation
-explicitly so a future developer knows why the left column (x_mm ≈ 12.7 mm) yields
-Claude xmin ≈ 36 → bucket 0, and the right column (x_mm ≈ 111 mm) yields
-Claude xmin ≈ 315 → bucket 6 (assuming COORD_SCALE ≈ 2.835).
-
----
-
-### On cost estimate: retries not accounted for
-
-The estimate of ~30 calls assumes every pioneer extraction passes on the first attempt.
-With retries, a 25% retry rate on 20 extraction tests = ~5 extra calls. Actual expected
-range: **30–50 Claude calls per full run**. At ~$0.02/call average: $0.60–$1.00 per
-run. The estimate is directionally correct but should be stated as a range.
-
----
-
-### On pytest markers: not registered in `pyproject.toml`
-
-The `grp_a`, `grp_b`, …, `integration_chain` markers don't exist in `pyproject.toml`.
-Running pytest with unregistered markers triggers warnings and can cause marker
-mismatches. **Add all markers to `pyproject.toml` under `[tool.pytest.ini_options]`
-as part of Phase 1.**
-
----
-
-### On `make fixtures GRP=c`: not in the Makefile
-
-The current `Makefile` doesn't accept a `GRP` parameter. **Add `fixtures` target with
-optional `GRP` filter as part of Phase 1.**
-
----
-
 ## Test groups
 
 Groups are ordered by concern, not by complexity. Within each group, tests are numbered
@@ -856,8 +497,7 @@ principles and §Narrow tests for the rationale).
 
 > B3 (ambiguous → fallback) is removed. The fallback path is already exhaustively
 > tested in `test_classifier_node.py:test_unknown_falls_back`. An e2e fixture for
-> ambiguous content is unreliable because we can't control the model's response — see
-> §Devil's advocate for the full reasoning.
+> ambiguous content is unreliable because we can't control the model's response.
 
 ---
 
@@ -936,7 +576,7 @@ so the `block_id` uniqueness assertion is meaningful.
 >
 > E3 (`is_continued`) is **suspended** until the extraction prompt explicitly instructs
 > the model to set `is_continued`. The current prompt has no such instruction; the field
-> defaults to `false` and E3 would always fail. See §Devil's advocate for details.
+> defaults to `false` and E3 would always fail.
 
 ---
 
@@ -1044,7 +684,7 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 ### Phase 3 — Pipeline behavior: Groups E and F
 
 - Multi-page generators (E1, E2); E3 remains suspended pending prompt update
-- Hierarchy tests (F1–F5) as **narrow function calls** (no PDF; pre-built state)
+- Hierarchy tests (F1–F4) as **narrow function calls** (no PDF; pre-built state)
 - `assert_nearest_heading_parent` helper added to `_compare.py`
 - Integration tests for group E; narrow tests for group F
 
@@ -1063,7 +703,7 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 
 ## Remaining open questions / risks
 
-The §Devil's advocate section resolved most prior risks. The following remain open.
+The following risks remain open.
 
 1. **C5 and C6 reliability.** The redesigned fixtures (footnote-styled, margin-sidebar)
    add multiple visual signals but still cannot guarantee the model returns the target
@@ -1081,16 +721,18 @@ The §Devil's advocate section resolved most prior risks. The following remain o
    known gap in the extraction prompt, not a gap in the test plan.
 
 4. **F narrow test flakiness.** The hierarchy LLM makes judgment calls on ambiguous
-   inputs. F4 (figure → caption) and F5 (2 headings, 4 paragraphs) may have higher
-   variance. If either fails > 30% across 10 runs, loosen the assertion (e.g., F4:
-   "caption has SOME parent_id" rather than "parent_id → figure block").
+   inputs. F4 (2 headings, 4 paragraphs — nearest-heading disambiguation) may have
+   higher variance. If it fails > 30% across 10 runs, loosen the assertion to
+   "paragraph has SOME parent_id" rather than requiring the nearest preceding heading
+   specifically.
 
 5. **Golden file staleness.** Prompt or schema changes require `make fixtures` +
-   `git diff tests/fixtures/golden/` review. The diff is human-readable (golden files
-   are JSON). A semantically reasonable diff means the change is safe.
+   `git diff tests/fixtures/golden/ tests/fixtures/manifest.json` review. Golden diffs
+   are human-readable JSON; manifest diffs show one changed SHA-256 per affected
+   generator. A semantically reasonable diff means the change is safe.
 
-6. **Cost.** Expected API calls: A: 0, B: 2, C: 9, D: 5, E: 4, F: 5 (narrow, no PDF),
-   G: 1, H: 1, full-chain: 3 = ~30 calls + ~10 retry overhead = **30–50 calls per
+6. **Cost.** Expected API calls: A: 0, B: 2, C: 9, D: 5, E: 4, F: 4 (narrow, no PDF),
+   G: 1, H: 1, full-chain: 3 = ~29 calls + ~10 retry overhead = **30–50 calls per
    full suite run.** At ~$0.02/call: $0.60–$1.00 per run. Nightly CI is appropriate.
 
 ---
@@ -1128,3 +770,4 @@ _v4 — 2026-06-02 18:30 — Option 2 narrow-test conclusions (Group F only; oth
 _v5 — 2026-06-02 19:00 — second devil's advocate pass; 18 further issues resolved: Design Principle 1 contradiction (PDFs not committed); comparison contract updated (is_continued removed, bbox tolerance corrected); bbox note formula corrected; normalize_text default fixed in _compare.py spec; docstring lowercasing removed; block_count removed from golden file example; D2 assertion garbled (copy-paste from D3) fixed; calibration section "Level 1" stale name fixed; Phase 0 C7/G1 impossibility fixed; F1 redesigned (single-block path skips LLM — already unit-tested, no value); F4 removed (figure-caption has no documented hierarchy rule); F state spec trimmed to only keys the function reads; G1 assertion fixed (xmin-based, not text-prefix-based — circular); E hierarchy mock clarified (AsyncAnthropic, not whole function); same for C; full-chain test assertion hardened; hierarchy assertions section updated with documented vs undocumented rules_
 _v6 — 2026-06-02 19:30 — narrow-test section rewritten after third devil's advocate pass on that section specifically: added three-condition formal definition; A verdict corrected (N/A — not a strategy choice); B verdict corrected (concern-isolated, not technically narrow — fails all 3 conditions); C argument replaced (identity problem: narrow C = e2e C minus schema validation, false-confidence argument was empirically wrong); D verdict changed from "partially useful" to "not justified" (bypasses pioneer_validation_route — the key signal for D, creates false confidence); E verdict corrected (LangGraph Send API dependency — E3 reference was dead, E3 is suspended); F section rewritten to lead with the structural argument (only LLM node without encode_pdf_async); G verdict sharpened (file_path still required + conditional isolation already covers diagnostic gap); H verdict strengthened (full-pipeline exception propagation + already unit-tested empty-block behavior)_
 _v7 — 2026-06-02 20:00 — generator library switched from reportlab to fpdf2: Design Principle 1 updated (fpdf2, determinism via set_creation_date); _common.py spec updated (make_pdf factory, draw_text, draw_table, draw_figure_rect); coordinate section rewritten — axis-flip formula eliminated, fpdf2 top-left matches Claude convention, calibration simplified to COORD_SCALE × mm; D/A calibration sub-section updated (top-left concern resolved, stale formula removed, three-fixture-in-Phase-0 contradiction fixed); binary-PDF storage resolved as approach 3 (regenerate + manifest hash): manifest.json added to committed artifacts, directory layout and Phase 1 checklist updated, generate_all.py spec updated with hash-check logic; G1 column position labels corrected (mm generator coords shown, "pt" label removed)_
+_v8 — 2026-06-02 20:30 — D/A section removed (all 24 entries fully applied to plan body); open questions updated: stale F4/F5 reference fixed (F4 figure-caption removed, F5 → F4 multi-heading), §D/A reference removed, manifest.json added to golden-file review step; cost estimate F:5 → F:4; v5 restored to header_
