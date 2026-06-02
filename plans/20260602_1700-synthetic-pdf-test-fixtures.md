@@ -504,7 +504,7 @@ fixes a typo produces a binary diff with no way to verify the fix.
   required for reproducible installs) ensures the hash does not change across machines.
 
 **Implementation requirements (added to Phase 1):**
-- `generate_all.py` writes `tests/fixtures/generators/manifest.json` after each
+- `generate_all.py` writes `tests/fixtures/manifest.json` after each
   generator run: `{generator_name: sha256_hex}`.
 - The pytest session fixture checks hash on startup; mismatch → regenerate and update.
 - `make fixtures` regenerates and updates `manifest.json`; the updated file is committed.
@@ -546,8 +546,9 @@ coords, width for x coords) rather than page dimension. This scales with block s
 is semantically meaningful: a block is within 5 % of where it should be relative to
 itself. For blocks smaller than 10 pt, apply a floor of ±5 pt absolute.
 
-**Resolution:** change tolerance formula in `_compare.py` if bbox assertions are enabled
-post-calibration. Remove the "≈ ±36 pt on A4" statement which is misleading.
+**Resolution:** tolerance formula in `_compare.py` uses ±5 % of block's own dimension
+as specified in the comparison contract. The "≈ ±36 pt on A4" statement has been
+removed from the plan body.
 
 ---
 
@@ -647,10 +648,10 @@ block exists with non-empty `text`. D1 handles the structured `table_data` asser
 
 ### On C8: a grey rectangle may not be classified as `figure`
 
-A `canvas.rect()` call in reportlab produces a grey rectangle with no semantic
-metadata in the PDF content stream. Claude reads the page visually — a grey box
-without a "Figure N:" label or caption is likely classified as nothing (skipped) or
-as a generic `paragraph` with empty text.
+A filled rectangle drawn with fpdf2 (`pdf.rect()` with fill) produces a grey shape
+with no semantic metadata in the PDF content stream. Claude reads the page visually —
+a grey box without a "Figure N:" label or caption is likely classified as nothing
+(skipped) or as a generic `paragraph` with empty text.
 
 **Resolution:** C8 generates a PDF with:
 1. A grey filled rectangle (figure placeholder)
@@ -735,14 +736,14 @@ assertions within the same test, not a 3-level nesting assertion.
 
 ---
 
-### On F5: type-of-parent check cannot distinguish heading-1 from heading-2
+### On F4: type-of-parent check cannot distinguish heading-1 from heading-2
 
-F5 has 2 headings each with 2 paragraphs. `assert_hierarchy_structure` checking
+F4 has 2 headings each with 2 paragraphs. `assert_hierarchy_structure` checking
 "paragraph's parent is some heading" passes even if ALL paragraphs point to the same
 heading (which is wrong). The structural rule requires that each paragraph points to
 its NEAREST preceding heading.
 
-**Resolution:** F5 assertion uses position-based checking: sort blocks by ymin,
+**Resolution:** F4 assertion uses position-based checking: sort blocks by ymin,
 identify heading positions, then for each paragraph verify its `parent_id` matches
 the `block_id` of the nearest preceding block with `type == "heading"` in the sorted
 list. This requires a new helper: `assert_nearest_heading_parent(blocks)`.
@@ -785,8 +786,9 @@ extraction) and Group H is reduced to H1 only.
 G1 relies on `COLUMN_BUCKET_PX = 50` being the column bucket width. If `src/config.py`
 changes this constant, G1 may silently start failing. The test should import
 `COLUMN_BUCKET_PX` from `src.config` and document the column placement calculation
-explicitly so a future developer knows why the left column starts at xmin ≈ 36 pt
-and the right column at xmin ≈ 315 pt.
+explicitly so a future developer knows why the left column (x_mm ≈ 12.7 mm) yields
+Claude xmin ≈ 36 → bucket 0, and the right column (x_mm ≈ 111 mm) yields
+Claude xmin ≈ 315 → bucket 6 (assuming COORD_SCALE ≈ 2.835).
 
 ---
 
