@@ -8,7 +8,8 @@ _Updated: 2026-06-02 19:00 · v5 — second devil's advocate pass: 18 further is
 _Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected_  
 _Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF storage resolved as approach 3 (manifest hash)_  
 _Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_
-_Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_  
+_Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_
+_Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_  
 
 ---
 
@@ -69,7 +70,9 @@ PDF fixture for it.**
 A further code-derived insight: `classifier_node` **never directly returns `baseline_core`**.
 It returns the model's response only if it is in `SUPPORTED_DOC_TYPES`
 (`{"invoice", "scientific_paper"}`); otherwise it falls through to `FALLBACK_DOC_TYPE`.
-Group B therefore tests the fallback path, not a direct classification.
+Group B therefore **cannot test `baseline_core`** as a direct model output — that type
+is never returned by the model, only by the fallback. B1 and B2 test the happy
+classification paths (`invoice` and `scientific_paper`).
 
 ---
 
@@ -91,10 +94,12 @@ Group B therefore tests the fallback path, not a direct classification.
 3. **Pytest marks for selective runs.** Every test carries `@pytest.mark.e2e` (excludes
    from `make test`) and `@pytest.mark.grp_X` (enables single-group runs).
 
-4. **Two test tiers per group.** Most groups have an **e2e tier** (full pipeline, real
-   API calls, tests integration) and Group F additionally has a **narrow tier** (direct
-   function call, pre-built state, no PDF required, see §Narrow tests). Other groups do
-   not benefit from narrow tests — see §Narrow tests for the analysis.
+4. **Two test tiers per group.** Most groups have an **e2e tier** (real API calls;
+   some nodes mocked for isolation — see each group for specifics) and Group F
+   additionally has a **narrow tier** (direct function call, pre-built state, no PDF
+   required, see §Narrow tests). Other groups do not benefit from narrow tests — see
+   §Narrow tests for the analysis. The `@pytest.mark.e2e` marker means "requires
+   `ANTHROPIC_API_KEY`", not "full pipeline with no mocks."
 
 5. **Text matching is normalized by default.** `normalize_text=True` is the default in
    `_compare.py`. Tighten to exact matching only if a group's test passes normalization
@@ -239,8 +244,11 @@ The pipeline's `geometric_pre_sorter` applies a deterministic sort on the output
 This means the order of blocks in `structured_payload` is fully determined by their
 bboxes — it is not the insertion order from the model.
 
-For **single-column groups** (A, B, C, D, E, F, H), the geometric sort order is stable
+For **single-column groups** (B, C, D, E, H), the geometric sort order is stable
 and blocks can be matched positionally: `output[i]` is compared to `golden[i]`.
+Group A does not use block matching at all — A assertions check `total_pages` and
+`pdf_hash` only. Group F uses structural hierarchy assertions (`assert_hierarchy_structure`,
+`assert_nearest_heading_parent`), not positional block matching.
 
 For **G1** (two-column layout), positional matching is unreliable because the sort
 interleaves columns. Use set-based matching: for each expected text string, assert that
@@ -253,6 +261,10 @@ pipeline completes without exception and `len(blocks) <= 1`.
 ### `_compare.py` helper spec
 
 ```python
+def _make_relation_response(relations: list) -> MagicMock:
+    """Mock factory for hierarchy node API response. Move here from test_graph_pipeline.py
+    so grp_c, grp_d, and grp_e tests can import it without cross-test-file imports."""
+
 def assert_blocks_match(
     expected: list[dict],
     actual: list[dict],
@@ -320,6 +332,7 @@ Each golden file in `tests/fixtures/golden/` is a JSON document with two top-lev
     "generator": "grp_c_paragraph",
     "page_size_pts": [595.28, 841.89],
     "coord_scale": null,
+    "model_version": "claude-sonnet-4-6",
     "created": "2026-06-02"
   },
   "expected": {
@@ -341,6 +354,8 @@ Each golden file in `tests/fixtures/golden/` is a JSON document with two top-lev
 
 - `meta.coord_scale` is `null` until Phase 0 calibration; set to `false` if assertions
   are disabled, or to the numeric scale factor if enabled.
+- `meta.model_version` is set at generation time from `src.config.MODEL`. When `MODEL`
+  changes, Phase 0 calibration must re-run and all golden files must be regenerated.
 - `expected.blocks` omits `block_id`, `parent_id`, and `is_continued` (E3 suspended).
 - No `block_count` field — count assertions use `len(blocks) >= minimum` in tests.
 - `coordinates` key may be omitted when `BBOX_ASSERTIONS_VIABLE = False`.
@@ -493,6 +508,14 @@ without running the graph or needing intermediate state capture from LangGraph.
 Node under test: `classifier_node`. All other nodes mocked (not full e2e — see §Design
 principles and §Narrow tests for the rationale).
 
+**Mock setup for B tests:**
+- `native_extractor_node` runs for real (deterministic pypdf calls on real PDF).
+- `src.nodes.classifier_node.encode_pdf_async`: **NOT mocked** — classifier must read
+  real PDF bytes to classify.
+- `src.nodes.worker_node.AsyncAnthropic`: mock to return
+  `_make_tool_use_response([_valid_block(1)])` — prevents a real pioneer API call.
+- `src.nodes.hierarchy_node.AsyncAnthropic`: mock with `_make_relation_response([])`.
+
 | ID | PDF content | Expected `document_type` |
 |---|---|---|
 | B1 | Company header, "INVOICE #001", billing table, line items | `invoice` |
@@ -530,12 +553,20 @@ matching (strip + collapse whitespace).
 | C9 | 500-word paragraph filling the full page | `paragraph` | `len(blocks) >= 1`; first and last sentence present in some block's text |
 
 > C5 and C6 use multiple visual signals (not just position) to reduce type
-> misclassification. If either fails > 20% across 10 runs, they are removed and
-> documented as "block types requiring real-world documents."
+> misclassification. Before committing, run each once against the real model — if the
+> target type label is not returned on that first run, remove the fixture immediately
+> (see Risk 1). Do not invest in a multi-run failure-rate study for an unvalidated
+> fixture.
 >
 > C7 asserts only presence; structured `table_data` validation is in D1 where the
 > invoice schema enforces structure. In C7 with `baseline_core`, metadata is open
 > and the schema won't catch malformed table_data.
+>
+> C8 is a text-presence test, not a figure-detection test. It passes if the model
+> returns ANY block that mentions "Figure 1:" — even if it classifies the grey rectangle
+> as a `paragraph`. This is intentional: detecting `figure` type reliably on synthetic
+> content is unreliable (see C5/C6 note). C8 only confirms the content is not silently
+> dropped.
 >
 > C9 replaces H2 (long paragraph), which is a C extension, not a distinct concern.
 
@@ -544,8 +575,10 @@ matching (strip + collapse whitespace).
 ### Group D — Schema-specific metadata (1–2 Claude calls per test)
 
 Node under test: `window_parser_node` + schema validation in `pioneer_validation_route`.
-Classifier is mocked to return the target doc type so the correct schema is loaded.
-Hierarchy is mocked (trivial parent_ids). 1-page PDFs.
+Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
+the target doc type. Hierarchy is mocked by patching
+`src.nodes.hierarchy_node.AsyncAnthropic` to return `_make_relation_response([])`
+(empty relations — see Group C for rationale). 1-page PDFs.
 
 **Important:** `bibliographic`, `section`, `reference`, and `figure_table` are optional
 subfields in the scientific_paper schema — the model is not required to populate them.
@@ -579,6 +612,10 @@ pioneer/worker output after merge and dedup.
 
 > `len(blocks) == N` is not asserted (model may split or merge content across pages).
 > The assertion is "every page contributed at least one block."
+>
+> Because hierarchy is mocked with empty relations, every block receives `parent_id = null`
+> via the orphan-fallback branch, generating one warning per block. E tests do not assert
+> `extraction_warnings`; the orphan noise is expected and harmless.
 >
 > E3 (`is_continued`) is **suspended** until the extraction prompt explicitly instructs
 > the model to set `is_continued`. The current prompt has no such instruction; the field
@@ -656,7 +693,7 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 
 | ID | PDF content | Assertions |
 |---|---|---|
-| H1 | 1 blank white page (no text, no objects) | Pipeline completes without exception; `len(blocks) <= 1`; if a block exists, `len(block.text.strip()) < 10` |
+| H1 | 1 blank white page (no text, no objects) | Pipeline completes without exception; `len(blocks) <= 1`; if a block exists, `len(block.text.strip()) < 30` |
 
 > H1 is explicitly a smoke test: it checks the pipeline doesn't crash on degenerate
 > input. It does not assert meaningful extraction quality.
@@ -668,7 +705,7 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 ### Phase 0 — Calibration (prerequisite, no tests written yet)
 
 - Implement `_common.py` and C1 generator only; add `tests/fixtures/pdfs/` to `.gitignore`
-- Mock classifier and hierarchy; run only pioneer_parser on C1 PDF — 3 times
+- Mock classifier (returning `"baseline_core"`) and hierarchy; run only pioneer_parser on C1 PDF — 3 times
 - Record returned `coordinates` each run; derive `COORD_SCALE` or flag as non-viable
 - Commit `calibration_notes.md` with raw numbers and decision
 - Set `COORD_SCALE = <k>` or `BBOX_ASSERTIONS_VIABLE = False` in `_common.py`
@@ -690,6 +727,11 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
   `integration_chain`
 
 ### Phase 2 — Schema metadata: Group D
+
+**Prerequisite (Risk 2):** confirm the extraction prompt has been updated to explicitly
+request optional scientific_paper subfields (`bibliographic`, `section`, `reference`,
+`figure_table`) and that a single test run confirms at least one subfield is populated.
+Do not begin Phase 2 without this confirmation.
 
 - Generators and golden files for D1–D5
 - `_compare.py` extended with optional-metadata assertion helpers
@@ -818,4 +860,5 @@ _v5 — 2026-06-02 19:00 — second devil's advocate pass; 18 further issues res
 _v6 — 2026-06-02 19:30 — narrow-test section rewritten after third devil's advocate pass on that section specifically: added three-condition formal definition; A verdict corrected (N/A — not a strategy choice); B verdict corrected (concern-isolated, not technically narrow — fails all 3 conditions); C argument replaced (identity problem: narrow C = e2e C minus schema validation, false-confidence argument was empirically wrong); D verdict changed from "partially useful" to "not justified" (bypasses pioneer_validation_route — the key signal for D, creates false confidence); E verdict corrected (LangGraph Send API dependency — E3 reference was dead, E3 is suspended); F section rewritten to lead with the structural argument (only LLM node without encode_pdf_async); G verdict sharpened (file_path still required + conditional isolation already covers diagnostic gap); H verdict strengthened (full-pipeline exception propagation + already unit-tested empty-block behavior)_  
 _v7 — 2026-06-02 20:00 — generator library switched from reportlab to fpdf2: Design Principle 1 updated (fpdf2, determinism via set_creation_date); _common.py spec updated (make_pdf factory, draw_text, draw_table, draw_figure_rect); coordinate section rewritten — axis-flip formula eliminated, fpdf2 top-left matches Claude convention, calibration simplified to COORD_SCALE × mm; D/A calibration sub-section updated (top-left concern resolved, stale formula removed, three-fixture-in-Phase-0 contradiction fixed); binary-PDF storage resolved as approach 3 (regenerate + manifest hash): manifest.json added to committed artifacts, directory layout and Phase 1 checklist updated, generate_all.py spec updated with hash-check logic; G1 column position labels corrected (mm generator coords shown, "pt" label removed)_  
 _v8 — 2026-06-02 20:30 — D/A section removed (all 24 entries fully applied to plan body); open questions updated: stale F4/F5 reference fixed (F4 figure-caption removed, F5 → F4 multi-heading), §D/A reference removed, manifest.json added to golden-file review step; cost estimate F:5 → F:4; v5 restored to header_
-_v9 — 2026-06-02 21:00 — pass 4 D/A: A3 classifier-mock assertion removed (inapplicable in direct-call context); C and E hierarchy mocks clarified to empty-relations pattern (avoids dynamic block_id requirement; existing _make_relation_response helper reused); E classifier mock documented explicitly; G1 column assertion rewritten to bucket-based (no calibration dependency; works when BBOX_ASSERTIONS_VIABLE=False); G1 note explains why buckets beat page_width/2; assert_hierarchy_structure "all blocks" semantics added; grp_f excluded from manifest.json (no PDF output); integration-gap section aligned with Phase 4 (reuses B1, softer warnings check); full-chain table_data assertion resolved (stronger); pytest "run all e2e" command fixed (test_full_chain.py was excluded by glob); all 6 risks rewritten; 2 new risks added (model version drift; B1 PDF adequacy)_  
+_v9 — 2026-06-02 21:00 — pass 4 D/A: A3 classifier-mock assertion removed (inapplicable in direct-call context); C and E hierarchy mocks clarified to empty-relations pattern (avoids dynamic block_id requirement; existing _make_relation_response helper reused); E classifier mock documented explicitly; G1 column assertion rewritten to bucket-based (no calibration dependency; works when BBOX_ASSERTIONS_VIABLE=False); G1 note explains why buckets beat page_width/2; assert_hierarchy_structure "all blocks" semantics added; grp_f excluded from manifest.json (no PDF output); integration-gap section aligned with Phase 4 (reuses B1, softer warnings check); full-chain table_data assertion resolved (stronger); pytest "run all e2e" command fixed (test_full_chain.py was excluded by glob); all 6 risks rewritten; 2 new risks added (model version drift; B1 PDF adequacy)_
+_v10 — 2026-06-02 21:30 — pass 5 (automated /refine-plan): 8 MEDIUM resolved: "tests fallback path" wording corrected to "cannot test baseline_core"; e2e marker clarified as API-key-required not no-mocks; A and F removed from positional-matching group (A has no blocks, F uses structural assertions); _make_relation_response moved to _compare.py spec with shared-helper note; model_version field added to golden file format + meta note; Group B mock setup fully specified (NOT mock classifier encode_pdf_async, DO mock worker AsyncAnthropic and hierarchy); C5/C6 note updated to match Risk 1 run-once-first guidance; Group D hierarchy mock specified as _make_relation_response([]); Group E orphan-warning note added; Phase 0 classifier mock return value specified; Phase 2 prompt prerequisite gate added; H1 text-length threshold 10→30; C8 text-presence intent explicitly documented_  
