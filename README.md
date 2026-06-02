@@ -189,15 +189,16 @@ cp .env.example .env  # then fill in your API key
 
 | Command | Description |
 |---|---|
-| `make install` | Install all dependencies (production + dev) |
-| `make lint` | Check for linting violations and formatting drift (read-only) |
-| `make fix` | Auto-fix violations and reformat all files |
+| `make install` | Install all dependencies (production + dev, including Node) |
+| `make lint` | Check Python for linting violations and formatting drift (read-only) |
+| `make lint-md` | Check Markdown files with markdownlint-cli2 (read-only) |
+| `make fix` | Auto-fix Python violations and reformat all files |
 | `make test` | Run the full test suite (113 tests, no API key required) |
 | `make coverage` | Run tests and print per-module coverage report |
-| `make ci` | Run `lint` then `test` — use before pushing |
-| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache` |
+| `make ci` | Run `lint`, `lint-md`, then `test` — use before pushing |
+| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache`, `node_modules` |
 
-Linting and formatting use [ruff](https://github.com/astral-sh/ruff). Configuration lives in `pyproject.toml` under `[tool.ruff]`.
+Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (configured in `pyproject.toml` under `[tool.ruff]`). Markdown linting uses [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) (configured in `.markdownlint.json`).
 
 ---
 
