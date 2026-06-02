@@ -13,7 +13,8 @@ _Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resol
 _Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_
 _Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_
 _Updated: 2026-06-02 22:30 · v13 — pass 8 (automated): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change; generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-API-key); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent no-preceding-heading edge case specified_
-_Updated: 2026-06-02 22:45 · v14 — pass 9 (automated): 1 MEDIUM + 1 LOW: directory layout comment and prose updated to reflect fixture-in-conftest (generate_all.py is CLI only); HierarchyRule None case documented (asserts parent_id is None)_  
+_Updated: 2026-06-02 22:45 · v14 — pass 9 (automated): 1 MEDIUM + 1 LOW: directory layout comment and prose updated to reflect fixture-in-conftest (generate_all.py is CLI only); HierarchyRule None case documented (asserts parent_id is None)_
+_Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_  
 
 ---
 
@@ -142,6 +143,7 @@ tests/
       ...
     manifest.json                   # committed — SHA-256 per generator; detects stale goldens (grp_f excluded — no PDF output)
   integration/
+    conftest.py                     # session-scoped autouse fixture: invokes generate_all.py hash-check at session start
     test_synthetic_grp_a.py         # native extraction
     test_synthetic_grp_b.py         # classifier
     test_synthetic_grp_c.py         # block-type extraction
@@ -901,4 +903,5 @@ _v10 — 2026-06-02 21:30 — pass 5 (automated /refine-plan): 8 MEDIUM resolved
 _v11 — 2026-06-02 21:45 — pass 6 (automated /refine-plan): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_
 _v12 — 2026-06-02 22:00 — pass 7 (automated /refine-plan): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_
 _v13 — 2026-06-02 22:30 — pass 8 (automated /refine-plan): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change (setdefault fix); generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-key; Group A exception documented); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent edge case specified_
-_v14 — 2026-06-02 22:45 — pass 9 (automated /refine-plan): 1 MEDIUM + 1 LOW: directory layout comment updated (generate_all.py is CLI + hash-check function; fixture lives in conftest); directory prose updated to say conftest invokes generate_all.py; HierarchyRule None case documented_  
+_v14 — 2026-06-02 22:45 — pass 9 (automated /refine-plan): 1 MEDIUM + 1 LOW: directory layout comment updated (generate_all.py is CLI + hash-check function; fixture lives in conftest); directory prose updated to say conftest invokes generate_all.py; HierarchyRule None case documented_
+_v15 — 2026-06-02 23:00 — pass 10 (automated /refine-plan): 1 LOW: tests/integration/conftest.py added to directory layout_  
