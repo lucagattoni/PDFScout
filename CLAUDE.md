@@ -31,5 +31,7 @@ When initialising any new coding project:
 
 1. Pull the latest commits from `main` on `~/Code/repos/github_lucagattoni/andrej-karpathy-skills`
 2. Copy the full content of its `CLAUDE.md` into the new project's `CLAUDE.md` (above the project-specific rules)
+3. If the project's `CLAUDE.md` already had rules, check them against the newly added ones: remove or fix anything redundant or conflicting.
+4. If the project is **pre-existing** (repo already has code), after steps 1–3 ask the user: "Would you like a full code review against the new guidelines?"
 
 If the project is not clearly about code, or if it's unclear, ask the user first.
