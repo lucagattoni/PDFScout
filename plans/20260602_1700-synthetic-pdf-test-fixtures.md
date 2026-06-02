@@ -7,7 +7,8 @@ _Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-
 _Updated: 2026-06-02 19:00 · v5 — second devil's advocate pass: 18 further issues resolved_  
 _Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected_  
 _Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF storage resolved as approach 3 (manifest hash)_  
-_Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_  
+_Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_
+_Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_  
 
 ---
 
@@ -116,7 +117,7 @@ tests/
       grp_c_blocktypes.py           # C1–C9
       grp_d_metadata.py             # D1–D5
       grp_e_multipage.py            # E1–E2
-      grp_f_hierarchy.py            # F1–F4 (pre-built state; no PDF generator needed)
+      grp_f_hierarchy.py            # F1–F4 (pre-built state; no PDF generator needed; not tracked in manifest.json)
       grp_g_layout.py               # G1
       grp_h_edge.py                 # H1
       generate_all.py               # CLI + pytest session fixture
@@ -127,7 +128,7 @@ tests/
       grp_b_invoice.json
       grp_c_paragraph.json
       ...
-    manifest.json                   # committed — SHA-256 per generator; detects stale goldens
+    manifest.json                   # committed — SHA-256 per generator; detects stale goldens (grp_f excluded — no PDF output)
   integration/
     test_synthetic_grp_a.py         # native extraction
     test_synthetic_grp_b.py         # classifier
@@ -272,6 +273,7 @@ def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -
     """
     Checks parent-child relationships without pinning exact block_id values.
     HierarchyRule: (child_type: str, expected_parent_type: str | None)
+    Each rule applies to ALL blocks of the given child_type, not just some.
     """
 
 def assert_table_data(block: dict, expected_rows: int, expected_cols: int,
@@ -449,10 +451,11 @@ Neither narrow tests nor the current group structure test the end-to-end chain:
 at its seams (e.g., state key name changes) while all individual groups pass.
 
 **Resolution:** add one **full-chain integration test** with no mocks:
-- 1-page invoice PDF with a heading, paragraph, and line-items table
+- Reuses the B1 PDF (1-page invoice); no new PDF needed
 - Runs `build_app()` with all nodes real
-- Asserts: `document_type == "invoice"`, at least one `table` block with `table_data`,
-  `extraction_warnings == []`
+- Asserts: `document_type == "invoice"`, at least one `table` block with `table_data`
+  populated, `not any("failed schema validation" in w for w in extraction_warnings)`
+  (tolerates benign orphan warnings; catches schema degradation)
 - Tagged `@pytest.mark.e2e @pytest.mark.integration_chain`
 - Lives in `tests/integration/test_full_chain.py`
 
@@ -477,7 +480,7 @@ without running the graph or needing intermediate state capture from LangGraph.
 |---|---|---|
 | A1 | Valid 1-page PDF | `result["total_pages"] == 1`; `len(result["pdf_hash"]) == 64` |
 | A2 | Valid 10-page PDF | `result["total_pages"] == 10` |
-| A3 | Encrypted PDF (pypdf-generated) | `pytest.raises(ValueError)`; classifier mock `assert_not_called()` to confirm early exit |
+| A3 | Encrypted PDF (pypdf-generated) | `pytest.raises(ValueError)` |
 
 > A3 uses a programmatically encrypted PDF (`pypdf.PdfWriter` with encryption). This
 > tests the actual pypdf encryption detection, which the existing unit test bypasses via
@@ -505,9 +508,11 @@ principles and §Narrow tests for the rationale).
 
 Node under test: `window_parser_node` (pioneer page, 1-page PDFs so burst never fires).
 Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
-`"baseline_core"`. Hierarchy is mocked by patching
-`src.nodes.hierarchy_node.AsyncAnthropic` to return trivial relations — **not** by
-patching the whole functions, so deduplication and sort still run. One PDF per block type.
+`"baseline_core"`. Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
+to return `_make_relation_response([])` (empty `relations` list — the helper already exists
+in `test_graph_pipeline.py`). All blocks fall through to the existing orphan-fallback branch
+and receive `parent_id = null`; orphan warnings are emitted but not asserted in C tests.
+Deduplication and sort still run. One PDF per block type.
 
 All count assertions use `>= minimum`, not `== exact`. Text assertions use normalized
 matching (strip + collapse whitespace).
@@ -561,10 +566,11 @@ a prompt change, not a test change.
 ### Group E — Multi-page pipeline / burst + merge (N Claude calls per test)
 
 Nodes under test: `burst_dispatcher_node`, `window_parser_node` (pages 2–N), `merge_flat_blocks` reducer.
-Hierarchy LLM is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic` to return
-trivial `{block_id: ..., parent_id: null}` relations — **not** by patching the whole
-`layout_hierarchy_agent_node` function. This preserves the deduplication and sort steps
-so the `block_id` uniqueness assertion is meaningful.
+Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
+`"baseline_core"`. Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
+to return `_make_relation_response([])` (empty relations — see Group C for rationale).
+Deduplication and sort still run, so the `block_id` uniqueness assertion reflects real
+pioneer/worker output after merge and dedup.
 
 | ID | PDF | Assertions |
 |---|---|---|
@@ -626,13 +632,21 @@ calculation explicitly.
 
 | ID | PDF content | Assertions |
 |---|---|---|
-| G1 | 2-column A4 (left column at x_mm ≈ 12.7 mm → Claude xmin ≈ 36 → bucket 0; right column at x_mm ≈ 111 mm → Claude xmin ≈ 315 → bucket 6, assuming COORD_SCALE ≈ 2.835): left has "L1", "L2", "L3"; right has "R1", "R2", "R3" | (1) All blocks whose `bbox.xmin < page_width/2` appear before all blocks whose `bbox.xmin >= page_width/2` in `structured_payload`; (2) "L1", "L2", "L3" texts are each in some block; (3) "R1", "R2", "R3" texts are each in some block |
+| G1 | 2-column A4 (left column at x_mm ≈ 12.7 mm → Claude xmin ≈ 36 → bucket 0; right column at x_mm ≈ 111 mm → Claude xmin ≈ 315 → bucket 6, assuming COORD_SCALE ≈ 2.835): left has "L1", "L2", "L3"; right has "R1", "R2", "R3" | (1) All blocks with `xmin // COLUMN_BUCKET_PX == 0` appear before all blocks with `xmin // COLUMN_BUCKET_PX >= 1` in `structured_payload`; `COLUMN_BUCKET_PX` imported from `src.config`; (2) "L1", "L2", "L3" texts are each in some block; (3) "R1", "R2", "R3" texts are each in some block |
 
 > **Why `bbox.xmin`, not text prefix:** using text-prefix to identify column membership
-> is circular — it can't detect bleed. Position-based assertion (xmin relative to page
-> midpoint) is independent of text content. If the model bleeds L-text into an R-xmin
-> block, assertion (1) catches the ordering failure. Assertions (2) and (3) confirm no
+> is circular — it can't detect bleed. Position-based assertion (xmin bucket) is
+> independent of text content. If the model bleeds L-text into an R-xmin block,
+> assertion (1) catches the ordering failure. Assertions (2) and (3) confirm no
 > content was lost.
+>
+> **Why buckets, not `page_width/2`:** `xmin < page_width/2` requires knowing `page_width`
+> in Claude's coordinate space, which is only available post-calibration. Bucket membership
+> (`xmin // COLUMN_BUCKET_PX`) uses the same arithmetic as `geometric_pre_sorter` itself
+> and requires no scale factor. The two columns are separated by ≈ 279 pt — even with ±20%
+> coordinate variance, the left column (≈ 36 pt) stays in bucket 0 and the right column
+> (≈ 315 pt) stays in bucket ≥ 5. G1 works regardless of whether `BBOX_ASSERTIONS_VIABLE`
+> is set.
 
 ---
 
@@ -694,9 +708,9 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 - Integration tests for groups G and H
 - **Full-chain integration test** (`tests/integration/test_full_chain.py`):
   no mocks, reuses the B1 PDF (1-page invoice), all nodes real, asserts:
-  `document_type == "invoice"`, at least one `table` block present,
+  `document_type == "invoice"`, at least one `table` block with `table_data` populated,
   `not any("failed schema validation" in w for w in extraction_warnings)`
-  (tolerates benign warnings, catches degradation)
+  (tolerates benign orphan warnings; catches schema degradation; see Risk 8 if `table_data` is unreliable)
 - Update README with `make test-e2e GRP=x` usage
 
 ---
@@ -705,35 +719,68 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 
 The following risks remain open.
 
-1. **C5 and C6 reliability.** The redesigned fixtures (footnote-styled, margin-sidebar)
-   add multiple visual signals but still cannot guarantee the model returns the target
-   type enum. Monitor failure rate during Phase 1. Remove if > 20% failure rate across
-   10 runs.
+1. **C5 and C6: validate with a real model call before committing golden files.** The
+   multi-signal redesign assumes the visual patterns (7 pt font + horizontal rule +
+   superscript for C5; grey background + narrow column for C6) trigger the target block
+   type labels on `claude-sonnet-4-6`. There is no evidence in the codebase that they do.
+   Before committing Phase 1, run C5 and C6 once against the real model and confirm the
+   target type label is returned. Only then write golden files and commit. If the target
+   label is not returned on that first run, remove the fixture immediately — do not invest
+   in a 10-run failure-rate study. Any test expected to fail 1 run in 5 does not belong
+   in the suite.
 
-2. **D-group optional metadata.** If the extraction prompt never causes the model to
-   populate `bibliographic`, `section`, `reference`, or `figure_table`, the D2–D5 tests
-   degrade to "expected text appears in some block" — which is a C-level assertion, not
-   a D-level assertion. The decision to update the extraction prompt is out of scope for
-   this plan but should be tracked as a separate issue.
+2. **D-group optional metadata: prompt update is a Phase 2 prerequisite, not an
+   afterthought.** The scientific_paper schema's optional subfields (`bibliographic`,
+   `section`, `reference`, `figure_table`) will not be populated unless the extraction
+   prompt explicitly requests them. This is the expected outcome with the current prompt —
+   not a low-probability risk. If D2–D5 are built before the prompt is updated, they will
+   consistently degrade to text-presence assertions (C-level coverage under a D-level name),
+   wasting the phase. **Phase 2 should not begin until the extraction prompt has been
+   updated to request these subfields and the change confirmed on a single D-group test run.**
 
-3. **E3 suspended.** `is_continued` detection requires a prompt change. Until that
-   change is made, the continuation behavior is untested at the e2e level. This is a
-   known gap in the extraction prompt, not a gap in the test plan.
+3. **E3 permanently untested.** `is_continued` is a named field in the block schema with
+   no e2e test coverage and no scheduled prompt fix. The practical status is: this field
+   is permanently dark in this test suite. This is a known coverage gap, not a deferred
+   task with a timeline.
 
-4. **F narrow test flakiness.** The hierarchy LLM makes judgment calls on ambiguous
-   inputs. F4 (2 headings, 4 paragraphs — nearest-heading disambiguation) may have
-   higher variance. If it fails > 30% across 10 runs, loosen the assertion to
-   "paragraph has SOME parent_id" rather than requiring the nearest preceding heading
-   specifically.
+4. **F4 flakiness: remove rather than loosen.** If F4 fails > 30% across 10 runs, remove
+   it entirely and document it as evidence that the hierarchy prompt needs refinement for
+   multi-heading disambiguation. Do not retain it with the loosened assertion "paragraph
+   has SOME parent_id" — that assertion passes even if every paragraph is assigned to the
+   wrong heading. A test with near-zero signal occupies a test slot and provides false
+   assurance.
 
-5. **Golden file staleness.** Prompt or schema changes require `make fixtures` +
-   `git diff tests/fixtures/golden/ tests/fixtures/manifest.json` review. Golden diffs
-   are human-readable JSON; manifest diffs show one changed SHA-256 per affected
-   generator. A semantically reasonable diff means the change is safe.
+5. **Golden file staleness: `manifest.json` does not detect prompt changes.** The manifest
+   tracks generator script hashes and detects stale PDFs. It does not track the extraction
+   prompt, hierarchy prompt, or Pydantic schemas. A prompt change that degrades model output
+   will not trigger any manifest warning. Developers must manually run `make fixtures` after
+   any prompt or schema change. Additionally, the diff review criterion "semantically
+   reasonable diff means the change is safe" is not actionable — the review should ask:
+   does every changed field change in the expected direction? Any unexpected regression
+   (e.g., `type: "heading"` → `type: "paragraph"`) fails the review regardless of diff size.
 
-6. **Cost.** Expected API calls: A: 0, B: 2, C: 9, D: 5, E: 4, F: 4 (narrow, no PDF),
-   G: 1, H: 1, full-chain: 3 = ~29 calls + ~10 retry overhead = **30–50 calls per
-   full suite run.** At ~$0.02/call: $0.60–$1.00 per run. Nightly CI is appropriate.
+6. **Cost.** Expected API calls per full suite run: A: 0, B: 2, C: 9, D: 5,
+   E: 7 (classifier mocked; E1 = pioneer + 1 burst worker = 2; E2 = pioneer + 4 burst
+   workers = 5), F: 4 (narrow, no PDF), G: 1, H: 1, full-chain: 3 = **32 calls**.
+   Retry overhead ≈ 0–2 (retries fire on schema validation failures; synthetic clean PDFs
+   should not trigger them). Phase 0 calibration adds 3 calls (one-time). Cost-per-call
+   varies significantly: classifier calls (~2 K tokens) are much cheaper than pioneer/worker
+   calls (~10–15 K tokens with full schema in tools definition). At rough average ~$0.02/call:
+   ~$0.64 per run, but token-count variance could shift this 2–3× in either direction.
+   Nightly CI is appropriate; `pytest -m "e2e and not (grp_d or grp_e)"` for cheaper smoke
+   runs.
+
+7. **Model version drift.** Golden files are written against `claude-sonnet-4-6` (from
+   `src/config.py`). When `MODEL` is updated, golden diffs will be widespread. Any `MODEL`
+   change must be followed immediately by `make fixtures` and a full golden diff review
+   before merging. The golden file `meta` block should have a `model_version` field added
+   at generation time; if it changes, Phase 0 calibration must re-run.
+
+8. **B1 PDF adequacy for the full-chain `table_data` assertion.** B1 is a simple 1-page
+   invoice with a billing table. If the model does not reliably populate `table_data` on
+   this PDF, the full-chain test fails non-deterministically. If this happens: either (a)
+   update B1's generator to use a more explicit multi-row table with a distinct header row,
+   or (b) fall back to the weaker "table block present" assertion and note the limitation.
 
 ---
 
@@ -747,7 +794,7 @@ make fixtures
 make fixtures GRP=c
 
 # Run only the synthetic e2e tests (requires ANTHROPIC_API_KEY)
-pytest tests/integration/test_synthetic_*.py -m e2e -v
+pytest tests/integration/ -m e2e -v
 
 # Run only one group
 pytest tests/integration/test_synthetic_grp_c.py -m "e2e and grp_c" -v
@@ -770,4 +817,5 @@ _v4 — 2026-06-02 18:30 — Option 2 narrow-test conclusions (Group F only; oth
 _v5 — 2026-06-02 19:00 — second devil's advocate pass; 18 further issues resolved: Design Principle 1 contradiction (PDFs not committed); comparison contract updated (is_continued removed, bbox tolerance corrected); bbox note formula corrected; normalize_text default fixed in _compare.py spec; docstring lowercasing removed; block_count removed from golden file example; D2 assertion garbled (copy-paste from D3) fixed; calibration section "Level 1" stale name fixed; Phase 0 C7/G1 impossibility fixed; F1 redesigned (single-block path skips LLM — already unit-tested, no value); F4 removed (figure-caption has no documented hierarchy rule); F state spec trimmed to only keys the function reads; G1 assertion fixed (xmin-based, not text-prefix-based — circular); E hierarchy mock clarified (AsyncAnthropic, not whole function); same for C; full-chain test assertion hardened; hierarchy assertions section updated with documented vs undocumented rules_  
 _v6 — 2026-06-02 19:30 — narrow-test section rewritten after third devil's advocate pass on that section specifically: added three-condition formal definition; A verdict corrected (N/A — not a strategy choice); B verdict corrected (concern-isolated, not technically narrow — fails all 3 conditions); C argument replaced (identity problem: narrow C = e2e C minus schema validation, false-confidence argument was empirically wrong); D verdict changed from "partially useful" to "not justified" (bypasses pioneer_validation_route — the key signal for D, creates false confidence); E verdict corrected (LangGraph Send API dependency — E3 reference was dead, E3 is suspended); F section rewritten to lead with the structural argument (only LLM node without encode_pdf_async); G verdict sharpened (file_path still required + conditional isolation already covers diagnostic gap); H verdict strengthened (full-pipeline exception propagation + already unit-tested empty-block behavior)_  
 _v7 — 2026-06-02 20:00 — generator library switched from reportlab to fpdf2: Design Principle 1 updated (fpdf2, determinism via set_creation_date); _common.py spec updated (make_pdf factory, draw_text, draw_table, draw_figure_rect); coordinate section rewritten — axis-flip formula eliminated, fpdf2 top-left matches Claude convention, calibration simplified to COORD_SCALE × mm; D/A calibration sub-section updated (top-left concern resolved, stale formula removed, three-fixture-in-Phase-0 contradiction fixed); binary-PDF storage resolved as approach 3 (regenerate + manifest hash): manifest.json added to committed artifacts, directory layout and Phase 1 checklist updated, generate_all.py spec updated with hash-check logic; G1 column position labels corrected (mm generator coords shown, "pt" label removed)_  
-_v8 — 2026-06-02 20:30 — D/A section removed (all 24 entries fully applied to plan body); open questions updated: stale F4/F5 reference fixed (F4 figure-caption removed, F5 → F4 multi-heading), §D/A reference removed, manifest.json added to golden-file review step; cost estimate F:5 → F:4; v5 restored to header_  
+_v8 — 2026-06-02 20:30 — D/A section removed (all 24 entries fully applied to plan body); open questions updated: stale F4/F5 reference fixed (F4 figure-caption removed, F5 → F4 multi-heading), §D/A reference removed, manifest.json added to golden-file review step; cost estimate F:5 → F:4; v5 restored to header_
+_v9 — 2026-06-02 21:00 — pass 4 D/A: A3 classifier-mock assertion removed (inapplicable in direct-call context); C and E hierarchy mocks clarified to empty-relations pattern (avoids dynamic block_id requirement; existing _make_relation_response helper reused); E classifier mock documented explicitly; G1 column assertion rewritten to bucket-based (no calibration dependency; works when BBOX_ASSERTIONS_VIABLE=False); G1 note explains why buckets beat page_width/2; assert_hierarchy_structure "all blocks" semantics added; grp_f excluded from manifest.json (no PDF output); integration-gap section aligned with Phase 4 (reuses B1, softer warnings check); full-chain table_data assertion resolved (stronger); pytest "run all e2e" command fixed (test_full_chain.py was excluded by glob); all 6 risks rewritten; 2 new risks added (model version drift; B1 PDF adequacy)_  
