@@ -5,6 +5,7 @@ _Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching stra
 _Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_
 _Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-point devil's advocate review_
 _Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected (A terminology, B mislabeled, C wrong argument, D "partially useful" → not justified, E dead E3 reference removed, F structural argument added, G sharpened, H strengthened)_
+_Updated: 2026-06-02 20:00 · v7 — PDF generator switched from reportlab to fpdf2: coordinate axis-flip formula eliminated (fpdf2 top-left origin matches Claude convention); calibration section simplified to scale-only; D/A calibration sub-section updated (top-left concern resolved, stale formula removed); D/A binary-PDF section updated (approach 5 now viable); G1 unit labels corrected; Phase 1 _common.py spec updated; Design Principle 1 updated with fpdf2 determinism approach_
 
 ---
 
@@ -71,11 +72,12 @@ Group B therefore tests the fallback path, not a direct classification.
 
 ## Design principles
 
-1. **Expected output at generation time.** Every fixture PDF is produced by a reportlab
+1. **Expected output at generation time.** Every fixture PDF is produced by an fpdf2
    generator script that also emits a `golden.json` capturing the output we expect.
    "Expected" means "consistent with what the model should produce given this input" —
    not a mathematical truth. Golden files (JSON) are committed; PDFs are not (see
-   §Directory layout).
+   §Directory layout). Every generator pins the creation date for byte-for-byte
+   reproducibility: `pdf.set_creation_date(datetime(2000, 1, 1, tzinfo=timezone.utc))`.
 
 2. **One primary concern per group.** Each group targets one pipeline node. Within a
    group, PDFs increase in complexity. This doesn't mean zero interference from
@@ -105,7 +107,7 @@ tests/
   fixtures/
     generators/
       __init__.py
-      _common.py                    # reportlab helpers + BBOX_ASSERTIONS_VIABLE constant
+      _common.py                    # fpdf2 helpers + determinism setup + BBOX_ASSERTIONS_VIABLE constant
       calibration_notes.md          # Phase 0 results: COORD_SCALE, DPI finding, decision
       grp_a_native.py               # A1–A3
       grp_b_classifier.py           # B1–B2
@@ -154,27 +156,29 @@ produces **integers** in whatever coordinate space it uses internally when readi
 That space is not publicly documented — it could be typographic points (1 pt = 1/72 in), PDF user units,
 or pixel coordinates at an implicit render DPI.
 
-reportlab writes PDFs in standard PDF units (points), with origin at **bottom-left** (y increases
-upward). Claude reads the page top-down (y increases downward). The conversion formula is:
+fpdf2 writes PDFs with origin at **top-left** (y increases downward), matching Claude's reading
+convention exactly. A block placed at fpdf2 position `(x_mm, y_mm)` with size `(w_mm, h_mm)` maps
+to Claude's expected output as a uniform scale — **no axis flip required**:
 
 ```
-ymin_claude = page_height_pts − (y_rl + height_rl)
-ymax_claude = page_height_pts − y_rl
-xmin_claude = x_rl
-xmax_claude = x_rl + width_rl
+ymin_claude ≈ y_mm  × COORD_SCALE
+xmin_claude ≈ x_mm  × COORD_SCALE
+ymax_claude ≈ (y_mm + h_mm) × COORD_SCALE
+xmax_claude ≈ (x_mm + w_mm) × COORD_SCALE
 ```
 
-**However**, if Claude renders to pixels before processing, the values would be scaled by
-`(DPI / 72)`. This is unknown until we run the pipeline on a known document.
+`COORD_SCALE` is a single unknown scale factor (Claude-units per mm), determined by Phase 0
+calibration. If Claude reads PDF points directly, `COORD_SCALE ≈ 2.835` (72 pt ÷ 25.4 mm/in).
+If Claude renders to pixels at 144 DPI, `COORD_SCALE ≈ 5.67`. The unit is irrelevant — only
+the empirically measured factor matters.
 
 ### Calibration run (Phase 0)
 
-Before generating any golden files, run C1 (single paragraph, known position) through
-the pioneer_parser only (mock classifier and hierarchy to save cost — only the extraction
-output contains bbox data). Run it 3 times and compare returned `coordinates`:
+Before generating any golden files, run C1 (single paragraph at a known mm position) through
+the pioneer_parser only (mock classifier and hierarchy to save cost). Run it 3 times and compare
+returned `coordinates` against the known mm placement:
 
-- If `coordinates ≈ point_values` → Claude uses PDF points; `COORD_SCALE = 1.0`.
-- If `coordinates ≈ point_values × k` → `COORD_SCALE = k` (store as float).
+- If `coordinates ≈ mm_values × k` for consistent k across 3 runs → `COORD_SCALE = k`.
 - If values vary widely across 3 runs → `BBOX_ASSERTIONS_VIABLE = False`.
 
 A second check in Phase 1 (when D1-table and G1-twocolumn exist) verifies scale
@@ -473,16 +477,29 @@ Committing PDF binaries creates diffs that are unreadable, review impossible, an
 repository size that compounds with every regeneration. A generator script change that
 fixes a typo produces a binary diff with no way to verify the fix.
 
-**Resolution:** evaluate two alternatives before committing to binary storage:
+**Resolution:** three alternatives were evaluated:
 1. **Regenerate at test time** via a pytest `session`-scoped fixture. Generators run
-   once per test session if the PDF doesn't exist. Cost: ~1 s per generator at session
-   start. PDFs are in `.gitignore`; only generators and golden files are tracked.
-2. **Git LFS** for PDF storage. Keeps PDFs in git history but defers binary to LFS.
+   once per test session if the PDF doesn't exist. PDFs are in `.gitignore`; only
+   generators and golden files are tracked.
+2. **Git LFS** for PDF storage. Keeps PDFs in git history but requires LFS setup on
+   every machine and CI; PR diffs still show only a hash change.
+3. **Regenerate + manifest hash.** A `manifest.json` commits the SHA-256 of each
+   expected PDF. At session start: if PDF exists and hash matches → use it; else
+   regenerate. Detects generator ↔ golden divergence explicitly; hash change visible
+   in PR diffs as a one-line JSON diff.
 
-Option 1 is recommended: no binary bloat, no LFS dependency, golden files (JSON) remain
-the committed artifact reviewable as text diffs. The downside is that tests cannot run
-entirely offline — the PDF must be regenerated if missing. Since tests already require
-an API key, this is an acceptable constraint.
+Option 1 was chosen when this plan used reportlab, because reportlab determinism
+required the `invariant=1` flag and its behaviour was less thoroughly verified.
+**With fpdf2, option 3 is now viable**: `pdf.set_creation_date(datetime(2000, 1, 1,
+tzinfo=timezone.utc))` pins the timestamp; the file ID is derived from buffer content
+hash (not random/uuid); fpdf2's own regression suite relies on byte-for-byte stable
+output. The only residual caveat: pinning the reportlab version in `pyproject.toml`
+(already required for reproducible installs) ensures the hash does not change across
+machines.
+
+**Open decision: approach 1 (simpler, no manifest logic) vs approach 3 (explicit
+generator ↔ golden coupling, catches stale goldens before any LLM call is made).**
+Current default remains approach 1 until a decision is made.
 
 **Decision: PDFs are NOT committed. Only generators and golden files are committed.**
 `tests/fixtures/pdfs/` goes in `.gitignore`. `make fixtures` or the pytest session
@@ -494,23 +511,19 @@ fixture regenerates them.
 
 The calibration plan runs ONE fixture (C1) and derives a single `COORD_SCALE`. But
 Claude's internal coordinate space might:
-1. Vary by page content density (more complex pages might render at different effective
-   DPI)
-2. Be a non-integer multiplier — applying a float scale to integer source coordinates
+1. Vary by page content density (more complex pages might render at a different effective
+   DPI or scale)
+2. Produce a non-integer multiplier — applying a float scale to integer source coordinates
    produces rounding that compounds per-block
 
-Additionally, the coordinate formula:
-```
-ymin_claude = page_height_pts − (y_rl + height_rl)
-```
-assumes Claude uses top-left origin. This is unverified. If Claude uses a different
-reference point, the formula is wrong and all golden bboxes are wrong.
+The axis-flip concern from earlier drafts is **resolved by the switch to fpdf2**: fpdf2
+uses top-left origin by definition, matching Claude's convention. No formula inversion is
+needed and no empirical check of the reference point is required.
 
-**Resolution:** Phase 0 calibration must run THREE different fixtures (C1, C7-table, G1-
-twocolumn) and compare the scale factors. If they differ, bbox assertions are disabled
-permanently. The `COORD_SCALE` constant is replaced with `BBOX_ASSERTIONS_VIABLE = False`
-and all bbox checks are skipped. The calibration doc is committed as
-`tests/fixtures/generators/calibration_notes.md`.
+**Resolution:** Phase 0 (C1 only) derives the initial `COORD_SCALE`. Phase 1 (when D1
+and G1 exist) repeats the check across content types to verify scale consistency. If
+the factor differs between fixtures, `BBOX_ASSERTIONS_VIABLE = False` is set permanently.
+The calibration doc is committed as `tests/fixtures/generators/calibration_notes.md`.
 
 ---
 
@@ -963,7 +976,7 @@ calculation explicitly.
 
 | ID | PDF content | Assertions |
 |---|---|---|
-| G1 | 2-column A4 (left column xmin ≈ 36 pt → bucket 0; right column xmin ≈ 315 pt → bucket 6): left has "L1", "L2", "L3"; right has "R1", "R2", "R3" | (1) All blocks whose `bbox.xmin < page_width/2` appear before all blocks whose `bbox.xmin >= page_width/2` in `structured_payload`; (2) "L1", "L2", "L3" texts are each in some block; (3) "R1", "R2", "R3" texts are each in some block |
+| G1 | 2-column A4 (left column at x_mm ≈ 12.7 mm → Claude xmin ≈ 36 → bucket 0; right column at x_mm ≈ 111 mm → Claude xmin ≈ 315 → bucket 6, assuming COORD_SCALE ≈ 2.835): left has "L1", "L2", "L3"; right has "R1", "R2", "R3" | (1) All blocks whose `bbox.xmin < page_width/2` appear before all blocks whose `bbox.xmin >= page_width/2` in `structured_payload`; (2) "L1", "L2", "L3" texts are each in some block; (3) "R1", "R2", "R3" texts are each in some block |
 
 > **Why `bbox.xmin`, not text prefix:** using text-prefix to identify column membership
 > is circular — it can't detect bleed. Position-based assertion (xmin relative to page
@@ -1002,7 +1015,7 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 
 - `tests/fixtures/` directory structure; `tests/fixtures/pdfs/` in `.gitignore`
 - `generate_all.py` CLI (session-scoped pytest fixture regenerates missing PDFs)
-- `_common.py` reportlab helpers (canvas, drawString, table helper, figure rect)
+- `_common.py` fpdf2 helpers: `make_pdf()` factory (FPDF subclass with pinned creation date and A4 defaults), `draw_text()`, `draw_table()`, `draw_figure_rect()` helpers; `COORD_SCALE` / `BBOX_ASSERTIONS_VIABLE` constants
 - Generators and golden files for A1–A3, B1–B2, C1–C9
 - `tests/integration/_compare.py`: `assert_blocks_match` (`normalize_text=True` default),
   `assert_table_data`
@@ -1104,3 +1117,4 @@ _v3 — 2026-06-02 18:00 — full redesign after reading all source files: repla
 _v4 — 2026-06-02 18:30 — Option 2 narrow-test conclusions (Group F only; other groups not justified); full 33-point devil's advocate review; resolved: binary PDF storage → PDFs not committed; B3 dropped (trivially true assertion); C5/C6 require multi-signal design or removal; C7 moved to D1 (wrong schema in baseline_core); exact text → normalized default; block_count → minimum bounds; E3 suspended (is_continued not prompted); F3 corrected per hierarchy rules; F5 upgraded to nearest-heading-parent assertion; G2 dropped (duplicates unit tests); H2 → C9; bbox tolerance formula fixed (block dimension not page dimension); full-chain integration test added_
 _v5 — 2026-06-02 19:00 — second devil's advocate pass; 18 further issues resolved: Design Principle 1 contradiction (PDFs not committed); comparison contract updated (is_continued removed, bbox tolerance corrected); bbox note formula corrected; normalize_text default fixed in _compare.py spec; docstring lowercasing removed; block_count removed from golden file example; D2 assertion garbled (copy-paste from D3) fixed; calibration section "Level 1" stale name fixed; Phase 0 C7/G1 impossibility fixed; F1 redesigned (single-block path skips LLM — already unit-tested, no value); F4 removed (figure-caption has no documented hierarchy rule); F state spec trimmed to only keys the function reads; G1 assertion fixed (xmin-based, not text-prefix-based — circular); E hierarchy mock clarified (AsyncAnthropic, not whole function); same for C; full-chain test assertion hardened; hierarchy assertions section updated with documented vs undocumented rules_
 _v6 — 2026-06-02 19:30 — narrow-test section rewritten after third devil's advocate pass on that section specifically: added three-condition formal definition; A verdict corrected (N/A — not a strategy choice); B verdict corrected (concern-isolated, not technically narrow — fails all 3 conditions); C argument replaced (identity problem: narrow C = e2e C minus schema validation, false-confidence argument was empirically wrong); D verdict changed from "partially useful" to "not justified" (bypasses pioneer_validation_route — the key signal for D, creates false confidence); E verdict corrected (LangGraph Send API dependency — E3 reference was dead, E3 is suspended); F section rewritten to lead with the structural argument (only LLM node without encode_pdf_async); G verdict sharpened (file_path still required + conditional isolation already covers diagnostic gap); H verdict strengthened (full-pipeline exception propagation + already unit-tested empty-block behavior)_
+_v7 — 2026-06-02 20:00 — generator library switched from reportlab to fpdf2: Design Principle 1 updated (fpdf2, determinism via set_creation_date); _common.py spec updated (make_pdf factory, draw_text, draw_table, draw_figure_rect); coordinate section rewritten — axis-flip formula eliminated, fpdf2 top-left matches Claude convention, calibration simplified to COORD_SCALE × mm; D/A calibration sub-section updated (top-left concern resolved, stale formula removed, three-fixture-in-Phase-0 contradiction fixed); D/A binary PDF section updated (approach 5 viable with fpdf2, decision documented as open); G1 column position labels corrected (mm generator coords + Claude output coords, "pt" label removed)_
