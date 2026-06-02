@@ -73,7 +73,8 @@ Group B therefore tests the fallback path, not a direct classification.
 1. **Expected output at generation time.** Every fixture PDF is produced by a reportlab
    generator script that also emits a `golden.json` capturing the output we expect.
    "Expected" means "consistent with what the model should produce given this input" —
-   not a mathematical truth. Golden files are committed alongside the PDFs.
+   not a mathematical truth. Golden files (JSON) are committed; PDFs are not (see
+   §Directory layout).
 
 2. **One primary concern per group.** Each group targets one pipeline node. Within a
    group, PDFs increase in complexity. This doesn't mean zero interference from
@@ -167,19 +168,21 @@ xmax_claude = x_rl + width_rl
 
 ### Calibration run (Phase 0)
 
-Before generating golden files for any level, run Level 1 (single paragraph, known position) through
-the pipeline and inspect the returned `coordinates`. Compare against the expected point values:
+Before generating any golden files, run C1 (single paragraph, known position) through
+the pioneer_parser only (mock classifier and hierarchy to save cost — only the extraction
+output contains bbox data). Run it 3 times and compare returned `coordinates`:
 
-- If `coordinates ≈ points_values` → coordinate space is PDF points; golden files store converted
-  point values.
-- If `coordinates ≈ points_values × k` for some `k` (e.g. 2.0 for 144 DPI, 1.389 for 100 DPI) →
-  golden files store scaled values derived by multiplying the reportlab point coords by `k`.
+- If `coordinates ≈ point_values` → Claude uses PDF points; `COORD_SCALE = 1.0`.
+- If `coordinates ≈ point_values × k` → `COORD_SCALE = k` (store as float).
+- If values vary widely across 3 runs → `BBOX_ASSERTIONS_VIABLE = False`.
 
-The calibration result is stored in `tests/fixtures/generators/_common.py` as a constant
-(`COORD_SCALE = <k>`) used by all golden file generators.
+A second check in Phase 1 (when D1-table and G1-twocolumn exist) verifies scale
+consistency across content types. If scale differs between C1 and D1/G1:
+`BBOX_ASSERTIONS_VIABLE = False`.
 
-Until the calibration run is done, Phase 1 integration tests skip bbox assertions entirely
-and only assert `document_type`, `blocks[*].type`, `blocks[*].text`, and block count.
+Store findings in `calibration_notes.md`. The constant in `_common.py` is either
+`COORD_SCALE = <k>` (float, enables bbox) or `BBOX_ASSERTIONS_VIABLE = False`
+(disables all bbox assertions permanently). These two constants are mutually exclusive.
 
 ---
 
@@ -192,12 +195,12 @@ synthetic input**:
 |---|---|---|
 | `document_type` | exact string | Core classifier signal |
 | `blocks[*].type` | exact enum | Extraction quality |
-| `blocks[*].text` | exact string | Extraction quality |
-| `blocks[*].is_continued` | exact bool | Continuation detection |
-| `blocks[*].metadata` | field-by-field | Schema-specific (table_data, bibliographic, …) |
-| `blocks[*].bbox` | tolerance ±5 % of page dimension | See note below |
+| `blocks[*].text` | normalized string | Strip + collapse whitespace; no lowercasing |
+| `blocks[*].is_continued` | **not compared** | E3 suspended; field untested |
+| `blocks[*].metadata` | field-by-field, optional subfields | Schema-specific; see §Group D notes |
+| `blocks[*].bbox` | ±5 % of block's own dimension (if assertions enabled post-calibration) | See note below |
 | `blocks[*].block_id` | **not compared** | Non-deterministic, model-assigned |
-| `blocks[*].parent_id` | structural check | Not exact ID, see §hierarchy assertions |
+| `blocks[*].parent_id` | structural check | Not exact ID; see §hierarchy assertions |
 
 ### Bbox note (phased)
 
@@ -208,17 +211,16 @@ returned integers are model estimates that vary run-to-run.
 **Phase 1 (pre-calibration):** no bbox assertions. Tests only check `document_type`,
 `blocks[*].type`, `blocks[*].text`, and `len(blocks)`.
 
-**Phase 2 (post-calibration):** after the Phase 0 calibration run (see §Coordinate
-system), golden files store the expected coordinates in Claude's coordinate space.
-Tests assert each returned coordinate is within **±5 % of the corresponding page
-dimension** (≈ ±36 pt on A4 at 792 pt height). This catches gross mis-location while
-tolerating normal model variance.
+**Phase 2 (post-calibration):** golden files store the expected coordinates. Tests assert
+each returned coordinate is within **±5 % of the block's own dimension** on each axis
+(e.g., for a 20 pt tall block, ±1 pt; for a 200 pt wide block, ±10 pt). A floor of
+±5 pt absolute applies for blocks smaller than 10 pt. This scales with block size and
+is semantically meaningful — not a fixed page-relative band that would pass for blocks
+placed anywhere in the same quadrant.
 
-**Why not ±1 px:** bbox values are model-generated, not parser-derived. ±1 px
-assertions would be permanently flaky on non-deterministic inputs.
-
-If calibration shows Claude is consistently accurate (variance < 5 pt on simple docs),
-the tolerance can be tightened in a follow-up iteration.
+**Why not ±1 px or ±page dimension:** bbox values are model estimates. Page-relative
+tolerance (e.g., ≈ 42 pt on A4) is too loose for small blocks. Pixel-exact assertions
+are permanently flaky against a stochastic model.
 
 ### Block-matching strategy
 
@@ -247,13 +249,14 @@ def assert_blocks_match(
     *,
     check_bbox: bool = False,
     bbox_tolerance_pct: float = 0.05,
-    normalize_text: bool = False,
+    normalize_text: bool = True,  # default True per Design Principle 5
 ) -> None:
     """
     Raises AssertionError with a diff on the first mismatch.
     - Matches blocks positionally by default.
     - check_bbox=False until Phase 2 calibration is complete.
-    - normalize_text=True strips extra whitespace and lowercases before comparing.
+    - normalize_text: strip + collapse whitespace, normalize quotes. Do NOT lowercase.
+    - bbox_tolerance_pct applies to block's own dimension, not page dimension.
     """
 
 def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -> None:
@@ -278,13 +281,21 @@ def assert_nearest_heading_parent(blocks: list[dict]) -> None:
 ### Hierarchy assertions
 
 `parent_id` values are model-assigned UUIDs and cannot be golden-pinned. Instead we
-assert structural relationships:
+assert structural relationships. The following are based on the **documented rules in
+the hierarchy node prompt** — assertions must not assume undocumented behavior:
 
-- Every `paragraph` block whose nearest preceding block is a `heading` has
-  `parent_id` pointing to some block whose `type == "heading"`.
-- Every `list_item` has a `parent_id` pointing to a block of type
-  `"heading"` or `"paragraph"`.
-- Top-level blocks (title, standalone paragraphs) have `parent_id == null`.
+**Documented rules (assert these):**
+- Paragraphs/tables/list_items directly following a `heading` → `parent_id` points
+  to that heading's `block_id`.
+- `title` blocks → `parent_id == null`.
+- Unpaired/standalone `heading` blocks → `parent_id == null`.
+
+**Undocumented (do not assert without prompt evidence):**
+- Figure-caption nesting: NOT in the hierarchy prompt. Do not assert
+  `caption.parent_id → figure`. See F4 note.
+- `list_item` parent rules: documented in the prompt as falling under the general
+  "directly following a heading" rule. No dedicated test case currently; add F6 if
+  list_item nesting needs explicit coverage.
 
 ---
 
@@ -295,19 +306,17 @@ Each golden file in `tests/fixtures/golden/` is a JSON document with two top-lev
 ```json
 {
   "meta": {
-    "generator": "level_01_minimal",
+    "generator": "grp_c_paragraph",
     "page_size_pts": [595.28, 841.89],
-    "coord_scale": 1.0,
+    "coord_scale": null,
     "created": "2026-06-02"
   },
   "expected": {
     "document_type": "baseline_core",
-    "block_count": 1,
     "blocks": [
       {
         "type": "paragraph",
         "text": "Hello, synthetic world.",
-        "is_continued": false,
         "bbox": {
           "page_number": 1,
           "coordinates": [380, 70, 410, 525]
@@ -319,12 +328,13 @@ Each golden file in `tests/fixtures/golden/` is a JSON document with two top-lev
 }
 ```
 
-- `meta.coord_scale` is filled in after Phase 0 calibration; set to `null` until then.
-- `expected.blocks` omits `block_id` and `parent_id` — neither is pinned exactly.
-- For levels that skip bbox (`check_bbox=False`), the `coordinates` key may be omitted.
+- `meta.coord_scale` is `null` until Phase 0 calibration; set to `false` if assertions
+  are disabled, or to the numeric scale factor if enabled.
+- `expected.blocks` omits `block_id`, `parent_id`, and `is_continued` (E3 suspended).
+- No `block_count` field — count assertions use `len(blocks) >= minimum` in tests.
+- `coordinates` key may be omitted when `BBOX_ASSERTIONS_VIABLE = False`.
 
-The generator scripts write this file at generation time, so the ground truth is
-tightly coupled to what was actually placed on the page.
+Generator scripts write this file at generation time with the content placed on the page.
 
 ---
 
@@ -379,20 +389,14 @@ Implementation: call `layout_hierarchy_agent_node(state)` directly as a function
 Bypass `build_app()`. State is hand-crafted:
 
 ```python
+# Only the keys that layout_hierarchy_agent_node actually reads:
 state = {
-    "file_path": "irrelevant",
-    "pdf_hash": "x" * 64,
-    "total_pages": 1,
-    "document_type": "baseline_core",
-    "target_json_schema": SchemaRegistry().get_schema_and_tool("baseline_core")[0],
-    "current_page": 1,
-    "retry_count": 0,
-    "last_validation_error": None,
-    "extracted_flat_blocks": [
+    "document_type": "baseline_core",   # written to hierarchical_document_tree output
+    "pdf_hash": "x" * 64,               # written to hierarchical_document_tree output
+    "extracted_flat_blocks": [           # the input under test
         # hand-crafted blocks go here
     ],
-    "extraction_warnings": [],
-    "hierarchical_document_tree": None,
+    "extraction_warnings": [],           # merged into output warnings
 }
 result = await layout_hierarchy_agent_node(state)
 ```
@@ -774,14 +778,20 @@ and increase in complexity. All tests in a group share a `@pytest.mark.grp_X` ma
 ### Group A — Native extraction (no LLM, no API key required)
 
 Node under test: `native_extractor_node` (pypdf only).
+Tests call `native_extractor_node(state)` **directly as a function** — same pattern
+as F narrow tests. This captures intermediate state (`total_pages`, `pdf_hash`)
+without running the graph or needing intermediate state capture from LangGraph.
+`state` is minimal: only `file_path` is required.
 
 | ID | PDF | Assertions |
 |---|---|---|
-| A1 | Valid 1-page PDF | `total_pages == 1`; `pdf_hash` is a 64-char hex string |
-| A2 | Valid 10-page PDF | `total_pages == 10` |
-| A3 | Encrypted PDF | `ValueError` raised immediately; pipeline does not reach classifier |
+| A1 | Valid 1-page PDF | `result["total_pages"] == 1`; `len(result["pdf_hash"]) == 64` |
+| A2 | Valid 10-page PDF | `result["total_pages"] == 10` |
+| A3 | Encrypted PDF (pypdf-generated) | `pytest.raises(ValueError)`; classifier mock `assert_not_called()` to confirm early exit |
 
-> A3 uses a programmatically encrypted PDF (pypdf can write them); no API call is made.
+> A3 uses a programmatically encrypted PDF (`pypdf.PdfWriter` with encryption). This
+> tests the actual pypdf encryption detection, which the existing unit test bypasses via
+> `mocker.patch("get_page_count")`. No API call is made for any A test.
 
 ---
 
@@ -805,8 +815,10 @@ principles and §Narrow tests for the rationale).
 ### Group C — Block-type extraction (1–2 Claude calls per test)
 
 Node under test: `window_parser_node` (pioneer page, 1-page PDFs so burst never fires).
-Classifier is mocked (inject `document_type="baseline_core"`). Hierarchy is mocked
-(trivial parent_ids). One PDF per block type.
+Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
+`"baseline_core"`. Hierarchy is mocked by patching
+`src.nodes.hierarchy_node.AsyncAnthropic` to return trivial relations — **not** by
+patching the whole functions, so deduplication and sort still run. One PDF per block type.
 
 All count assertions use `>= minimum`, not `== exact`. Text assertions use normalized
 matching (strip + collapse whitespace).
@@ -850,7 +862,7 @@ a prompt change, not a test change.
 | ID | Doc type mocked | PDF content | Metadata subfield | Key assertions |
 |---|---|---|---|---|
 | D1 | `invoice` | 4-col line-items table (description, qty, price, total) with header row | `table_data` | `table` block present; if `table_data` populated: `cells` contains all generated values; `is_header` on row 0 |
-| D2 | `scientific_paper` | Title + 3 author names + "Abstract" heading + abstract paragraph | `bibliographic` | If `bibliographic` populated: `"2" in section_number` per author present; else author names present in block text |
+| D2 | `scientific_paper` | Title + 3 author names + "Abstract" heading + abstract paragraph | `bibliographic` | If `bibliographic.authors` populated: all 3 generated author names present in list; else all 3 author names present somewhere in block text |
 | D3 | `scientific_paper` | "2. Methodology" as bold heading + 2 paragraphs | `section` | If `section` populated: `"2" in section_number` and `"Methodology" in section_title`; else "Methodology" present in some block's text |
 | D4 | `scientific_paper` | 3 numbered reference entries (author-year-title format) | `reference` | If `reference` populated on any block: `year` is an integer; else reference text present in some block's text |
 | D5 | `scientific_paper` | Grey rectangle + "Figure 1: Caption text" caption below | `figure_table` | If `figure_table` populated: `"Figure 1" in label` and caption text present; `referenced_block_id` is **not asserted** (non-deterministic block IDs) |
@@ -860,7 +872,10 @@ a prompt change, not a test change.
 ### Group E — Multi-page pipeline / burst + merge (N Claude calls per test)
 
 Nodes under test: `burst_dispatcher_node`, `window_parser_node` (pages 2–N), `merge_flat_blocks` reducer.
-Hierarchy node is mocked to return trivial relations.
+Hierarchy LLM is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic` to return
+trivial `{block_id: ..., parent_id: null}` relations — **not** by patching the whole
+`layout_hierarchy_agent_node` function. This preserves the deduplication and sort steps
+so the `block_id` uniqueness assertion is meaningful.
 
 | ID | PDF | Assertions |
 |---|---|---|
@@ -888,20 +903,25 @@ order within a page and in the same `xmin // 50` bucket (e.g., all `xmin = 70`) 
 
 | ID | Pre-built blocks | Expected hierarchy | Key assertions |
 |---|---|---|---|
-| F1 | `[title]` | title at root | `title.parent_id == null` |
-| F2 | `[heading, paragraph, paragraph]` | paragraphs under heading | each paragraph's `parent_id` resolves to the heading's `block_id` |
-| F3 | `[title, heading, paragraph]` | title at root; paragraph under heading; heading at root (per documented rules) | title `parent_id == null`; heading `parent_id == null`; paragraph `parent_id` → heading |
-| F4 | `[figure, paragraph(caption)]` | caption under figure | caption's `parent_id` → block of `type == "figure"` |
-| F5 | `[heading-A, para-A1, para-A2, heading-B, para-B1, para-B2]` | each paragraph under its nearest preceding heading | `assert_nearest_heading_parent(blocks)` — para-A* → heading-A; para-B* → heading-B |
+| F1 | `[heading, paragraph]` | paragraph under heading | `paragraph.parent_id` resolves to `heading.block_id`; heading `parent_id == null` |
+| F2 | `[heading, paragraph, paragraph, table]` | paragraphs + table under heading | all three blocks' `parent_id` → heading's `block_id` |
+| F3 | `[title, heading, paragraph]` | title at root; heading at root; paragraph under heading | `title.parent_id == null`; `heading.parent_id == null`; `paragraph.parent_id` → heading |
+| F4 | `[heading-A, para-A1, para-A2, heading-B, para-B1, para-B2]` | each paragraph under its nearest preceding heading | `assert_nearest_heading_parent(blocks)` |
 
-> F3 is redesigned from "3-level nesting" to reflect the hierarchy node's actual rule:
-> headings are always root-level (parent_id = null) per the hierarchy prompt. Asserting
-> heading→title nesting would contradict the documented rule and make F3 fail even when
-> the node works correctly.
+> **F1 replaces the old "single title block" case.** The single-block path is already
+> covered by `test_hierarchy_node.py:test_single_block_skips_api_and_sets_parent_none`
+> — it skips the LLM call entirely (hardcoded). F1 now tests the simplest REAL LLM
+> call: heading + paragraph.
 >
-> F5 uses `assert_nearest_heading_parent()` which checks by position (sorted ymin order),
-> not just type. This distinguishes which heading each paragraph belongs to.
-> "type-of-parent" checking alone is insufficient here.
+> **F4 (figure-caption) is removed.** The hierarchy prompt has no documented rule for
+> figure→caption relationships. Asserting this would test undocumented/inferred model
+> behavior and produce unpredictable flakiness. If figure-caption nesting is desired,
+> the hierarchy prompt must first be updated with an explicit rule, then F4 is added.
+>
+> **F3 confirms the documented rule:** both `title` AND `heading` are root-level. This
+> is the key insight from the F3 redesign — the hierarchy agent treats them symmetrically.
+>
+> F4 (old numbering) is renumbered to F4 (multi-heading disambiguation).
 
 ---
 
@@ -917,7 +937,13 @@ calculation explicitly.
 
 | ID | PDF content | Assertions |
 |---|---|---|
-| G1 | 2-column A4 (left column xmin ≈ 36 pt → bucket 0; right column xmin ≈ 315 pt → bucket 6): left has "L1", "L2", "L3"; right has "R1", "R2", "R3" | All L-prefixed text blocks appear before all R-prefixed text blocks in `structured_payload`; no L-text in an R-position block and vice versa |
+| G1 | 2-column A4 (left column xmin ≈ 36 pt → bucket 0; right column xmin ≈ 315 pt → bucket 6): left has "L1", "L2", "L3"; right has "R1", "R2", "R3" | (1) All blocks whose `bbox.xmin < page_width/2` appear before all blocks whose `bbox.xmin >= page_width/2` in `structured_payload`; (2) "L1", "L2", "L3" texts are each in some block; (3) "R1", "R2", "R3" texts are each in some block |
+
+> **Why `bbox.xmin`, not text prefix:** using text-prefix to identify column membership
+> is circular — it can't detect bleed. Position-based assertion (xmin relative to page
+> midpoint) is independent of text content. If the model bleeds L-text into an R-xmin
+> block, assertion (1) catches the ordering failure. Assertions (2) and (3) confirm no
+> content was lost.
 
 ---
 
@@ -939,13 +965,12 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 ### Phase 0 — Calibration (prerequisite, no tests written yet)
 
 - Implement `_common.py` and C1 generator only; add `tests/fixtures/pdfs/` to `.gitignore`
-- Run C1 through the full pipeline (no mocks); run it 3 times and record returned
-  `coordinates` each time
-- Also run it for the C7 (table) and G1 (two-column) PDFs to check scale consistency
-- Commit calibration findings to `tests/fixtures/generators/calibration_notes.md`
-- If `COORD_SCALE` is consistent: document in `_common.py`, enable bbox assertions in Phase 2
-- If inconsistent: set `BBOX_ASSERTIONS_VIABLE = False` in `_common.py`; all bbox
-  checks are disabled permanently
+- Mock classifier and hierarchy; run only pioneer_parser on C1 PDF — 3 times
+- Record returned `coordinates` each run; derive `COORD_SCALE` or flag as non-viable
+- Commit `calibration_notes.md` with raw numbers and decision
+- Set `COORD_SCALE = <k>` or `BBOX_ASSERTIONS_VIABLE = False` in `_common.py`
+- Phase 1 (when D1 and G1 exist) repeats the check across content types to verify scale
+  consistency; if inconsistent, override to `BBOX_ASSERTIONS_VIABLE = False`
 
 ### Phase 1 — Foundation: Groups A, B, C + infrastructure
 
@@ -979,8 +1004,10 @@ Reduced to H1 only. H2 (long paragraph) moved to C9.
 - Two-column generator (G1); edge-case generator (H1)
 - Integration tests for groups G and H
 - **Full-chain integration test** (`tests/integration/test_full_chain.py`):
-  no mocks, 1-page invoice PDF, all nodes real, asserts `document_type == "invoice"`,
-  `table` block with `table_data`, `extraction_warnings == []`
+  no mocks, reuses the B1 PDF (1-page invoice), all nodes real, asserts:
+  `document_type == "invoice"`, at least one `table` block present,
+  `not any("failed schema validation" in w for w in extraction_warnings)`
+  (tolerates benign warnings, catches degradation)
 - Update README with `make test-e2e GRP=x` usage
 
 ---
@@ -1049,3 +1076,4 @@ _v1 — 2026-06-02 17:00 — initial draft_
 _v2 — 2026-06-02 17:30 — added coordinate calibration section, Phase 0, block-matching strategy, `_compare.py` spec, golden file format, phased bbox assertions_
 _v3 — 2026-06-02 18:00 — full redesign after reading all source files: replaced single linear scale with 8 concern-separated groups (A–H); documented what existing unit tests already cover; noted retry loop cannot be triggered by synthetic PDFs; corrected `baseline_core` fallback mechanic; updated directory layout, phased delivery, open questions_
 _v4 — 2026-06-02 18:30 — Option 2 narrow-test conclusions (Group F only; other groups not justified); full 33-point devil's advocate review; resolved: binary PDF storage → PDFs not committed; B3 dropped (trivially true assertion); C5/C6 require multi-signal design or removal; C7 moved to D1 (wrong schema in baseline_core); exact text → normalized default; block_count → minimum bounds; E3 suspended (is_continued not prompted); F3 corrected per hierarchy rules; F5 upgraded to nearest-heading-parent assertion; G2 dropped (duplicates unit tests); H2 → C9; bbox tolerance formula fixed (block dimension not page dimension); full-chain integration test added_
+_v5 — 2026-06-02 19:00 — second devil's advocate pass; 18 further issues resolved: Design Principle 1 contradiction (PDFs not committed); comparison contract updated (is_continued removed, bbox tolerance corrected); bbox note formula corrected; normalize_text default fixed in _compare.py spec; docstring lowercasing removed; block_count removed from golden file example; D2 assertion garbled (copy-paste from D3) fixed; calibration section "Level 1" stale name fixed; Phase 0 C7/G1 impossibility fixed; F1 redesigned (single-block path skips LLM — already unit-tested, no value); F4 removed (figure-caption has no documented hierarchy rule); F state spec trimmed to only keys the function reads; G1 assertion fixed (xmin-based, not text-prefix-based — circular); E hierarchy mock clarified (AsyncAnthropic, not whole function); same for C; full-chain test assertion hardened; hierarchy assertions section updated with documented vs undocumented rules_
