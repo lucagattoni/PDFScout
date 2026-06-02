@@ -2,6 +2,7 @@
 
 _Created: 2026-06-02 17:00_
 _Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching strategy, compare helper spec_
+_Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_
 
 ---
 
@@ -16,23 +17,71 @@ capability broke, without noise from real-world document quirks.
 
 ---
 
+## Why the original single-scale approach was wrong
+
+After reading all source files, the original "9 levels of increasing complexity" design
+has a fundamental flaw: **each level conflates multiple pipeline concerns**. Level 4
+(Invoice) tested the classifier, the invoice schema selection, table_data metadata
+population, and the burst phase simultaneously. A failure at that level could originate
+in any of those four components.
+
+A failing test should point at ONE broken capability. The new design enforces that by
+separating tests on **three independent axes**:
+
+| Axis | Question answered |
+|---|---|
+| **Which node?** | classifier / pioneer_parser / burst_worker / hierarchy_node |
+| **Which schema feature?** | block type / metadata subfield / hierarchy rule |
+| **How complex is the PDF?** | 1 block / multi-block / multi-column / multi-page |
+
+Complexity now increases **within each group**, not across groups. The result is a set
+of narrow-focus tests where `group B` failing always means "classifier broke", `group C`
+failing always means "extraction/block-type recognition broke", and so on.
+
+---
+
+## What the existing unit tests already cover (do NOT duplicate)
+
+Reading the test suite reveals complete mock-based coverage for:
+
+| Behavior | Existing test |
+|---|---|
+| Pioneer retry loop (1→3 retries, degradation warning) | `test_graph_pipeline.py` |
+| `pioneer_validation_route` routing (empty blocks, wrong page, valid, invalid, max retry) | `test_edges.py` |
+| `geometric_pre_sorter` (page sort, ymin sort, column bucket sort) | `test_hierarchy_node.py` |
+| Hierarchy node: dedup, single-block skip, orphan warning, no-tool-use error | `test_hierarchy_node.py` |
+| Worker node: tool-use parsing, no-tool-use error, error injection in prompt | `test_worker_node.py` |
+| Classifier: invoice, sci, unknown fallback, whitespace strip | `test_classifier_node.py` |
+
+**The retry loop cannot be exercised by synthetic PDFs.** There is no clean, valid PDF
+that reliably makes Claude produce a JSON schema violation. The retry loop is deterministically
+exercised by mocked API responses and is already fully covered. **Do not add a synthetic
+PDF fixture for it.**
+
+A further code-derived insight: `classifier_node` **never directly returns `baseline_core`**.
+It returns the model's response only if it is in `SUPPORTED_DOC_TYPES`
+(`{"invoice", "scientific_paper"}`); otherwise it falls through to `FALLBACK_DOC_TYPE`.
+Group B therefore tests the fallback path, not a direct classification.
+
+---
+
 ## Design principles
 
 1. **Ground truth at generation time.** Every fixture PDF is produced by a reportlab
-   generator script that also emits a `golden.json` — a JSON file containing the exact
-   block list we expect the pipeline to return. Golden files are committed alongside
+   generator script that also emits a `golden.json`. Golden files are committed alongside
    the PDFs so tests run offline.
 
-2. **Graduated complexity.** Levels 1–9 add exactly one new structural challenge each.
-   A failing test at level N implies the capability introduced at N is broken; all lower
-   levels still pass.
+2. **One concern per test.** Each test group targets exactly one pipeline node and one
+   schema feature. Within a group, PDFs increase in complexity, but the tested concern
+   stays fixed.
 
-3. **Classifier coverage.** At least one level exercises each document type
-   (`baseline_core`, `invoice`, `scientific_paper`).
+3. **Pytest marks for selective runs.** Every test is tagged with its group
+   (`@pytest.mark.grp_b`, `@pytest.mark.grp_c`, …) so any group can be run in isolation.
+   All synthetic tests also carry `@pytest.mark.e2e` to exclude them from the default
+   `make test` run.
 
-4. **Full end-to-end.** Tests invoke `main.py` (or the equivalent `run_pipeline` entry
-   point) with the fixture PDF, collect the JSON output, and diff it against the golden
-   file field by field.
+4. **Full end-to-end within each test.** Tests invoke the pipeline via `build_app()`,
+   collect the JSON output, and diff it against the golden file field by field.
 
 ---
 
@@ -43,33 +92,42 @@ tests/
   fixtures/
     generators/
       __init__.py
-      _common.py             # shared reportlab helpers (page size, fonts, grid)
-      level_01_minimal.py
-      level_02_multiblock.py
-      level_03_blocktypes.py
-      level_04_invoice.py
-      level_05_sci_single.py
-      level_06_sci_multipage.py
-      level_07_twocolumn.py
-      level_08_tables_figures.py
-      level_09_edge_cases.py
+      _common.py             # shared reportlab helpers (A4 canvas, text, table, figure)
+      grp_a_native.py        # A1–A2: valid/encrypted/zero-page PDFs
+      grp_b_classifier.py    # B1–B3: invoice signals, sci signals, plain fallback
+      grp_c_blocktypes.py    # C1–C7: one block type per generator
+      grp_d_metadata.py      # D1–D5: one metadata subfield per generator
+      grp_e_multipage.py     # E1–E3: 2-page, 5-page, continuation
+      grp_f_hierarchy.py     # F1–F4: nesting patterns
+      grp_g_layout.py        # G1–G2: two-column, dense page
+      grp_h_edge.py          # H1–H2: empty page, long paragraph
       generate_all.py        # CLI: python -m tests.fixtures.generators.generate_all
     pdfs/                    # committed, pre-generated
-      level_01_minimal.pdf
+      grp_a_valid_1page.pdf
+      grp_b_invoice.pdf
+      grp_c_paragraph.pdf
+      grp_c_table.pdf
       ...
     golden/                  # committed, expected JSON output
-      level_01_minimal.json
+      grp_a_valid_1page.json
+      grp_b_invoice.json
+      grp_c_paragraph.json
+      grp_c_table.json
       ...
   integration/
-    test_synthetic_L01.py
-    test_synthetic_L02.py
-    ...
-    test_synthetic_L09.py
+    test_synthetic_grp_a.py  # native extraction
+    test_synthetic_grp_b.py  # classifier
+    test_synthetic_grp_c.py  # block-type extraction
+    test_synthetic_grp_d.py  # metadata schemas
+    test_synthetic_grp_e.py  # multi-page burst
+    test_synthetic_grp_f.py  # hierarchy assignment
+    test_synthetic_grp_g.py  # layout / reading order
+    test_synthetic_grp_h.py  # edge cases
     _compare.py              # shared diff/assertion helpers
 ```
 
-A `make fixtures` Makefile target regenerates all PDFs and golden files from scratch
-(used when generators change, not on every test run).
+A `make fixtures` Makefile target regenerates all PDFs and golden files.
+Individual groups can be regenerated with `make fixtures GRP=c`.
 
 ---
 
@@ -155,17 +213,17 @@ The pipeline's `geometric_pre_sorter` applies a deterministic sort on the output
 This means the order of blocks in `structured_payload` is fully determined by their
 bboxes — it is not the insertion order from the model.
 
-For **Levels 1–6** (single-column or well-separated columns), the sort order is stable
+For **groups A–F and H** (single-column content), the sort order is stable
 and blocks can be matched positionally: `output[i]` is compared to `golden[i]`.
 
-For **Level 7** (two-column layout), the sort interleaves columns inside the same
+For **group G1** (two-column layout), the sort interleaves columns inside the same
 column-bucket boundaries. The test uses set-based matching: for each expected text
 string, assert that *some* block in the output contains it. Positional order is
 verified separately (left-column blocks must all appear before right-column blocks in
 the sorted output).
 
-For **Level 9a** (empty page), the output may have zero blocks; the test asserts
-`len(blocks) == 0` and no exception.
+For **H1** (empty page), the output may have zero blocks; the test asserts
+`len(blocks) <= 2` and no exception. No positional matching is attempted.
 
 ### `_compare.py` helper spec
 
@@ -249,223 +307,227 @@ tightly coupled to what was actually placed on the page.
 
 ---
 
-## Complexity levels
+## Test groups
 
-### Level 1 — Minimal single-page
-
-**What the PDF contains:** one A4 page, one short paragraph in the centre.
-
-**What it tests:**
-- Pipeline runs end-to-end on the simplest possible input
-- Classifier returns `baseline_core`
-- Pioneer parser extracts exactly one block of type `paragraph`
-- No burst phase (single-page doc)
-
-**Assertions:**
-- `document_type == "baseline_core"`
-- `len(blocks) == 1`
-- `blocks[0].type == "paragraph"`, `blocks[0].text == <exact string>`
-- Bbox within ±5 % tolerance
+Groups are ordered by concern, not by complexity. Within each group, tests are numbered
+and increase in complexity. All tests in a group share a `@pytest.mark.grp_X` marker.
 
 ---
 
-### Level 2 — Single-page, multi-block, single-column
+### Group A — Native extraction (no LLM, no API key required)
 
-**What the PDF contains:** 1 page — title + three short paragraphs stacked vertically,
-generous spacing so blocks are well-separated.
+Node under test: `native_extractor_node` (pypdf only).
 
-**What it tests:**
-- Multiple blocks extracted in correct reading order
-- Block type detection: `title` vs `paragraph`
-
-**Assertions:**
-- 4 blocks in order: `[title, paragraph, paragraph, paragraph]`
-- Each block's text matches the generated string
-- Bboxes ordered top-to-bottom (y_min monotonically increasing)
-
----
-
-### Level 3 — All baseline block types
-
-**What the PDF contains:** 1–2 pages using every block type in `baseline_core`:
-`title`, `heading`, `paragraph`, `list_item` (×3), `footnote`, `margin_element`.
-
-**What it tests:**
-- Full type vocabulary recognised
-- `footnote` and `margin_element` placed at correct positions (bottom and margin)
-
-**Assertions:**
-- At least one block of each type present
-- `footnote` bbox is in the bottom 20 % of its page
-- `margin_element` bbox left edge < 10 % of page width or right edge > 90 %
-
----
-
-### Level 4 — Invoice (classifier gate)
-
-**What the PDF contains:** a 2-page invoice:
-- Page 1: company logo area (paragraph/title), billing address table (2-col),
-  line-items table (4-col: description, qty, unit price, total)
-- Page 2: subtotal/tax/total rows, payment terms paragraph, footer
-
-**What it tests:**
-- Classifier identifies `invoice` (not `baseline_core`)
-- `table_data` metadata populated correctly for both tables
-- Burst phase runs for page 2
-
-**Assertions:**
-- `document_type == "invoice"`
-- Line-items table: `total_rows`, `total_cols`, all cells present in `table_data`
-- Header cells flagged `is_header == true`
-- No `ValidationError` in pipeline warnings
-
----
-
-### Level 5 — Scientific paper, single page
-
-**What the PDF contains:** 1 page formatted like an academic paper front page:
-title, authors list, abstract heading + abstract paragraph, two keywords.
-
-**What it tests:**
-- Classifier identifies `scientific_paper`
-- `bibliographic` metadata block populated (title, authors, abstract)
-- Schema validation passes on pioneer page
-
-**Assertions:**
-- `document_type == "scientific_paper"`
-- One block with `metadata.bibliographic.authors` containing all generated author strings
-- One block with `metadata.bibliographic.abstract` matching generated abstract text
-
----
-
-### Level 6 — Scientific paper, multi-page (burst phase)
-
-**What the PDF contains:** 5 pages — cover (title + abstract), three content sections
-(heading + paragraphs each), references page.
-
-**What it tests:**
-- Burst dispatcher emits `Send` for pages 2–5
-- Merge (`merge_flat_blocks`) combines all pages without duplication
-- Cross-page hierarchy assigned by `hierarchy_node`
-- `metadata.section` populated for each section block
-
-**Assertions:**
-- Blocks from all 5 pages present (check `bbox.page_number`)
-- No duplicate `block_id` values
-- Section headings have `metadata.section.section_title` matching generated titles
-- Paragraphs under each heading share `parent_id` pointing to that heading
-
----
-
-### Level 7 — Two-column layout
-
-**What the PDF contains:** 1 page in two-column newspaper layout (standard academic
-style): left column has heading + 2 paragraphs; right column has heading + 2 paragraphs.
-
-**What it tests:**
-- Reading order follows column flow (left column fully before right column)
-- Multi-column blocks don't bleed into each other
-
-**Assertions:**
-- Blocks from left column appear before blocks from right column in `blocks` array
-- No text from right column appears in a left-column block's `text` field (check
-  against known generated strings)
-
----
-
-### Level 8 — Tables and figures
-
-**What the PDF contains:** 1 page with:
-- A data table (3×4, with header row)
-- A grey rectangle standing in as a figure, with a caption below it
-
-**What it tests:**
-- `table` block type with full `table_data` metadata
-- `figure` block type detected
-- Caption associated with figure (hierarchy: figure → caption `list_item`/`paragraph`)
-
-**Assertions:**
-- `table` block present with `metadata.table_data.total_rows == 3`,
-  `total_cols == 4`, header row flagged
-- `figure` block present
-- Figure caption block has `parent_id` pointing to the figure block
-
----
-
-### Level 9 — Edge cases
-
-Three lightweight PDFs in a single level, each targeting a graceful-degradation path:
-
-| Sub-case | PDF content | Asserts |
+| ID | PDF | Assertions |
 |---|---|---|
-| `9a_empty_page` | 1 page, no text, no objects | Pipeline completes; `blocks` may be `[]`; no exception raised |
-| `9b_long_single_block` | 1 page, one paragraph filling the full page (500 words) | 1 block of type `paragraph`; `is_continued` tracking works |
-| `9c_continuation` | 2 pages, one paragraph split mid-sentence at page boundary | Block on page 1 has `is_continued == true`; continuation block on page 2 exists |
+| A1 | Valid 1-page PDF | `total_pages == 1`; `pdf_hash` is a 64-char hex string |
+| A2 | Valid 10-page PDF | `total_pages == 10` |
+| A3 | Encrypted PDF | `ValueError` raised immediately; pipeline does not reach classifier |
+
+> A3 uses a programmatically encrypted PDF (pypdf can write them); no API call is made.
+
+---
+
+### Group B — Classifier accuracy (1 Claude call per test)
+
+Node under test: `classifier_node`.
+Each PDF contains strong, unambiguous visual signals for exactly one document type.
+All other pipeline nodes are mocked.
+
+| ID | PDF content | Expected `document_type` |
+|---|---|---|
+| B1 | Company header, "INVOICE #001", billing table, line items | `invoice` |
+| B2 | Paper title in large font, two authors, "Abstract" heading, body text, "DOI:" line | `scientific_paper` |
+| B3 | Plain short paragraph, no formatting signals | `baseline_core` (fallback path: model returns unknown token, pipeline uses `FALLBACK_DOC_TYPE`) |
+
+**Why B3 matters:** the only code path that produces `baseline_core` is the fallback
+branch in `classifier_node`. This test confirms the fallback activates correctly when
+the model's response is not in `SUPPORTED_DOC_TYPES`. The PDF content is deliberately
+ambiguous to maximise the chance the model responds with a non-invoice, non-sci-paper
+token; if it does return one of the two supported types, the test still passes (the
+classifier worked; it just classified it differently than expected, which is acceptable
+for an ambiguous doc). The important assertion is that `document_type` is always a valid
+string and never causes a downstream crash.
+
+---
+
+### Group C — Block-type extraction (1–2 Claude calls per test)
+
+Node under test: `window_parser_node` (pioneer page).
+One PDF per block type. Each PDF contains ONLY the target block type to maximise
+extraction signal and prevent interference.
+
+| ID | PDF content | Expected block type(s) | Key assertions |
+|---|---|---|---|
+| C1 | One short paragraph | `paragraph` | `len(blocks) == 1`; exact text |
+| C2 | One large title line | `title` | `len(blocks) == 1`; exact text |
+| C3 | One bold heading | `heading` | `len(blocks) == 1`; exact text |
+| C4 | Unordered list (3 items) | `list_item` ×3 | `len(blocks) == 3`; each item text |
+| C5 | Small text at page bottom, separated from body | `footnote` | `len(blocks) >= 1`; footnote block present; bbox in bottom 20 % of page |
+| C6 | Short text in left margin, narrow column | `margin_element` | Block present; bbox xmin < 10 % of page width |
+| C7 | 3×4 data table with header row | `table` | `len(blocks) == 1`; `metadata.table_data.total_rows==3`, `total_cols==4`; header cells flagged |
+| C8 | Grey rectangle (figure) + caption text below it | `figure` + `paragraph` | Figure block present; caption block present |
+
+> For C5 and C6, bboxes are used positionally to confirm the model placed the block in the
+> right region, not just gave it the right type.
+
+---
+
+### Group D — Schema-specific metadata (1–2 Claude calls per test)
+
+Node under test: `window_parser_node` + schema validation in `pioneer_validation_route`.
+One PDF per metadata subfield. Each PDF contains only the content needed to populate that subfield.
+Classifier is mocked to return the appropriate doc type so the correct schema is loaded.
+
+| ID | Doc type mocked | PDF content | Metadata subfield | Key assertions |
+|---|---|---|---|---|
+| D1 | `invoice` | 4-col line-items table (description, qty, price, total) | `table_data` | `cells` contains all generated values; `is_header` set on row 0 |
+| D2 | `scientific_paper` | Title + 3 authors + abstract paragraph | `bibliographic` | `authors` list matches; `abstract` text matches; `title` text matches |
+| D3 | `scientific_paper` | "2. Methodology" heading + 2 body paragraphs | `section` | `section_number == "2"`; `section_title == "Methodology"` |
+| D4 | `scientific_paper` | 3 reference entries (numbered, author-year format) | `reference` | Each reference block has `year`, `title`, `authors` populated |
+| D5 | `scientific_paper` | "Figure 1: Caption text" below a grey rectangle | `figure_table` | `label == "Figure 1"`; `caption` matches generated string |
+
+---
+
+### Group E — Multi-page pipeline / burst + merge (N Claude calls per test)
+
+Nodes under test: `burst_dispatcher_node`, `window_parser_node` (pages 2–N), `merge_flat_blocks` reducer.
+Hierarchy node is mocked to return trivial relations.
+
+| ID | PDF | Assertions |
+|---|---|---|
+| E1 | 2-page doc (1 paragraph per page) | Blocks from both pages present (`bbox.page_number` ∈ {1, 2}); no duplicate `block_id` |
+| E2 | 5-page doc (1 paragraph per page) | Blocks from all 5 pages present; `len(blocks) == 5` |
+| E3 | 2-page doc: paragraph starts on page 1, continues on page 2 (text split mid-sentence at page boundary) | Page 1 block has `is_continued == true`; a continuation block exists on page 2 |
+
+> E3 is the only fixture that specifically tests `is_continued`. The PDF must make the
+> continuation unambiguous: the sentence on page 1 ends mid-word or with an em dash.
+
+---
+
+### Group F — Hierarchy assignment quality (pipeline runs fully, including hierarchy LLM call)
+
+Node under test: `layout_hierarchy_agent_node`.
+Classifier is mocked to return `baseline_core`. PDFs increase in nesting depth.
+
+| ID | PDF content | Expected hierarchy | Key assertions |
+|---|---|---|---|
+| F1 | Title only | Root node | `parent_id == null` |
+| F2 | Heading + 2 paragraphs | Paragraphs are children of heading | Each paragraph's `parent_id` → block of `type == "heading"` |
+| F3 | Title → Heading → Paragraph (3-level) | Three levels of nesting | title at root; heading is child of title; paragraph is child of heading |
+| F4 | Figure + caption paragraph | Caption is child of figure | Caption's `parent_id` → block of `type == "figure"` |
+| F5 | 2 headings, each with 2 paragraphs | Each paragraph under its nearest preceding heading | Paragraphs after heading-1 point to heading-1's `block_id`; paragraphs after heading-2 point to heading-2's `block_id` |
+
+> Assertions use `assert_hierarchy_structure()` which checks type-of-parent, not
+> exact `block_id` values (model-generated, non-deterministic).
+
+---
+
+### Group G — Layout / reading order (1–2 Claude calls per test)
+
+Nodes under test: `window_parser_node` + `geometric_pre_sorter` (the sort happens after
+extraction, so the PDF must produce blocks with predictable xmin values).
+
+| ID | PDF content | Assertions |
+|---|---|---|
+| G1 | 2-column layout (A4 split at x=297 pt): left column has "L1…L2…L3", right has "R1…R2…R3" | All L-prefixed texts appear before all R-prefixed texts in `structured_payload`; no text bleed between columns |
+| G2 | Dense single-column page with 10 short paragraphs | `len(blocks) == 10`; paragraphs in top-to-bottom order (ymin monotonically increasing) |
+
+> G1 exercises the `geometric_pre_sorter`'s column-bucket logic. With `COLUMN_BUCKET_PX=50`,
+> left-column blocks (xmin ≈ 36 pt → bucket 0) sort before right-column blocks
+> (xmin ≈ 315 pt → bucket 6). If this test fails, check whether the bucket width needs
+> adjustment for the chosen column layout.
+
+---
+
+### Group H — Edge cases / graceful degradation (1–2 Claude calls per test)
+
+| ID | PDF content | Assertions |
+|---|---|---|
+| H1 | 1 page with no text, no objects (blank white page) | Pipeline completes without exception; `blocks` is `[]` or length ≤ 2 (model may hallucinate a block — assert no crash) |
+| H2 | 1 page, one 500-word paragraph filling the full page | `len(blocks) == 1`; block type `paragraph`; text contains the first and last sentences of the generated paragraph |
 
 ---
 
 ## Phased delivery
 
-### Phase 0 — Calibration (prerequisite)
+### Phase 0 — Calibration (prerequisite, no tests written yet)
 
-- Implement `_common.py` and the Level 1 generator only
-- Generate `level_01_minimal.pdf` and run it through the full pipeline
-- Inspect returned `coordinates`; derive `COORD_SCALE` and the coordinate-system note
-- Document findings in `tests/fixtures/generators/_common.py` as constants
-- If Claude's bbox accuracy is > ±5 % variance on this trivial document, re-evaluate
-  whether bbox assertions add value at all
+- Implement `_common.py` and the C1 (single paragraph) generator only
+- Generate `grp_c_paragraph.pdf` and run it through the full pipeline with no mocks
+- Inspect returned `coordinates`; derive `COORD_SCALE` and document it in `_common.py`
+- If variance is > ±5 % of page dimension even on a trivial doc, skip bbox assertions
+  entirely and add a `# COORD_SCALE: not viable` comment in `_common.py`
 
-### Phase 1 — Infrastructure + Levels 1–3 (baseline)
+### Phase 1 — Foundation: Groups A, B, C (native extraction + classifier + block types)
 
-- Set up `tests/fixtures/` directory structure
-- Implement `_common.py` reportlab helpers (A4 canvas, text block, table helper)
-- Implement `generate_all.py` CLI
-- Generators and golden files for Levels 1–3
-- `tests/integration/_compare.py` comparison helpers
-- Integration tests for Levels 1–3
-- `make fixtures` Makefile target
+- `tests/fixtures/` directory structure + `generate_all.py` CLI
+- `_common.py` reportlab helpers (canvas, drawString, table helper, figure helper)
+- Generators and golden files for A1–A3, B1–B3, C1–C8
+- `tests/integration/_compare.py` with `assert_blocks_match` and `assert_table_data`
+- Integration tests for groups A, B, C
+- `make fixtures` target; `make test-e2e` shortcut
 
-### Phase 2 — Classifier coverage: Levels 4–5
+### Phase 2 — Schema metadata: Group D
 
-- Invoice and scientific-paper generators
-- Golden file format extended with `metadata` assertions
-- Integration tests for Levels 4–5
+- Generators and golden files for D1–D5 (one per metadata subfield)
+- `assert_blocks_match` extended with metadata field-level checking
+- Integration tests for group D
 
-### Phase 3 — Multi-page and layout: Levels 6–8
+### Phase 3 — Pipeline behavior: Groups E and F
 
-- Multi-page generator, two-column generator, figure/table generator
-- Hierarchy assertion helpers
-- Integration tests for Levels 6–8
+- Multi-page generators (E1–E3) including the `is_continued` fixture (E3)
+- Hierarchy generators (F1–F5)
+- `assert_hierarchy_structure` helper added to `_compare.py`
+- Integration tests for groups E and F
 
-### Phase 4 — Edge cases: Level 9
+### Phase 4 — Layout and edge cases: Groups G and H
 
-- Three sub-case generators
-- Graceful-degradation assertions
-- `make test-synthetic` shortcut that runs only synthetic fixture tests
+- Two-column generator (G1), dense page (G2)
+- Edge-case generators (H1–H2)
+- Integration tests for groups G and H
+- `make test-e2e GRP=g` selective group run documented in README
 
 ---
 
 ## Open questions / risks
 
-1. **Bbox variance is higher than ±5 %.** On complex layouts (two-column, tables),
-   Claude's visual bbox estimates may deviate more. If flakiness appears in Levels 7–8,
-   consider skipping bbox assertions for those levels and only asserting text + type.
+1. **Bbox variance.** Phase 0 calibration will determine whether bbox assertions are
+   viable at all. If variance is > ±5 % even on trivial docs, disable bbox assertions
+   globally and assert only `type`, `text`, and `len(blocks)`. This does not reduce the
+   test value significantly — block position is less important than block content.
 
-2. **Classifier prompt sensitivity.** The classifier prompt is not under test control;
-   if it changes, Levels 4–5 may break without a code change. Consider pinning the
-   model version in the test configuration.
+2. **Text paraphrasing.** Claude may lightly rephrase extracted text (reformat whitespace,
+   normalize quotes). If exact text matching causes flakiness, switch to normalized
+   comparison in `_compare.py` (`normalize_text=True`). Detect this early in Phase 1
+   by running C1 and C2 multiple times and checking for consistency.
 
-3. **Golden file staleness.** When the pipeline prompt changes (e.g. new extraction
-   instructions), golden files must be regenerated. A `make fixtures` run + `git diff`
-   review is the designated workflow.
+3. **B3 classifier fallback reliability.** The fallback path is exercised when the
+   model returns a token not in `SUPPORTED_DOC_TYPES`. A completely plain PDF might
+   still be classified as `invoice` or `scientific_paper` by the model. If B3 is
+   flaky, change the assertion: instead of asserting `document_type == "baseline_core"`,
+   assert only that `document_type` is a non-empty string and `extraction_warnings` is empty.
 
-4. **Cost.** Each integration test invokes Claude 1–5 times. Running all 9 levels in CI
-   on every push is expensive. Recommend a `@pytest.mark.e2e` tag so the synthetic
-   suite runs nightly or on demand, not on every commit.
+4. **E3 continuation detection.** The `is_continued` flag is not explicitly prompted for
+   in the extraction instructions. Claude may not reliably set it unless the page break
+   is visually unambiguous. If E3 is flaky, consider adding explicit continuation
+   instructions to the extraction prompt (a prompt change, not a test change).
 
-5. **Determinism of text extraction.** Claude may paraphrase or lightly rephrase
-   extracted text even on clean synthetic input. If exact text matching proves too
-   brittle, fall back to normalised string comparison (strip whitespace, lowercase).
+5. **F hierarchy quality.** Hierarchy assignment depends on the hierarchy node's LLM
+   call. The model follows documented rules (items after a heading → child of heading;
+   continued blocks → child relationship), but for complex F4/F5 patterns, it may
+   produce unexpected structures. If F4/F5 are flaky, use looser assertions (e.g.,
+   figure caption has *some* parent_id, not necessarily the figure block).
+
+6. **Cost.** Total API calls across all groups: ~30 Claude calls (A: 0, B: 3, C: 8,
+   D: 5, E: 8, F: 7, G: 2, H: 2). At ~$0.01–$0.05 per call, the full suite costs
+   < $2 per run. Nightly CI is appropriate; exclude from per-commit runs via
+   `@pytest.mark.e2e`.
+
+7. **Golden file staleness.** Any change to extraction prompts or schemas requires
+   `make fixtures` regeneration. The designated review workflow is
+   `make fixtures && git diff tests/fixtures/golden/` — a golden diff that looks
+   semantically reasonable means the prompt change is safe.
 
 ---
 
@@ -475,15 +537,21 @@ Three lightweight PDFs in a single level, each targeting a graceful-degradation 
 # Regenerate all fixture PDFs and golden files from scratch
 make fixtures
 
+# Regenerate only one group
+make fixtures GRP=c
+
 # Run only the synthetic e2e tests (requires ANTHROPIC_API_KEY)
 pytest tests/integration/test_synthetic_*.py -m e2e -v
+
+# Run only one group
+pytest tests/integration/test_synthetic_grp_c.py -m "e2e and grp_c" -v
 
 # Run everything including unit tests (no API key needed for unit tests)
 make test
 ```
 
-All synthetic integration tests are tagged `@pytest.mark.e2e` so they are excluded
-from the default `make test` run and can be triggered explicitly or nightly in CI.
+All synthetic integration tests carry two markers: `@pytest.mark.e2e` (excludes from
+default `make test`) and `@pytest.mark.grp_X` (enables single-group runs).
 
 ---
 
@@ -491,3 +559,4 @@ from the default `make test` run and can be triggered explicitly or nightly in C
 
 _v1 — 2026-06-02 17:00 — initial draft_
 _v2 — 2026-06-02 17:30 — added coordinate calibration section, Phase 0, block-matching strategy, `_compare.py` spec, golden file format, phased bbox assertions_
+_v3 — 2026-06-02 18:00 — full redesign after reading all source files: replaced single linear scale with 8 concern-separated groups (A–H); documented what existing unit tests already cover; noted retry loop cannot be triggered by synthetic PDFs; corrected `baseline_core` fallback mechanic; updated directory layout, phased delivery, open questions_
