@@ -4,6 +4,7 @@ _Created: 2026-06-02 17:00_
 _Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching strategy, compare helper spec_
 _Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_
 _Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-point devil's advocate review_
+_Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected (A terminology, B mislabeled, C wrong argument, D "partially useful" → not justified, E dead E3 reference removed, F structural argument added, G sharpened, H strengthened)_
 
 ---
 
@@ -340,50 +341,75 @@ Generator scripts write this file at generation time with the content placed on 
 
 ## Narrow tests — Group F only
 
-After systematically evaluating Option 2 (narrow tests alongside e2e for every group),
-the conclusion is that narrow tests are **only justified for Group F**. The analysis
-for every other group follows.
+A narrow test is defined by three conditions: (1) the node function is called directly,
+bypassing `build_app()`; (2) state is pre-built in code, not derived from running
+upstream nodes; (3) no PDF file is required — all inputs are constructible as Python
+objects in memory. Every verdict below is evaluated against these three conditions.
+
+After systematically evaluating every group against these conditions, the conclusion is
+that narrow tests are **only justified for Group F** — the only LLM node that does not
+consume `file_path`.
 
 ### Why narrow tests fail for most groups
 
-**The false-confidence problem.** A narrow C test (mock classifier + hierarchy, real
-pioneer) confirms the extraction prompt works on controlled input. But if the injected
-`document_type` doesn't match what the real classifier would return for that PDF,
-the narrow test uses the wrong schema. The test goes green while the real pipeline
-would use a different schema and might behave differently. Green narrow test ≠ green
-pipeline.
+**The `file_path` structural constraint.** Every LLM node except `layout_hierarchy_agent_node`
+calls `encode_pdf_async(file_path)` to send PDF bytes to the model. Calling these nodes
+"directly" still requires the same real PDF file as the e2e test — condition (3) can never
+be met. There is no simplification over running the e2e.
 
-**The mock overlap problem.** `pioneer_parser` and `parser_worker` both map to
-`window_parser_node`. `mocker.patch` patches the function globally — making it
-impossible to mock only pioneer without also mocking burst workers, or vice versa.
-State-conditional mocking (`if state["current_page"] == 1: return mock`) works but
-requires maintaining fragile hand-crafted state fixtures.
+**The identity problem.** The e2e tests for C and D already mock the classifier via
+`src.nodes.classifier_node.AsyncAnthropic`. After that patch fires, `window_parser_node`
+is called with the injected `document_type` from state — exactly what a "narrow" call
+would do. Narrow C/D produces the same execution path as e2e C/D, minus
+`pioneer_validation_route` (schema validation). Narrow is not an independent signal;
+it is a strictly weaker version of the test that already exists.
 
-**The already-covered problem.** The existing mock-based unit tests (which mock the
-API response) already test each node's logic in isolation. What they don't test is
-"does the real model behave correctly?" — and that question is answered by the e2e
-tests, not by narrow tests. Narrow tests that inject pre-built state but call the real
-model occupy an awkward middle ground that duplicates both.
+**The schema-validation bypass (D specifically).** For Group D, `pioneer_validation_route`
+is the mechanism that detects malformed metadata and triggers retries. Bypassing the
+graph skips this entirely. A narrow D test that passes gives no assurance that the
+pipeline catches broken `table_data` — the opposite of what D is designed to test.
+"Partially useful for development" understates the problem: narrow D creates false
+confidence.
+
+**The LangGraph dependency (E).** The burst dispatch mechanism uses the LangGraph Send
+API, which only exists inside a compiled graph. Calling `burst_dispatcher_node` directly
+cannot simulate concurrent Send routing or the `merge_flat_blocks` reducer. E's behavior
+is architecturally inseparable from `build_app()`.
+
+**The already-covered problem.** The existing mock-based unit tests already test each
+node's logic in isolation with mocked API responses. What they don't test is "does the
+real model behave correctly on real PDF content?" — and that is answered by the e2e
+tests. Narrow tests occupy an awkward middle ground that duplicates both without adding
+signal.
 
 ### Group-by-group verdict
 
 | Group | Narrow test verdict | Reason |
 |---|---|---|
-| A | Not applicable | No LLM; already fully isolated |
-| B | Already narrow by design | Other nodes are mocked; the concern is classification |
-| C | Not justified | False-confidence risk (wrong schema in injection); covered by e2e + conditional isolation |
-| D | Partially useful for development | Lower false-confidence risk (classifier injection matches PDF content); not a permanent fixture |
-| E | Not justified | E3 (`is_continued`) CANNOT be narrowed — the flag is set BY the extractor; mock-based unit tests already cover state flow |
+| A | N/A — deterministic | No LLM; direct function call is the only sensible approach, not a strategy choice. The three conditions are meaningless for a pure-Python deterministic function. |
+| B | Not narrow — concern-isolated only | Requires `file_path` + real PDF (classifier calls `encode_pdf_async`); runs via graph with all other nodes mocked. Concern-isolated, but fails all three narrow-test conditions. |
+| C | Not justified | Classifier already mocked in e2e C; calling `window_parser_node` directly produces the same path minus schema validation. No independent signal. |
+| D | **Not justified** | Bypasses `pioneer_validation_route` — schema validation is the key signal D is designed to stress. Narrow D passes even when the validation route is broken: false confidence. |
+| E | Not applicable | LangGraph Send API cannot be invoked outside the compiled graph. Burst dispatch and `merge_flat_blocks` are architecturally inseparable from `build_app()`. |
 | F | **Add narrow tests** | See below |
-| G | Not applicable | `geometric_pre_sorter` is already unit-tested; G tests extraction quality under complex layout, which is an e2e concern |
-| H | Not applicable | H1 must be full e2e (graceful degradation); H2 is a C extension |
+| G | Not justified | `window_parser_node` still requires `file_path`; no PDF savings over e2e. Conditional isolation already provides diagnostic specificity: sorter is deterministically unit-tested, so a G1 failure always points to extractor xmin. |
+| H | Not applicable | H1's exception-propagation concern requires the full pipeline. Empty-block behavior in the hierarchy node is already unit-tested (`test_empty_blocks_skips_api`). |
 
 ### Group F narrow tests (no PDF required)
 
-`layout_hierarchy_agent_node` is the clearest narrow-test candidate because:
-- Its input is a flat block list — fully constructible without a PDF
-- Its output (parent_ids) does not depend on HOW those blocks were extracted
-- No false-confidence risk: the hierarchy LLM's behavior is genuinely independent of upstream nodes
+`layout_hierarchy_agent_node` is the **only LLM node that qualifies** for narrow tests,
+for a structural reason: it is the only LLM node that does not call `encode_pdf_async`.
+Every other LLM node (classifier, pioneer_parser, parser_worker) passes `file_path` to
+`encode_pdf_async` to send PDF bytes to the model — making them fundamentally
+PDF-dependent regardless of how state is otherwise constructed. `layout_hierarchy_agent_node`
+reads only `extracted_flat_blocks`, which is a list of Python dicts constructible entirely
+in memory. Conditions (2) and (3) of the narrow-test definition are met by the node's
+architecture, not by clever test design.
+
+This structural property produces three benefits:
+- Its input (a flat block list) is fully constructible without any PDF on disk
+- Its output (`parent_id` assignments) does not depend on HOW those blocks were extracted
+- No false-confidence risk: the hierarchy LLM's behavior is genuinely independent of upstream schema selection
 
 Implementation: call `layout_hierarchy_agent_node(state)` directly as a function.
 Bypass `build_app()`. State is hand-crafted:
@@ -1077,3 +1103,4 @@ _v2 — 2026-06-02 17:30 — added coordinate calibration section, Phase 0, bloc
 _v3 — 2026-06-02 18:00 — full redesign after reading all source files: replaced single linear scale with 8 concern-separated groups (A–H); documented what existing unit tests already cover; noted retry loop cannot be triggered by synthetic PDFs; corrected `baseline_core` fallback mechanic; updated directory layout, phased delivery, open questions_
 _v4 — 2026-06-02 18:30 — Option 2 narrow-test conclusions (Group F only; other groups not justified); full 33-point devil's advocate review; resolved: binary PDF storage → PDFs not committed; B3 dropped (trivially true assertion); C5/C6 require multi-signal design or removal; C7 moved to D1 (wrong schema in baseline_core); exact text → normalized default; block_count → minimum bounds; E3 suspended (is_continued not prompted); F3 corrected per hierarchy rules; F5 upgraded to nearest-heading-parent assertion; G2 dropped (duplicates unit tests); H2 → C9; bbox tolerance formula fixed (block dimension not page dimension); full-chain integration test added_
 _v5 — 2026-06-02 19:00 — second devil's advocate pass; 18 further issues resolved: Design Principle 1 contradiction (PDFs not committed); comparison contract updated (is_continued removed, bbox tolerance corrected); bbox note formula corrected; normalize_text default fixed in _compare.py spec; docstring lowercasing removed; block_count removed from golden file example; D2 assertion garbled (copy-paste from D3) fixed; calibration section "Level 1" stale name fixed; Phase 0 C7/G1 impossibility fixed; F1 redesigned (single-block path skips LLM — already unit-tested, no value); F4 removed (figure-caption has no documented hierarchy rule); F state spec trimmed to only keys the function reads; G1 assertion fixed (xmin-based, not text-prefix-based — circular); E hierarchy mock clarified (AsyncAnthropic, not whole function); same for C; full-chain test assertion hardened; hierarchy assertions section updated with documented vs undocumented rules_
+_v6 — 2026-06-02 19:30 — narrow-test section rewritten after third devil's advocate pass on that section specifically: added three-condition formal definition; A verdict corrected (N/A — not a strategy choice); B verdict corrected (concern-isolated, not technically narrow — fails all 3 conditions); C argument replaced (identity problem: narrow C = e2e C minus schema validation, false-confidence argument was empirically wrong); D verdict changed from "partially useful" to "not justified" (bypasses pioneer_validation_route — the key signal for D, creates false confidence); E verdict corrected (LangGraph Send API dependency — E3 reference was dead, E3 is suspended); F section rewritten to lead with the structural argument (only LLM node without encode_pdf_async); G verdict sharpened (file_path still required + conditional isolation already covers diagnostic gap); H verdict strengthened (full-pipeline exception propagation + already unit-tested empty-block behavior)_
