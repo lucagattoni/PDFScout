@@ -31,7 +31,7 @@ State is persisted to SQLite after every node. If execution is interrupted, re-r
 
 The pipeline is a LangGraph state machine with two distinct execution phases — sequential for the pioneer page, concurrent for all remaining pages — joined by a map-reduce merge.
 
-```
+```text
 START
   └─► native_extractor          (local: pypdf page count + SHA-256 hash)
         └─► classifier           (Claude: returns document type token)
@@ -189,15 +189,16 @@ cp .env.example .env  # then fill in your API key
 
 | Command | Description |
 |---|---|
-| `make install` | Install all dependencies (production + dev) |
-| `make lint` | Check for linting violations and formatting drift (read-only) |
-| `make fix` | Auto-fix violations and reformat all files |
+| `make install` | Install all dependencies (production + dev, including Node) |
+| `make lint` | Check Python for linting violations and formatting drift (read-only) |
+| `make lint-md` | Check Markdown files with markdownlint-cli2 (read-only) |
+| `make fix` | Auto-fix Python violations and reformat all files |
 | `make test` | Run the full test suite (113 tests, no API key required) |
 | `make coverage` | Run tests and print per-module coverage report |
-| `make ci` | Run `lint` then `test` — use before pushing |
-| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache` |
+| `make ci` | Run `lint`, `lint-md`, then `test` — use before pushing |
+| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache`, `node_modules` |
 
-Linting and formatting use [ruff](https://github.com/astral-sh/ruff). Configuration lives in `pyproject.toml` under `[tool.ruff]`.
+Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (configured in `pyproject.toml` under `[tool.ruff]`). Markdown linting uses [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) (configured in `.markdownlint.json`).
 
 ---
 
@@ -224,7 +225,7 @@ No `ANTHROPIC_API_KEY` is required — the suite runs entirely in isolation with
 
 Edit `.env` and set your Anthropic API key:
 
-```
+```text
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -238,7 +239,7 @@ PDFScout ships with optional [Langfuse](https://langfuse.com/) tracing. When ena
 
 To enable, add to your `.env`:
 
-```
+```text
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
@@ -258,7 +259,7 @@ uv run main.py path/to/document.pdf
 
 The output is printed as formatted JSON to stdout. Progress is logged per node:
 
-```
+```text
 Initializing extraction pipeline for: document.pdf (thread: a3f1c9d2...)
 [GRAPH] Node 'native_extractor' completed.
 [GRAPH] Node 'classifier' completed.
@@ -273,7 +274,7 @@ Extraction complete. Output tree:
 
 If the pioneer page failed validation after 3 retries, a warning is printed before the tree:
 
-```
+```text
 WARNINGS:
   ! Pioneer page (page 1) failed schema validation after 3 retries. Page 1 data may be incomplete or structurally invalid.
 ```
@@ -305,7 +306,7 @@ lifecycle, and operational notes.
 
 ## Project Structure
 
-```
+```text
 PDFScout/
 ├── .python-version             # Pins Python 3.13
 ├── .env.example                # Required environment variables template

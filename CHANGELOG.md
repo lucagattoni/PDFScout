@@ -3,6 +3,7 @@
 ## [0.3.0] — 2026-05-30
 
 ### Added
+
 - **FastAPI HTTP interface** (`api.py`) — exposes the extraction pipeline as an
   async HTTP API. `POST /extract` accepts PDF uploads and returns a `job_id`
   immediately; `GET /jobs/{job_id}` polls status and retrieves the result.
@@ -23,6 +24,7 @@
   same file twice returns the existing result without restarting the pipeline.
 
 ### Changed
+
 - `pyproject.toml` — added `fastapi`, `uvicorn[standard]`, `python-multipart`.
 - `.gitignore` — added `tmp/` (API upload staging directory) and
   `api_checkpoint.db` (API-specific SQLite checkpoint).
@@ -30,6 +32,7 @@
 ## [0.2.0] — 2026-05-30
 
 ### Added
+
 - **Langfuse observability** — optional end-to-end tracing via Langfuse v4.
   Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `.env` to enable.
   Every pipeline run produces a trace with node spans, Claude API calls, token
@@ -43,6 +46,7 @@
 - `.env.example` — documents all required environment variables.
 
 ### Changed
+
 - **Claude PDF Chat migration** — replaced `pdfplumber` text extraction with
   Claude's native PDF vision API. Every page is sent as a `document` block with
   `cache_control: ephemeral`, achieving >90% cache-hit rate on input tokens
@@ -55,6 +59,7 @@
   added `pypdf`, `python-dotenv`, `langfuse`, `langchain`.
 
 ### Fixed
+
 - **Retry accumulation** (`state.py`, `extractor_node.py`, `retry_node.py`) —
   `merge_flat_blocks` reducer now accepts `None` as a reset sentinel. Extractor
   and retry nodes emit `None` to clear the buffer before each fresh run,
@@ -77,6 +82,7 @@
 ## [0.1.0] — 2026-05-30
 
 Initial release — LangGraph multi-agent PDF structure extractor with:
+
 - StateGraph pipeline: native extractor → classifier → pioneer parser →
   self-healing validation loop → burst dispatcher → hierarchy agent
 - JSON Schema Draft-07 validation with `SchemaRegistry`
