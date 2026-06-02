@@ -9,7 +9,8 @@ _Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group ve
 _Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF storage resolved as approach 3 (manifest hash)_  
 _Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_
 _Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_
-_Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_  
+_Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_
+_Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_  
 
 ---
 
@@ -532,8 +533,8 @@ principles and §Narrow tests for the rationale).
 Node under test: `window_parser_node` (pioneer page, 1-page PDFs so burst never fires).
 Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
 `"baseline_core"`. Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
-to return `_make_relation_response([])` (empty `relations` list — the helper already exists
-in `test_graph_pipeline.py`). All blocks fall through to the existing orphan-fallback branch
+to return `_make_relation_response([])` (empty `relations` list — import from
+`tests/integration/_compare.py`). All blocks fall through to the existing orphan-fallback branch
 and receive `parent_id = null`; orphan warnings are emitted but not asserted in C tests.
 Deduplication and sort still run. One PDF per block type.
 
@@ -663,6 +664,10 @@ Node under test: `window_parser_node` (extraction quality on multi-column layout
 `geometric_pre_sorter` is already deterministically unit-tested. What G tests is whether
 the extractor assigns `xmin` values that correctly distinguish columns, allowing the
 sorter to order them correctly. G2 is dropped (duplicates existing sorter unit tests).
+
+Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
+`"baseline_core"`. Hierarchy is mocked with `_make_relation_response([])` (same pattern
+as C and E). G1 is 1-page so burst does not fire.
 
 Tests import `COLUMN_BUCKET_PX` from `src.config` and document the column placement
 calculation explicitly.
