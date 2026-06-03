@@ -1,6 +1,6 @@
 # Synthetic PDF Test Fixtures — Plan
 
-- _Created: 2026-06-02 17:00_  
+- _Created: 2026-06-02 15:59_  
 - _Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching strategy, compare helper spec_  
 - _Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_  
 - _Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-point devil's advocate review_  

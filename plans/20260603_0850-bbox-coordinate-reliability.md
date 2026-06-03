@@ -1,6 +1,6 @@
 # Bbox Coordinate Reliability — Plan
 
-_Created: 2026-06-03 15:00_
+_Created: 2026-06-03 08:50_
 _Updated: 2026-06-03 15:30 · v2: linear-fit decision criteria, Phase 1 calibration snippet, generator placement, G1 adds-to not replaces, check_xmax signature, COORD_OFFSET_X, concrete Risk-6 threshold, Risk-7 y-axis single-point_
 _Updated: 2026-06-03 16:00 · Phase 1 executed and failed — plan closed; see calibration_notes.md §Phase 1_
 
