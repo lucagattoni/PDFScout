@@ -7,7 +7,8 @@
     ],
     "coord_scale": null,
     "model_version": "claude-sonnet-4-6",
-    "created": "2026-06-03"
+    "created": "2026-06-03",
+    "updated": "2026-06-03 · prompt now requests optional subfields; section metadata confirmed populated"
   },
   "expected": {
     "document_type": "scientific_paper",
@@ -15,9 +16,12 @@
       {
         "type": "heading",
         "text": "2. Methodology",
-        "metadata": {},
-        "_section_number": "2",
-        "_section_title": "Methodology"
+        "metadata": {
+          "section": {
+            "section_number": "2",
+            "section_title": "Methodology"
+          }
+        }
       }
     ]
   }

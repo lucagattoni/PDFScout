@@ -7,7 +7,8 @@
     ],
     "coord_scale": null,
     "model_version": "claude-sonnet-4-6",
-    "created": "2026-06-03"
+    "created": "2026-06-03",
+    "updated": "2026-06-03 · prompt now requests optional subfields; figure_table metadata confirmed populated"
   },
   "expected": {
     "document_type": "scientific_paper",
@@ -15,9 +16,13 @@
       {
         "type": "figure",
         "text": "Figure 1",
-        "metadata": {},
-        "_label": "Figure 1",
-        "_caption": "Distribution of block types across document corpus."
+        "metadata": {
+          "figure_table": {
+            "label": "Figure 1",
+            "caption": "Distribution of block types across document corpus."
+          }
+        },
+        "_note": "referenced_block_id is non-deterministic (block ID assignment varies); not asserted"
       }
     ]
   }
