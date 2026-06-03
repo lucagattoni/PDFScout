@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "generator": "grp_g_two_column",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-4-6",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "baseline_core",
+    "texts": [
+      "L1:",
+      "L2:",
+      "L3:",
+      "R1:",
+      "R2:",
+      "R3:"
+    ]
+  }
+}

@@ -26,11 +26,24 @@ dev = [
     "httpx>=0.27",
     "asgi-lifespan>=2.1",
     "ruff>=0.9",
+    "fpdf2>=2.8.7",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths    = ["tests"]
+markers = [
+    "e2e: marks tests as end-to-end (excluded from default make test run)",
+    "grp_a: Group A — native extraction",
+    "grp_b: Group B — classifier accuracy",
+    "grp_c: Group C — block-type extraction",
+    "grp_d: Group D — schema metadata",
+    "grp_e: Group E — multi-page burst",
+    "grp_f: Group F — hierarchy assignment",
+    "grp_g: Group G — layout / reading order",
+    "grp_h: Group H — graceful degradation",
+    "integration_chain: full-chain no-mocks integration test",
+]
 
 [tool.coverage.run]
 omit = ["tests/*"]

@@ -1,4 +1,4 @@
-.PHONY: install lint lint-md fix test coverage ci clean
+.PHONY: install lint lint-md fix test test-e2e fixtures coverage ci clean
 
 install:
 	uv sync --group dev
@@ -16,10 +16,24 @@ fix:
 	uv run ruff format .
 
 test:
-	uv run pytest
+	uv run pytest -m "not e2e"
+
+test-e2e:
+ifdef GRP
+	uv run pytest tests/integration/ -m "e2e and grp_$(GRP)" -v
+else
+	uv run pytest tests/integration/ -m e2e -v
+endif
+
+fixtures:
+ifdef GRP
+	uv run python -m tests.fixtures.generators.generate_all grp_$(GRP)
+else
+	uv run python -m tests.fixtures.generators.generate_all
+endif
 
 coverage:
-	uv run pytest --cov=. --cov-report=term-missing
+	uv run pytest -m "not e2e" --cov=. --cov-report=term-missing
 
 ci: lint lint-md test
 

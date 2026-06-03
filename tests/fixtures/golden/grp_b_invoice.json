@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "generator": "grp_b_invoice",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-4-6",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "invoice",
+    "blocks": []
+  }
+}
