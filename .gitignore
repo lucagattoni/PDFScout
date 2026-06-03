@@ -11,3 +11,5 @@ tmp/
 .coverage
 htmlcov/
 tests/fixtures/pdfs/
+node_modules/
+package-lock.json

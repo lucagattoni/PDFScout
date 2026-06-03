@@ -26,7 +26,7 @@ once the server is running.
 
 Same as the CLI — set in `.env` at the project root:
 
-```
+```text
 ANTHROPIC_API_KEY=sk-ant-...          # required
 
 LANGFUSE_PUBLIC_KEY=pk-lf-...         # optional — enables tracing
@@ -38,7 +38,7 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 
 ## Job lifecycle
 
-```
+```text
 POST /extract  →  202 Accepted  →  job_id (status: "queued")
                                         │
                                    background task starts
@@ -61,6 +61,7 @@ Poll `GET /jobs/{job_id}` until `status` is `completed` or `failed`.
 Returns server status and configuration.
 
 **Response `200 OK`**
+
 ```json
 {
   "status": "ok",
@@ -84,7 +85,7 @@ Upload a PDF and start an extraction job.
 | `file` | file | yes | PDF file (`content-type: application/pdf`) |
 | `force` | bool | no | Re-run a completed or failed job (default: `false`) |
 
-**Responses**
+#### Responses
 
 | Code | Meaning |
 |---|---|
@@ -110,6 +111,7 @@ restarting from page 1.
 Poll extraction status and retrieve the result.
 
 **Response `200 OK`**
+
 ```json
 {
   "job_id": "a3f1c9d2...",
