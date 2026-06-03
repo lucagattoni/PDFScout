@@ -11,6 +11,7 @@ from tests.fixtures.generators.grp_f_hierarchy import (
     F2_BLOCKS,
     F3_BLOCKS,
     F4_BLOCKS,
+    F5_BLOCKS,
     make_state,
 )
 from tests.integration._compare import (
@@ -75,3 +76,20 @@ class TestGroupF:
         result = await layout_hierarchy_agent_node(make_state(list(F4_BLOCKS)))
         blocks = result["hierarchical_document_tree"]["structured_payload"]
         assert_nearest_heading_parent(blocks)
+
+    async def test_f5_cross_page_continuation(self):
+        """[page-1 is_continued para, page-2 para] → page-2 block is child of page-1 block
+        (hierarchy Rule 2)."""
+        from src.nodes.hierarchy_node import layout_hierarchy_agent_node
+
+        result = await layout_hierarchy_agent_node(make_state(list(F5_BLOCKS)))
+        blocks = result["hierarchical_document_tree"]["structured_payload"]
+        by_id = {b["block_id"]: b for b in blocks}
+
+        assert by_id["p1c"]["parent_id"] is None, (
+            "Page-1 fragment should be root-level (no preceding heading)"
+        )
+        assert by_id["p2c"]["parent_id"] == "p1c", (
+            f"Expected page-2 continuation parent_id='p1c', "
+            f"got {by_id['p2c']['parent_id']!r} — hierarchy Rule 2 may not have triggered"
+        )

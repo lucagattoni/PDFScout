@@ -39,10 +39,11 @@
     ]
   },
   "grp_e": {
-    "hash": "709ee5b8fe030b9aab36e042ee7a97057afd3c4406e24e07cc4e77040988a308",
+    "hash": "40417874e8960448d6b0c7dac6d6c7ee8f30e221dc570153ca15da00296bb7b9",
     "fixtures": [
       "grp_e_2page.pdf",
-      "grp_e_5page.pdf"
+      "grp_e_5page.pdf",
+      "grp_e_continuation.pdf"
     ]
   },
   "grp_g": {
