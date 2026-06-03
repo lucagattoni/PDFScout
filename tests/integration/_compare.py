@@ -83,7 +83,7 @@ def assert_blocks_match(
 ) -> None:
     """Positional block matching: expected[i] compared against actual[i].
 
-    - check_bbox=False until Phase 2 calibration is complete.
+    - check_bbox=False: bbox assertions not viable; Phase 1 calibration confirmed non-linear/non-deterministic coordinates (see calibration_notes.md).
     - normalize_text: strip + collapse whitespace, normalise unicode quotes. No lowercasing.
     - bbox_tolerance_pct applies to the block's own dimension, not page dimension.
     """
