@@ -2,10 +2,6 @@
 
 Node under test: window_parser_node + pioneer_validation_route.
 Classifier mocked to target doc type; hierarchy mocked.
-
-Phase 2 prerequisite: the extraction prompt must explicitly request optional
-scientific_paper subfields before these tests will produce metadata assertions.
-Until then, tests degrade to text-presence checks (see plan §Phase 2).
 """
 
 from pathlib import Path
@@ -70,33 +66,30 @@ class TestGroupD:
         """Scientific paper title + 3 authors → bibliographic metadata."""
         blocks = await _run_d_test(str(_PDFS / "grp_d_bibliographic.pdf"), "scientific_paper")
         authors = ["Alice Johnson", "Bob Martinez", "Carol Chen"]
-        # Check bibliographic subfield if populated
+        bib_blocks = [b for b in blocks if b.get("metadata", {}).get("bibliographic")]
+        assert bib_blocks, "No block has metadata.bibliographic populated"
+        all_authors_str = str(
+            [b["metadata"]["bibliographic"].get("authors", []) for b in bib_blocks]
+        )
         for author in authors:
-            bib_populated = any(
-                author in str(b.get("metadata", {}).get("bibliographic", {}).get("authors", []))
-                for b in blocks
+            assert author in all_authors_str, (
+                f"Author '{author}' not found in bibliographic.authors: {all_authors_str}"
             )
-            if not bib_populated:
-                assert _text_in_some(author, blocks), (
-                    f"Author '{author}' not found in any block text or bibliographic metadata"
-                )
 
     async def test_d3_section(self):
         """Section heading 2. Methodology → section metadata."""
         blocks = await _run_d_test(str(_PDFS / "grp_d_section.pdf"), "scientific_paper")
-        heading_blocks = [b for b in blocks if b["type"] == "heading"]
-        assert heading_blocks, "No heading block found in D3 output"
-        heading = heading_blocks[0]
-        section = heading.get("metadata", {}).get("section", {})
-        if section:
-            assert "2" in section.get("section_number", ""), (
-                f"section_number should contain '2', got {section.get('section_number')!r}"
-            )
-            assert "Methodology" in section.get("section_title", ""), (
-                f"section_title should contain 'Methodology', got {section.get('section_title')!r}"
-            )
-        else:
-            assert _text_in_some("Methodology", blocks), "Expected 'Methodology' in some block"
+        section_headings = [
+            b for b in blocks if b["type"] == "heading" and b.get("metadata", {}).get("section")
+        ]
+        assert section_headings, "No heading block has metadata.section populated"
+        section = section_headings[0]["metadata"]["section"]
+        assert "2" in section.get("section_number", ""), (
+            f"section_number should contain '2', got {section.get('section_number')!r}"
+        )
+        assert "Methodology" in section.get("section_title", ""), (
+            f"section_title should contain 'Methodology', got {section.get('section_title')!r}"
+        )
 
     async def test_d4_reference(self):
         """3 numbered reference entries → reference metadata with year."""
@@ -104,9 +97,11 @@ class TestGroupD:
         assert _text_in_some("[1]", blocks), "Reference [1] not found"
         assert _text_in_some("[2]", blocks), "Reference [2] not found"
         assert _text_in_some("[3]", blocks), "Reference [3] not found"
-        for block in blocks:
-            ref = block.get("metadata", {}).get("reference", {})
-            if ref and "year" in ref:
+        ref_blocks = [b for b in blocks if b.get("metadata", {}).get("reference")]
+        assert ref_blocks, "No block has metadata.reference populated"
+        for block in ref_blocks:
+            ref = block["metadata"]["reference"]
+            if ref.get("year") is not None:
                 assert isinstance(ref["year"], int), (
                     f"reference.year should be an integer, got {type(ref['year'])}"
                 )
@@ -114,21 +109,18 @@ class TestGroupD:
     async def test_d5_figure_table(self):
         """Figure with 'Figure 1:' caption → figure_table metadata."""
         blocks = await _run_d_test(str(_PDFS / "grp_d_figure_table.pdf"), "scientific_paper")
-        assert _text_in_some("Figure 1", blocks), "Expected 'Figure 1' in some block"
-        for block in blocks:
-            ft = block.get("metadata", {}).get("figure_table", {})
-            if ft and "label" in ft:
-                assert "Figure 1" in ft["label"], (
-                    f"figure_table.label should contain 'Figure 1', got {ft['label']!r}"
-                )
-                caption = ft.get("caption", "")
-                assert "Distribution of block types" in caption or _text_in_some(
-                    "Distribution of block types", blocks
-                ), (
-                    "caption text 'Distribution of block types' not found in figure_table.caption or any block"
-                )
-                # referenced_block_id is not asserted (non-deterministic)
-                break
+        ft_blocks = [b for b in blocks if b.get("metadata", {}).get("figure_table")]
+        assert ft_blocks, "No block has metadata.figure_table populated"
+        ft = ft_blocks[0]["metadata"]["figure_table"]
+        assert "Figure 1" in ft.get("label", ""), (
+            f"figure_table.label should contain 'Figure 1', got {ft.get('label')!r}"
+        )
+        assert ft.get("caption"), "figure_table.caption should be non-empty"
+        assert "Distribution of block types" in ft.get("caption", "") or _text_in_some(
+            "Distribution of block types", blocks
+        ), (
+            "caption text 'Distribution of block types' not found in figure_table.caption or any block"
+        )
 
     async def test_d7_absent_metadata(self):
         """baseline_core doc → no schema-specific metadata fields hallucinated."""
