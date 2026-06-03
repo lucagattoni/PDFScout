@@ -94,7 +94,8 @@ The test: Could a developer act on this response and only discover it was wrong 
 
 - **Always create a new branch** for any new development or planning work. Never
   commit directly to `main` unless the user explicitly says so for a specific change.
-- Branch name convention: short kebab-case description of the work
+- Branch names **must always** be meaningful and describe the work — never use
+  auto-generated or placeholder names. Convention: short kebab-case with a type prefix
   (e.g. `feat/add-contract-schema`, `fix/burst-semaphore`, `plan/websocket-streaming`).
 - Push the branch and let the user decide when to merge / open a PR.
 
