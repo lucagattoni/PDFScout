@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.0.0] — 2026-06-03
+
+### Added
+
+- **`is_continued` field fully enabled** — all three schemas (`baseline_core`,
+  `invoice`, `scientific_paper`) now carry a `description` on the `is_continued`
+  field; the extraction prompt instructs Claude to set it `true` when a block's
+  text is cut off at the bottom of a page and continues at the top of the next.
+  The negative constraint ("omit or set false for all complete blocks") prevents
+  spurious flags on pages with whitespace near the bottom.
+- **E3 synthetic test** — extraction-only assertion: `grp_e_continuation.pdf`
+  (two-page fixture, one cross-page paragraph split) must produce exactly one
+  page-1 block with `is_continued=true`. Hierarchy is mocked per E-group
+  convention.
+- **F5 synthetic test** — hierarchy Rule 2 narrow assertion: pre-built blocks
+  with `is_continued=true` on a page-1 fragment must cause the hierarchy agent
+  to assign the page-2 continuation block as its child (`parent_id = p1c`).
+- **Group I synthetic tests** — full-chain integration group (no LLM tier
+  mocked except classifier). I1 verifies that extraction and hierarchy work
+  together in a single pipeline run for the continuation case: page-1 fragment
+  gets `is_continued=true` **and** page-2 block gets `parent_id` pointing at
+  the fragment.
+
+### Changed
+
+- `pyproject.toml` — added `grp_i` pytest marker; updated test-count comment.
+- `tests/integration/conftest.py` — `grp_i` added to the API-key guard so
+  Group I tests are skipped when no real key is present.
+
+### Fixed
+
+- Applied `ruff format` to 15 previously-unformatted Python files (fixture
+  generators, integration test helpers). Lint and format are now fully clean
+  across all 71 tracked Python files.
+
 ## [0.3.0] — 2026-05-30
 
 ### Added

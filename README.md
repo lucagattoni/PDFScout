@@ -227,10 +227,11 @@ A separate tier of tests exercises the real pipeline against synthetic PDF fixtu
 | B | Classifier accuracy | 1 per test |
 | C | Block-type extraction | 1–2 per test |
 | D | Schema-specific metadata | 1–2 per test |
-| E | Multi-page burst + merge | N (one per page) |
+| E | Multi-page burst + merge (hierarchy mocked) | N (one per page) |
 | F | Hierarchy assignment (narrow, direct function call) | 1 per test |
 | G | Two-column reading order | 1 |
 | H | Graceful degradation (blank page) | 1 |
+| I | Full-chain integration (no LLM tier mocked except classifier) | N + 1 |
 
 ```bash
 # Run all e2e tests
