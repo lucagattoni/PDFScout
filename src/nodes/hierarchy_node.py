@@ -43,10 +43,10 @@ def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-async def _call_api(client: AsyncAnthropic, manifest: list) -> Any:
+async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = 4000) -> Any:
     return await client.messages.create(
         model=MODEL,
-        max_tokens=4000,
+        max_tokens=max_tokens,
         temperature=0.0,
         tools=[RELATION_TOOL],
         tool_choice={"type": "tool", "name": "set_block_relations"},
@@ -93,7 +93,8 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             }
             for b in sorted_blocks
         ]
-        response = await _call_api(client, manifest)
+        max_tokens = min(16000, max(4000, len(sorted_blocks) * 40))
+        response = await _call_api(client, manifest, max_tokens)
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_block is None:
             raise ValueError(
@@ -102,7 +103,19 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             )
         relations = tool_block.input.get("relations", [])
         relation_map = {r["block_id"]: r["parent_id"] for r in relations}
+        block_ids = {b["block_id"] for b in sorted_blocks}
         orphan_warnings: list[str] = []
+        for bid, pid in list(relation_map.items()):
+            if pid is not None and pid not in block_ids:
+                orphan_warnings.append(
+                    f"block '{bid}' has unknown parent_id '{pid}'; edge dropped to root."
+                )
+                relation_map[bid] = None
+            elif pid == bid:
+                orphan_warnings.append(
+                    f"block '{bid}' references itself as parent; edge dropped to root."
+                )
+                relation_map[bid] = None
         for block in sorted_blocks:
             if block["block_id"] not in relation_map:
                 orphan_warnings.append(

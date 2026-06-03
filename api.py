@@ -1,8 +1,11 @@
 import asyncio
 import hashlib
 import os
+import tomllib
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,6 +23,10 @@ from src.graph import build_app
 load_dotenv()
 
 _API_ROOT = Path(__file__).parent
+try:
+    _VERSION = pkg_version("pdfscout")
+except PackageNotFoundError:
+    _VERSION = tomllib.loads((_API_ROOT / "pyproject.toml").read_text())["project"]["version"]
 _UPLOAD_DIR = _API_ROOT / "tmp" / "uploads"
 _CHECKPOINT_DB = str(_API_ROOT / "api_checkpoint.db")
 _MAX_UPLOAD_BYTES = 32 * 1024 * 1024
@@ -39,7 +46,7 @@ async def lifespan(app: FastAPI):
         langfuse.shutdown()
 
 
-app = FastAPI(title="PDFScout API", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="PDFScout API", version=_VERSION, lifespan=lifespan)
 
 
 @app.get("/", include_in_schema=False)

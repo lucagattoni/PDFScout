@@ -2,6 +2,7 @@
 
 _Created: 2026-06-03 15:02_
 _Updated: 2026-06-03 15:05 · DA review v1 — A2 placement corrected (hierarchy entry not new node), A4 fallback risk added, B1 classifier dilution risk added_
+_Updated: 2026-06-03 15:12 · A3, A4, A6, A7 implemented and shipped in v1.2.0_
 
 ## Purpose
 
@@ -195,20 +196,20 @@ New capabilities that expand what PDFScout can do.
 
 ## Priority recommendation
 
-| Rank | Item | Rationale |
-|---|---|---|
-| 1 | **A4** (version string) | 2-minute fix; zero risk; eliminates a silent lie in the API response |
-| 2 | **A7** (dead fixture) | 5-minute cleanup; reduces fixture confusion |
-| 3 | **A6** (hierarchy max_tokens) | 1-line fix; prevents silent data loss on long documents; zero risk |
-| 4 | **A3** (hierarchy validation) | ~20 lines; surfaces corruption that currently propagates silently |
-| 5 | **A1** (job persistence) | Correctness bug for production use; well-contained fix using existing SQLite dep |
-| 6 | **C1** (burst adversarial test) | Validates the most important unguarded failure mode; low effort |
-| 7 | **A2** (burst validation) | Closes the gap C1 exposes; medium effort; plan separately |
-| 8 | **B1** (new schema) | Highest feature value; warrants its own full plan |
-| 9 | **A5** (Files API) | Real cost win for large PDFs; medium risk; plan separately |
-| 10 | **B2** (confidence scores) | Nice-to-have; needs stability gate before asserting |
-| — | **B3** (streaming) | High effort; defer until core correctness is solid |
-| — | **B4** (multi-model) | Low value relative to risk; defer indefinitely |
+| Rank | Item | Status | Rationale |
+|---|---|---|---|
+| 1 | **A4** (version string) | ✅ v1.2.0 | Eliminates a silent lie in the API response |
+| 2 | **A7** (dead fixture) | ✅ v1.2.0 | Reduces fixture confusion |
+| 3 | **A6** (hierarchy max_tokens) | ✅ v1.2.0 | Prevents silent data loss on long documents |
+| 4 | **A3** (hierarchy validation) | ✅ v1.2.0 | Surfaces corrupt edges that previously propagated silently |
+| 5 | **A1** (job persistence) | ⬜ next | Correctness bug for production use; well-contained fix using existing SQLite dep |
+| 6 | **C1** (burst adversarial test) | ⬜ next | Validates the most important unguarded failure mode; low effort |
+| 7 | **A2** (burst validation) | ⬜ | Closes the gap C1 exposes; medium effort; plan separately |
+| 8 | **B1** (new schema) | ⬜ | Highest feature value; warrants its own full plan |
+| 9 | **A5** (Files API) | ⬜ | Real cost win for large PDFs; medium risk; plan separately |
+| 10 | **B2** (confidence scores) | ⬜ | Nice-to-have; needs stability gate before asserting |
+| — | **B3** (streaming) | ⬜ deferred | High effort; defer until core correctness is solid |
+| — | **B4** (multi-model) | ⬜ deferred | Low value relative to risk; defer indefinitely |
 
 ---
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.0] — 2026-06-03
+
+### Fixed
+
+- **A4 — API version string** (`api.py`) — `FastAPI(version=...)` was hardcoded to
+  `"0.3.0"` since the API was introduced. Now reads from `importlib.metadata` with a
+  `tomllib` fallback for non-installed (source-run) environments. `/health` and `/docs`
+  now report the current package version.
+- **A6 — Hierarchy `max_tokens` scaling** (`src/nodes/hierarchy_node.py`) — was
+  hardcoded to `4000`, which silently truncates responses for documents with many
+  blocks. Now scales as `min(16000, max(4000, len(blocks) * 40))`, preventing silent
+  orphan-promotion on long documents.
+- **A3 — Hierarchy output validation** (`src/nodes/hierarchy_node.py`) — `relation_map`
+  edges that reference a non-existent `block_id` or that are self-referential are now
+  detected, logged as extraction warnings, and dropped (edge set to `null`) rather than
+  propagating corrupt parent references into the output tree.
+
+### Changed
+
+- **A7 — Remove unused calibration fixture** — deleted
+  `tests/fixtures/generators/grp_calibration_multipoint.py`. The bbox calibration plan
+  was closed; this file was not registered in `generate_all.py` or any test.
+
 ## [1.1.1] — 2026-06-03
 
 ### Changed
