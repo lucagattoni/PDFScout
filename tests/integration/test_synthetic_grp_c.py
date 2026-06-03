@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tests.integration._compare import _make_relation_response
+from tests.integration._compare import _make_relation_response, assert_valid_bbox_fields
 
 _PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs"
 
@@ -49,6 +49,7 @@ class TestGroupC:
         blocks = await _run_c_test(str(_PDFS / "grp_c_paragraph.pdf"))
         assert len(blocks) >= 1
         assert _text_in_some_block("quick brown fox", blocks)
+        assert_valid_bbox_fields(blocks)
 
     async def test_c2_title(self):
         blocks = await _run_c_test(str(_PDFS / "grp_c_title.pdf"))
@@ -99,3 +100,24 @@ class TestGroupC:
         assert len(blocks) >= 1
         assert _text_in_some_block("synthetic document generation", blocks)
         assert _text_in_some_block("splitting it at arbitrary boundaries", blocks)
+
+    async def test_c10_unicode(self):
+        """Paragraph with Latin-1 extended chars → extracted text contains accented terms."""
+        blocks = await _run_c_test(str(_PDFS / "grp_c_unicode.pdf"))
+        assert len(blocks) >= 1
+        # Accept either unicode-preserved or ASCII-normalized form
+        assert _text_in_some_block("naïve", blocks) or _text_in_some_block("naive", blocks), (
+            "Expected naïve/naive in extracted text"
+        )
+        assert _text_in_some_block("café", blocks) or _text_in_some_block("cafe", blocks), (
+            "Expected café/cafe in extracted text"
+        )
+
+    async def test_c12_emphasis(self):
+        """Page with normal / bold / italic / bold-italic text → all variants extracted."""
+        blocks = await _run_c_test(str(_PDFS / "grp_c_emphasis.pdf"))
+        assert len(blocks) >= 1
+        assert _text_in_some_block("Normal text", blocks), "Normal text not found"
+        assert _text_in_some_block("Bold text", blocks), "Bold text not found"
+        assert _text_in_some_block("Italic text", blocks), "Italic text not found"
+        assert _text_in_some_block("Bold italic text", blocks), "Bold italic text not found"

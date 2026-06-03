@@ -69,6 +69,31 @@ F5_BLOCKS = [
 ]
 
 
+# F6: [orphan_para, heading, child_para] — orphan appears before any heading.
+# Verifies hierarchy assigns parent_id=None for a pre-heading paragraph (Rule 3),
+# and still correctly parents the post-heading paragraph (Rule 1).
+F6_BLOCKS = [
+    {
+        "block_id": "orphan",
+        "type": "paragraph",
+        "text": "Preamble text that appears before any section heading.",
+        "bbox": {"page_number": 1, "coordinates": [30, 70, 45, 500]},
+    },
+    {
+        "block_id": "h1",
+        "type": "heading",
+        "text": "Section One",
+        "bbox": {"page_number": 1, "coordinates": [60, 70, 75, 500]},
+    },
+    {
+        "block_id": "p1",
+        "type": "paragraph",
+        "text": "This paragraph belongs under section one.",
+        "bbox": {"page_number": 1, "coordinates": [90, 70, 105, 500]},
+    },
+]
+
+
 def make_state(blocks: list, doc_type: str = "baseline_core") -> dict:
     """Build the minimal state dict required by layout_hierarchy_agent_node."""
     return {

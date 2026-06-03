@@ -12,6 +12,7 @@ from tests.fixtures.generators.grp_f_hierarchy import (
     F3_BLOCKS,
     F4_BLOCKS,
     F5_BLOCKS,
+    F6_BLOCKS,
     make_state,
 )
 from tests.integration._compare import (
@@ -91,4 +92,22 @@ class TestGroupF:
         assert by_id["p2c"]["parent_id"] == "p1c", (
             f"Expected page-2 continuation parent_id='p1c', "
             f"got {by_id['p2c']['parent_id']!r} — hierarchy Rule 2 may not have triggered"
+        )
+
+    async def test_f6_orphan_paragraph(self):
+        """[orphan_para, heading, child_para] → orphan at root (no preceding heading);
+        child_para under heading (Rule 1)."""
+        from src.nodes.hierarchy_node import layout_hierarchy_agent_node
+
+        result = await layout_hierarchy_agent_node(make_state(list(F6_BLOCKS)))
+        blocks = result["hierarchical_document_tree"]["structured_payload"]
+        by_id = {b["block_id"]: b for b in blocks}
+
+        assert by_id["orphan"]["parent_id"] is None, (
+            f"Pre-heading paragraph should be root-level, "
+            f"got parent_id={by_id['orphan']['parent_id']!r}"
+        )
+        assert by_id["p1"]["parent_id"] == "h1", (
+            f"Post-heading paragraph should have parent_id='h1', "
+            f"got {by_id['p1']['parent_id']!r}"
         )

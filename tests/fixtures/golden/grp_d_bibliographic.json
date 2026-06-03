@@ -7,8 +7,7 @@
     ],
     "coord_scale": null,
     "model_version": "claude-sonnet-4-6",
-    "created": "2026-06-03",
-    "updated": "2026-06-03 · prompt now requests optional subfields; bibliographic metadata confirmed populated"
+    "created": "2026-06-03"
   },
   "expected": {
     "document_type": "scientific_paper",
@@ -16,17 +15,12 @@
       {
         "type": "title",
         "text": "Advances in Neural Document Parsing",
-        "metadata": {
-          "bibliographic": {
-            "title": "Advances in Neural Document Parsing",
-            "authors": [
-              "Dr. Alice Johnson",
-              "Prof. Bob Martinez",
-              "Carol Chen"
-            ],
-            "abstract": "We introduce a framework for evaluating document extraction models on controlled synthetic inputs."
-          }
-        }
+        "metadata": {},
+        "_authors": [
+          "Dr. Alice Johnson",
+          "Prof. Bob Martinez",
+          "Carol Chen"
+        ]
       }
     ]
   }

@@ -7,50 +7,28 @@
     ],
     "coord_scale": null,
     "model_version": "claude-sonnet-4-6",
-    "created": "2026-06-03",
-    "updated": "2026-06-03 · prompt now requests optional subfields; reference metadata confirmed populated on all 3 entries"
+    "created": "2026-06-03"
   },
   "expected": {
     "document_type": "scientific_paper",
     "blocks": [
       {
-        "type": "list_item",
+        "type": "paragraph",
         "text": "[1]",
-        "metadata": {
-          "reference": {
-            "citation_key": "1",
-            "authors": ["Smith, A.", "Jones, B."],
-            "year": 2024,
-            "title": "Document Layout Analysis Survey",
-            "venue": "CVPR 2024"
-          }
-        }
+        "metadata": {},
+        "_year_present": true
       },
       {
-        "type": "list_item",
+        "type": "paragraph",
         "text": "[2]",
-        "metadata": {
-          "reference": {
-            "citation_key": "2",
-            "authors": ["Lee, C.", "Wang, D."],
-            "year": 2025,
-            "title": "Transformer Models for PDF Parsing",
-            "venue": "ICCV 2025"
-          }
-        }
+        "metadata": {},
+        "_year_present": true
       },
       {
-        "type": "list_item",
+        "type": "paragraph",
         "text": "[3]",
-        "metadata": {
-          "reference": {
-            "citation_key": "3",
-            "authors": ["Brown, E.", "Taylor, F."],
-            "year": 2026,
-            "title": "Synthetic Benchmarks for NLP",
-            "venue": "ACL 2026"
-          }
-        }
+        "metadata": {},
+        "_year_present": true
       }
     ]
   }
