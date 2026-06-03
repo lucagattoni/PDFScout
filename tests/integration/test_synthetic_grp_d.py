@@ -122,5 +122,9 @@ class TestGroupD:
                 assert "Figure 1" in ft["label"], (
                     f"figure_table.label should contain 'Figure 1', got {ft['label']!r}"
                 )
+                caption = ft.get("caption", "")
+                assert "Distribution of block types" in caption or _text_in_some(
+                    "Distribution of block types", blocks
+                ), "caption text 'Distribution of block types' not found in figure_table.caption or any block"
                 # referenced_block_id is not asserted (non-deterministic)
                 break

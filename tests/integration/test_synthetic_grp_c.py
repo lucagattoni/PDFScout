@@ -102,4 +102,4 @@ class TestGroupC:
         blocks = await _run_c_test(str(_PDFS / "grp_c_long_paragraph.pdf"))
         assert len(blocks) >= 1
         assert _text_in_some_block("synthetic document generation", blocks)
-        assert _text_in_some_block("diagnostic burden", blocks)
+        assert _text_in_some_block("splitting it at arbitrary boundaries", blocks)

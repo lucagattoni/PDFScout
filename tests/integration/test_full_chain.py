@@ -31,13 +31,13 @@ class TestFullChain:
         table_blocks = [b for b in blocks if b["type"] == "table"]
         assert table_blocks, "Expected at least one table block in invoice output"
 
-        # table_data may or may not be populated depending on model response
-        # (see Risk 8 in plan). Accept presence of table block as the baseline.
         table = table_blocks[0]
-        if table.get("metadata", {}).get("table_data"):
-            td = table["metadata"]["table_data"]
-            assert td["total_rows"] >= 1
-            assert td["total_cols"] >= 1
+        assert table.get("metadata", {}).get("table_data") is not None, (
+            "Expected metadata.table_data to be populated on invoice PDF (see Risk 8 if flaky)"
+        )
+        td = table["metadata"]["table_data"]
+        assert td["total_rows"] >= 1
+        assert td["total_cols"] >= 1
 
         # No schema-validation failures (orphan warnings are tolerated)
         warnings = tree["extraction_warnings"]

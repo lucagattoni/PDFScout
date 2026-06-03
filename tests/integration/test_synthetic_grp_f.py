@@ -29,7 +29,6 @@ class TestGroupF:
 
         result = await layout_hierarchy_agent_node(make_state(list(F1_BLOCKS)))
         blocks = result["hierarchical_document_tree"]["structured_payload"]
-        by_id = {b["block_id"]: b for b in blocks}
 
         heading = next(b for b in blocks if b["type"] == "heading")
         paragraph = next(b for b in blocks if b["type"] == "paragraph")

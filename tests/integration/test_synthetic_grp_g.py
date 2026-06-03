@@ -47,11 +47,12 @@ class TestGroupG:
             i for i, b in enumerate(blocks)
             if b["bbox"]["coordinates"][1] // COLUMN_BUCKET_PX >= 1
         ]
-        if left_indices and right_indices:
-            assert max(left_indices) < min(right_indices), (
-                "All left-column blocks (bucket 0) must appear before all right-column blocks "
-                f"in structured_payload. Left indices: {left_indices}, right indices: {right_indices}"
-            )
+        assert left_indices, "No blocks found in left column (xmin bucket 0)"
+        assert right_indices, "No blocks found in right column (xmin bucket >= 1)"
+        assert max(left_indices) < min(right_indices), (
+            "All left-column blocks (bucket 0) must appear before all right-column blocks "
+            f"in structured_payload. Left indices: {left_indices}, right indices: {right_indices}"
+        )
 
         # (2) & (3) All expected texts present in some block
         import re
