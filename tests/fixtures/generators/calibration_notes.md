@@ -1,6 +1,6 @@
 # Phase 0 Calibration Notes
 
-**Status: NOT YET RUN**
+**Status: COMPLETE — BBOX_ASSERTIONS_VIABLE = False**
 
 Calibration must be performed before enabling bbox assertions.
 
@@ -40,11 +40,37 @@ asyncio.run(calibrate())
 
 ## Decision
 
-_Update this section after running calibration._
-
-- `COORD_SCALE =` _(not set)_
-- `BBOX_ASSERTIONS_VIABLE =` `False` _(current setting in `_common.py`)_
+- `COORD_SCALE =` _(not set — x-direction scale is not consistent, see analysis below)_
+- `BBOX_ASSERTIONS_VIABLE =` `False` _(confirmed; setting unchanged in `_common.py`)_
 
 ## Raw results
 
-_Paste output of the 3 calibration runs here._
+All 3 runs returned identical coordinates — the model is deterministic:
+
+```
+Run 1: [107, 71, 124, 312]
+Run 2: [107, 71, 124, 312]
+Run 3: [107, 71, 124, 312]
+```
+
+## Analysis
+
+Known placement (mm): `[ymin=50, xmin=20, ymax=58, xmax=190]`  
+Returned coordinates: `[107, 71, 124, 312]`
+
+Scale ratios:
+- ymin: 107 / 50 = **2.14**
+- ymax: 124 / 58 = **2.138** ← consistent with ymin ✓
+- xmin: 71 / 20 = **3.55**
+- xmax: 312 / 190 = **1.642** ← inconsistent with xmin ✗
+
+The y-direction is stable and maps to a consistent scale (k ≈ 2.14). The x-direction does
+not — because Claude returns **tight text bounding boxes** (actual glyph extent) rather than
+the declared cell width. The text "The quick brown fox..." is ~241 units wide regardless of
+the 170mm (481.9pt) cell that contains it, making xmax content-dependent and not a function
+of the declared cell geometry.
+
+Consequence: no single `COORD_SCALE` can convert mm positions to Claude coordinates for
+xmax (and by extension, any right-edge or width assertion). Relative ordering assertions
+(left column before right column, upper block before lower block) remain reliable and are
+used in the grp_g test.

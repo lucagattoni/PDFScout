@@ -12,6 +12,21 @@ from src.utils.pdf_utils import encode_pdf_async
 _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
 
+_SCIENTIFIC_PAPER_INSTRUCTIONS = (
+    "\nFor scientific_paper documents, populate metadata subfields where present on the page:"
+    "\n- title/paragraph blocks containing author names, abstract, or DOI → bibliographic (authors, title, abstract, doi)"
+    "\n- heading blocks with a section number → section (section_number, section_title)"
+    "\n- reference list items → reference (citation_key, authors, year, title, venue)"
+    "\n- figure or table blocks → figure_table (label, caption, referenced_block_id)"
+)
+
+
+def _doc_type_instructions(doc_type: str) -> str:
+    if doc_type == "scientific_paper":
+        return _SCIENTIFIC_PAPER_INSTRUCTIONS
+    return ""
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
 async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dict) -> Any:
     return await client.messages.create(
@@ -31,6 +46,8 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         _, tool_definition = SchemaRegistry().get_schema_and_tool(state["document_type"])
         pdf_base64 = await encode_pdf_async(state["file_path"])
 
+        doc_type = state["document_type"]
+        extra_instructions = _doc_type_instructions(doc_type)
         content = [
             {
                 "type": "document",
@@ -43,7 +60,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                     f"CRITICAL TASK: Extract structure elements EXCLUSIVELY located on physical "
                     f"Page {current_page}. Coordinates must follow [ymin, xmin, ymax, xmax] order. "
                     f"Use the tool '{tool_definition['name']}' to return structured data matching "
-                    f"the schema parameters."
+                    f"the schema parameters.{extra_instructions}"
                 ),
             },
         ]
