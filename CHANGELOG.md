@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.1] — 2026-06-03
+
+### Changed
+
+- **D-metadata Phase 2** — D2–D5 test assertions tightened from "if populated"
+  fallbacks to direct structural checks. A 3-run baseline sample confirmed all
+  four `scientific_paper` metadata subfields (`bibliographic`, `section`,
+  `reference`, `figure_table`) populate correctly with the existing prompt; a
+  5/5 stability gate preceded each assertion change. No pipeline or schema code
+  was modified.
+
 ## [1.1.0] — 2026-06-03
 
 ### Added
