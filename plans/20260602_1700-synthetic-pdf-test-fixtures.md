@@ -17,6 +17,9 @@
 - _Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_  
 - _Updated: 2026-06-03 · v16 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) to exercise the None case; Phase 2 optional-metadata helper clarified as inline conditional checks; Phase 1 make test updated with -m "not e2e"_  
 - _Updated: 2026-06-03 · v17 — pass 11 (automated): 1 MEDIUM: "Phase 1" calibration label renamed to "Development Phase 4" to avoid collision with development phase naming_  
+- _Updated: 2026-06-03 · v18 — coherence review pass 1: 3 MEDIUM + 5 LOW fixed: structured_payload access path added (pipeline output section + F state spec + full-chain assertions); E mock setup now explicitly states worker_node is NOT mocked; Phase 3 checklist adds assert_hierarchy_structure alongside assert_nearest_heading_parent; is_continued rule 2 added to Documented Rules (suspended pending E3); B1/B2 page count column added; Phase 1 _compare.py checklist lists all 5 helpers incl. mock factories; Phase 0 bbox-invalidation rollback note for meta.coord_scale; F state spec explains is_continued default behaviour; B removed from positional-matching list; integration-gap assertion cross-references Phase 4; pipeline output comment clarified_  
+- _Updated: 2026-06-03 · v19 — coherence review pass 2 (ambiguity + determinism): 3 MEDIUM fixed: classifier mock changed from AsyncAnthropic-class patch (3-level mock chain, unspecified) to `_classify` function patch (unambiguous, consistent across C/D/E/G/H); C test matching strategy clarified as scan-based (not positional) due to variable block count — D/E/H remain positional; golden file creation workflow section added (design-intent pre-written, not model-captured; first-run failures expected)_  
+- _Updated: 2026-06-03 · v20 — coherence review pass 3 (coverage + missing parts): 4 LOW fixed: stale AsyncAnthropic reference in narrow-tests "identity problem" paragraph corrected to _classify; _valid_block docstring extended with schema-compatibility requirement; assert_table_data docstring clarified (expected_rows = total rows incl. headers); F4 note added (heading parent_ids not asserted by design — covered by F1/F3); Phase 1 API key skip-guard approach specified_  
 
 ---
 
@@ -256,10 +259,15 @@ The pipeline's `geometric_pre_sorter` applies a deterministic sort on the output
 This means the order of blocks in `structured_payload` is fully determined by their
 bboxes — it is not the insertion order from the model.
 
-For **single-column groups** (B, C, D, E, H), the geometric sort order is stable
+For **D, E, H** (single-column, stable block count), the geometric sort order is stable
 and blocks can be matched positionally: `output[i]` is compared to `golden[i]`.
+For **C** (single-column, variable block count), block count is deliberately asserted as
+`>= minimum` because the model may split or merge content. Use **scan-based** matching:
+assert that each expected text is present in *some* block, not that `output[i]` equals
+`golden[i]`. `assert_blocks_match` is not used for C tests.
 Group A does not use block matching at all — A assertions check `total_pages` and
-`pdf_hash` only. Group F uses structural hierarchy assertions (`assert_hierarchy_structure`,
+`pdf_hash` only. Group B only asserts `document_type` — no block matching.
+Group F uses structural hierarchy assertions (`assert_hierarchy_structure`,
 `assert_nearest_heading_parent`), not positional block matching.
 
 For **G1** (two-column layout), positional matching is unreliable because the sort
@@ -269,6 +277,22 @@ L-prefixed blocks before all R-prefixed blocks in `structured_payload`).
 
 For **H1** (blank page), no positional matching is attempted. The test only asserts
 pipeline completes without exception and `len(blocks) <= 1`.
+
+### Pipeline output access
+
+In every group test (C, D, E, F, G, H) and the full-chain test, output blocks are accessed as:
+
+```python
+graph  = build_app()
+result = await graph.ainvoke(initial_state)   # integration tests invoke the graph directly
+blocks  = result["hierarchical_document_tree"]["structured_payload"]
+doc_type = result["hierarchical_document_tree"]["document_type"]
+warnings = result["hierarchical_document_tree"]["extraction_warnings"]
+```
+
+`structured_payload` is the sorted, deduplicated block list with `parent_id` assigned.
+Pass it as the `actual` argument to `assert_blocks_match` and as the `blocks` argument
+to `assert_hierarchy_structure` / `assert_nearest_heading_parent`.
 
 ### `_compare.py` helper spec
 
@@ -280,7 +304,10 @@ def _make_tool_use_response(blocks: list) -> MagicMock:
     test_graph_pipeline.py so grp_b tests can import without cross-test-file imports."""
 
 def _valid_block(page: int = 1) -> dict:
-    """Minimal valid block for use as a worker mock return value in grp_b tests."""
+    """Minimal valid block for use as a worker mock return value in grp_b tests.
+    Must include all required block fields (block_id, type, text, bbox, is_continued,
+    metadata) and must pass baseline_core, invoice, and scientific_paper schema
+    validation so that pioneer_validation_route does not trigger retries in B tests."""
 
 def _make_relation_response(relations: list) -> MagicMock:
     """Mock factory for hierarchy node API response. Move here from test_graph_pipeline.py
@@ -316,8 +343,10 @@ def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -
 def assert_table_data(block: dict, expected_rows: int, expected_cols: int,
                       header_row_count: int = 1,
                       expected_values: list[str] | None = None) -> None:
-    """Validates metadata.table_data dimensions and header flags. When expected_values
-    is provided, each string must appear in at least one cell's value field."""
+    """Validates metadata.table_data dimensions and header flags.
+    expected_rows is the TOTAL row count including header rows (e.g., 1 header + 3 data = 4).
+    header_row_count rows starting from index 0 must have is_header=True; the rest False.
+    When expected_values is provided, each string must appear in at least one cell's value field."""
 
 def assert_nearest_heading_parent(blocks: list[dict]) -> None:
     """
@@ -341,6 +370,9 @@ the hierarchy node prompt** — assertions must not assume undocumented behavior
   to that heading's `block_id`.
 - `title` blocks → `parent_id == null`.
 - Unpaired/standalone `heading` blocks → `parent_id == null`.
+- Block with `is_continued=true` → the first block on the next page is its child.
+  **Not currently asserted** — E3 is suspended because the extraction prompt does not
+  instruct the model to set `is_continued`, so the field is always `false` in practice.
 
 **Undocumented (do not assert without prompt evidence):**
 - Figure-caption nesting: NOT in the hierarchy prompt. Do not assert
@@ -389,7 +421,25 @@ Each golden file in `tests/fixtures/golden/` is a JSON document with two top-lev
 - No `block_count` field — count assertions use `len(blocks) >= minimum` in tests.
 - `coordinates` key may be omitted when `BBOX_ASSERTIONS_VIABLE = False`.
 
-Generator scripts write this file at generation time with the content placed on the page.
+### Golden file creation workflow
+
+Generator scripts write the golden file **at generation time** using design intent —
+they do NOT run the model. The generator places text on the page and writes the
+corresponding `type` and `text` values it expects the model to return:
+
+```
+Generator writes text "Hello" as a paragraph  →  golden: {"type": "paragraph", "text": "Hello"}
+```
+
+This means golden files are "expected-by-design", not "captured from a model run".
+**First-run failures are expected and correct**: if the model returns a different `type`
+than the generator expected, the test fails, and you update the golden file to match
+the real model output (after judging whether the model's classification is acceptable).
+
+**Exception — `make fixtures`** (used to regenerate after prompt/model changes): this
+regenerates both the PDF and the golden file, using the generator's original design
+intent again. It does NOT auto-capture model output. Manually re-run affected tests
+and update golden files if the new model output differs from design intent.
 
 ---
 
@@ -412,7 +462,7 @@ calls `encode_pdf_async(file_path)` to send PDF bytes to the model. Calling thes
 be met. There is no simplification over running the e2e.
 
 **The identity problem.** The e2e tests for C and D already mock the classifier via
-`src.nodes.classifier_node.AsyncAnthropic`. After that patch fires, `window_parser_node`
+`src.nodes.classifier_node._classify`. After that patch fires, `window_parser_node`
 is called with the injected `document_type` from state — exactly what a "narrow" call
 would do. Narrow C/D produces the same execution path as e2e C/D, minus
 `pioneer_validation_route` (schema validation). Narrow is not an independent signal;
@@ -480,7 +530,14 @@ state = {
     "extraction_warnings": [],           # merged into output warnings
 }
 result = await layout_hierarchy_agent_node(state)
+blocks = result["hierarchical_document_tree"]["structured_payload"]
+# Pass `blocks` to assert_hierarchy_structure / assert_nearest_heading_parent
 ```
+
+> `is_continued` is not a required field in the pre-built block dict — the node reads
+> it via `b.get("is_continued", False)` and sends the defaulted value in the LLM manifest.
+> With single-page fixtures where `is_continued` is absent (defaults to `false`),
+> the cross-page child rule (rule 2) never fires. This is correct behaviour for F tests.
 
 **Critical**: hand-crafted blocks MUST have `bbox.coordinates` that produce the
 intended sort order under `geometric_pre_sorter` (which runs inside the node before the
@@ -498,8 +555,8 @@ at its seams (e.g., state key name changes) while all individual groups pass.
 **Resolution:** add one **full-chain integration test** with no mocks:
 - Reuses the B1 PDF (1-page invoice); no new PDF needed
 - Runs `build_app()` with all nodes real
-- Asserts: `document_type == "invoice"`, at least one `table` block with `table_data`
-  populated, `not any("failed schema validation" in w for w in extraction_warnings)`
+- Asserts (see §Phase 4 for key paths): `document_type == "invoice"`, at least one
+  `table` block with `table_data` populated, no "failed schema validation" in warnings
   (tolerates benign orphan warnings; catches schema degradation)
 - Tagged `@pytest.mark.e2e @pytest.mark.integration_chain`
 - Lives in `tests/integration/test_full_chain.py`
@@ -546,10 +603,10 @@ principles and §Narrow tests for the rationale).
   `_make_tool_use_response([_valid_block(1)])` — prevents a real pioneer API call.
 - `src.nodes.hierarchy_node.AsyncAnthropic`: mock with `_make_relation_response([])`.
 
-| ID | PDF content | Expected `document_type` |
-|---|---|---|
-| B1 | Company header, "INVOICE #001", billing table, line items | `invoice` |
-| B2 | Paper title in large font, two authors, "Abstract" heading, body text, "DOI:" line | `scientific_paper` |
+| ID | PDF content | Pages | Expected `document_type` |
+|---|---|---|---|
+| B1 | Company header, "INVOICE #001", billing table, line items | 1 | `invoice` |
+| B2 | Paper title in large font, two authors, "Abstract" heading, body text, "DOI:" line | 1 | `scientific_paper` |
 
 > B3 (ambiguous → fallback) is removed. The fallback path is already exhaustively
 > tested in `test_classifier_node.py:test_unknown_falls_back`. An e2e fixture for
@@ -560,8 +617,9 @@ principles and §Narrow tests for the rationale).
 ### Group C — Block-type extraction (1–2 Claude calls per test)
 
 Node under test: `window_parser_node` (pioneer page, 1-page PDFs so burst never fires).
-Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
-`"baseline_core"`. Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
+Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
+`"baseline_core"` — `encode_pdf_async` still runs (real PDF bytes are computed but ignored
+by the mock). Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
 to return `_make_relation_response([])` (empty `relations` list — import from
 `tests/integration/_compare.py`). All blocks fall through to the existing orphan-fallback branch
 and receive `parent_id = null`; orphan warnings are emitted but not asserted in C tests.
@@ -605,8 +663,8 @@ matching (strip + collapse whitespace).
 ### Group D — Schema-specific metadata (1–2 Claude calls per test)
 
 Node under test: `window_parser_node` + schema validation in `pioneer_validation_route`.
-Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
-the target doc type. Hierarchy is mocked by patching
+Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
+the target doc type (see Group C for rationale). Hierarchy is mocked by patching
 `src.nodes.hierarchy_node.AsyncAnthropic` to return `_make_relation_response([])`
 (empty relations — see Group C for rationale). 1-page PDFs.
 
@@ -629,9 +687,12 @@ a prompt change, not a test change.
 ### Group E — Multi-page pipeline / burst + merge (N Claude calls per test)
 
 Nodes under test: `burst_dispatcher_node`, `window_parser_node` (pages 2–N), `merge_flat_blocks` reducer.
-Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
-`"baseline_core"`. Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
-to return `_make_relation_response([])` (empty relations — see Group C for rationale).
+Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
+`"baseline_core"` (see Group C for rationale). Hierarchy is mocked by patching
+`src.nodes.hierarchy_node.AsyncAnthropic` to return `_make_relation_response([])` (empty
+relations — see Group C for rationale). `src.nodes.worker_node.AsyncAnthropic` is **NOT mocked** — pioneer and all burst workers
+make real LLM calls, producing blocks with correct `bbox.page_number` values. This is
+what makes E different from B (which mocks the worker to isolate the classifier).
 Deduplication and sort still run, so the `block_id` uniqueness assertion reflects real
 pioneer/worker output after merge and dedup.
 
@@ -684,6 +745,11 @@ order within a page and in the same `xmin // 50` bucket (e.g., all `xmin = 70`) 
 > is the key insight from the F3 redesign — the hierarchy agent treats them symmetrically.
 >
 > F4 (old numbering) is renumbered to F4 (multi-heading disambiguation).
+>
+> **F4 does not assert heading `parent_id` values** — that heading-A and heading-B are
+> root-level is not checked by `assert_nearest_heading_parent`. This is acceptable:
+> the heading-root rule is already asserted in F1 (heading.parent_id == null) and F3
+> (HierarchyRule("heading", None)). F4's distinct value is paragraph disambiguation.
 
 ---
 
@@ -694,9 +760,9 @@ Node under test: `window_parser_node` (extraction quality on multi-column layout
 the extractor assigns `xmin` values that correctly distinguish columns, allowing the
 sorter to order them correctly. G2 is dropped (duplicates existing sorter unit tests).
 
-Classifier is mocked by patching `src.nodes.classifier_node.AsyncAnthropic` to return
-`"baseline_core"`. Hierarchy is mocked with `_make_relation_response([])` (same pattern
-as C and E). G1 is 1-page so burst does not fire.
+Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
+`"baseline_core"` (see Group C for rationale). Hierarchy is mocked with
+`_make_relation_response([])` (same pattern as C and E). G1 is 1-page so burst does not fire.
 
 Tests import `COLUMN_BUCKET_PX` from `src.config` and document the column placement
 calculation explicitly.
@@ -725,7 +791,8 @@ calculation explicitly.
 
 Reduced to H1 only. H2 (long paragraph) moved to C9.
 
-Classifier is mocked to return `"baseline_core"`. Hierarchy is mocked with
+Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
+`"baseline_core"` (see Group C for rationale). Hierarchy is mocked with
 `_make_relation_response([])`. H1 is a smoke test for the full pipeline path; mocking
 classifier and hierarchy keeps the focus on whether the pipeline handles blank input
 without crashing.
@@ -748,7 +815,7 @@ without crashing.
 - Record returned `coordinates` each run; derive `COORD_SCALE` or flag as non-viable
 - Commit `calibration_notes.md` with raw numbers and decision
 - Set `COORD_SCALE = <k>` or `BBOX_ASSERTIONS_VIABLE = False` in `_common.py`
-- Once D1 and G1 fixtures exist (Development Phase 4), repeat the cross-content-type scale check; if inconsistent, override to `BBOX_ASSERTIONS_VIABLE = False`
+- Once D1 and G1 fixtures exist (Development Phase 4), repeat the cross-content-type scale check; if inconsistent, override to `BBOX_ASSERTIONS_VIABLE = False` and run `make fixtures` to update all Phase 2 golden files — their `meta.coord_scale` must be changed from the numeric value to `false`
 
 ### Phase 1 — Foundation: Groups A, B, C + infrastructure
 
@@ -756,7 +823,8 @@ without crashing.
 - `generate_all.py` CLI: hash-check function compares generator SHA-256 against `manifest.json`; regenerates PDFs on missing file or hash mismatch; updates manifest entry. The session-scoped autouse fixture that invokes this function must be defined in `tests/integration/conftest.py` — pytest does not auto-discover fixtures from non-conftest files in `generators/`
 - `_common.py` fpdf2 helpers: `make_pdf()` factory (FPDF subclass with pinned creation date and A4 defaults), `draw_text()`, `draw_table()`, `draw_figure_rect()` helpers; `COORD_SCALE` / `BBOX_ASSERTIONS_VIABLE` constants
 - Generators and golden files for A1–A3, B1–B2, C1–C9
-- `tests/integration/_compare.py`: `assert_blocks_match` (`normalize_text=True` default),
+- `tests/integration/_compare.py`: mock factories `_make_tool_use_response`, `_valid_block`,
+  `_make_relation_response`; assertion helpers `assert_blocks_match` (`normalize_text=True` default),
   `assert_table_data`
 - Integration tests for groups A, B, C
 - `make fixtures [GRP=x]` target; `make test-e2e` shortcut; update existing `make test` command to add `-m "not e2e"` so synthetic tests are excluded from the default run
@@ -764,6 +832,11 @@ without crashing.
 - **Register all pytest markers in `pyproject.toml`**:
   `e2e`, `grp_a`, `grp_b`, `grp_c`, `grp_d`, `grp_e`, `grp_f`, `grp_g`, `grp_h`,
   `integration_chain`
+- **API key skip guard in `tests/integration/conftest.py`**: add a session-scoped
+  fixture that calls `pytest.skip(...)` if `ANTHROPIC_API_KEY` is unset or equals
+  `"sk-test-fake"` — but only when the test is marked with a group B–H marker.
+  Do NOT skip on `@pytest.mark.e2e` alone; Group A carries that marker but makes
+  no API calls.
 
 ### Phase 2 — Schema metadata: Group D
 
@@ -780,7 +853,7 @@ Do not begin Phase 2 without this confirmation.
 
 - Multi-page generators (E1, E2); E3 remains suspended pending prompt update
 - Hierarchy tests (F1–F4) as **narrow function calls** (no PDF; pre-built state)
-- `assert_nearest_heading_parent` helper added to `_compare.py`
+- `assert_hierarchy_structure` and `assert_nearest_heading_parent` helpers added to `_compare.py`
 - Integration tests for group E; narrow tests for group F
 
 ### Phase 4 — Layout, edge cases, and full-chain
@@ -789,8 +862,10 @@ Do not begin Phase 2 without this confirmation.
 - Integration tests for groups G and H
 - **Full-chain integration test** (`tests/integration/test_full_chain.py`):
   no mocks, reuses the B1 PDF (1-page invoice), all nodes real, asserts:
-  `document_type == "invoice"`, at least one `table` block with `table_data` populated,
-  `not any("failed schema validation" in w for w in extraction_warnings)`
+  `result["hierarchical_document_tree"]["document_type"] == "invoice"`;
+  at least one block in `result["hierarchical_document_tree"]["structured_payload"]`
+  with `type=="table"` and `metadata.table_data` populated;
+  `not any("failed schema validation" in w for w in result["hierarchical_document_tree"]["extraction_warnings"])`
   (tolerates benign orphan warnings; catches schema degradation; see Risk 8 if `table_data` is unreliable)
 - Update README with `make test-e2e GRP=x` usage
 
@@ -908,3 +983,6 @@ _v14 — 2026-06-02 22:45 — pass 9 (automated /refine-plan): 1 MEDIUM + 1 LOW:
 _v15 — 2026-06-02 23:00 — pass 10 (automated /refine-plan): 1 LOW: tests/integration/conftest.py added to directory layout_  
 _v16 — 2026-06-03 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) (exercises the None case); Phase 2 optional-metadata helpers clarified as inline conditional checks; make test updated with -m "not e2e" in Phase 1 checklist_  
 _v17 — 2026-06-03 — pass 11 (automated /refine-plan): 1 MEDIUM: "Phase 1" calibration label renamed "Development Phase 4" in both calibration prose and Phase 0 checklist to avoid naming collision with development phases_  
+_v18 — 2026-06-03 — coherence review pass 1: 3 MEDIUM + 5 LOW fixed: structured_payload access path added (pipeline output section + F state spec + full-chain assertions); E mock setup now explicitly states worker_node is NOT mocked; Phase 3 checklist adds assert_hierarchy_structure alongside assert_nearest_heading_parent; is_continued rule 2 added to Documented Rules (suspended pending E3); B1/B2 page count column added; Phase 1 _compare.py checklist lists all 5 helpers incl. mock factories; Phase 0 bbox-invalidation rollback note for meta.coord_scale; F state spec explains is_continued default behaviour; B removed from positional-matching list; integration-gap assertion cross-references Phase 4; pipeline output comment clarified_  
+_v19 — 2026-06-03 — coherence review pass 2 (ambiguity + determinism): 3 MEDIUM fixed: classifier mock changed from AsyncAnthropic-class patch (3-level mock chain, unspecified) to `_classify` function patch (unambiguous, consistent across C/D/E/G/H); C test matching strategy clarified as scan-based (not positional) due to variable block count — D/E/H remain positional; golden file creation workflow section added (design-intent pre-written, not model-captured; first-run failures expected)_  
+_v20 — 2026-06-03 — coherence review pass 3 (coverage + missing parts): 4 LOW fixed: stale AsyncAnthropic reference in narrow-tests "identity problem" paragraph corrected to _classify; _valid_block docstring extended with schema-compatibility requirement; assert_table_data docstring clarified (expected_rows = total rows incl. headers); F4 note added (heading parent_ids not asserted by design — covered by F1/F3); Phase 1 API key skip-guard approach specified_  
