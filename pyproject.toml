@@ -1,6 +1,6 @@
 [project]
 name = "pdfscout"
-version = "0.3.0"
+version = "1.0.0"
 requires-python = ">=3.13"
 dependencies = [
     "langgraph>=1.2.2",
@@ -42,6 +42,7 @@ markers = [
     "grp_f: Group F — hierarchy assignment",
     "grp_g: Group G — layout / reading order",
     "grp_h: Group H — graceful degradation",
+    "grp_i: Group I — full-chain integration (no LLM tier mocked)",
     "integration_chain: full-chain no-mocks integration test",
 ]
 

@@ -47,15 +47,22 @@ def _make_d1_invoice_table():
 def _make_d2_bibliographic():
     pdf = make_pdf()
     pdf.add_page()
-    draw_text(pdf, "Advances in Neural Document Parsing", 20, 25, size=16, style="B", align="C", w=170)
-    draw_text(pdf, "Dr. Alice Johnson, Prof. Bob Martinez, Carol Chen", 20, 40, size=11, align="C", w=170)
+    draw_text(
+        pdf, "Advances in Neural Document Parsing", 20, 25, size=16, style="B", align="C", w=170
+    )
+    draw_text(
+        pdf, "Dr. Alice Johnson, Prof. Bob Martinez, Carol Chen", 20, 40, size=11, align="C", w=170
+    )
     draw_text(pdf, "Abstract", 20, 58, size=13, style="B")
     draw_multiline(
         pdf,
         "We introduce a framework for evaluating document extraction models on controlled "
         "synthetic inputs. The framework measures precision and recall across block types "
         "without requiring access to proprietary document collections.",
-        20, 68, size=11, w=170,
+        20,
+        68,
+        size=11,
+        w=170,
     )
     draw_text(pdf, "DOI: 10.9876/ndp.2026.042", 20, 130, size=10)
     return pdf
@@ -70,13 +77,19 @@ def _make_d3_section():
         "Our methodology combines synthetic PDF generation with automated assertion "
         "checking. We generate documents with known structure and compare the model "
         "output against the design intent.",
-        20, 55, size=11, w=170,
+        20,
+        55,
+        size=11,
+        w=170,
     )
     draw_multiline(
         pdf,
         "The evaluation proceeds in four phases: calibration, block-type detection, "
         "metadata quality assessment, and hierarchy verification.",
-        20, 90, size=11, w=170,
+        20,
+        90,
+        size=11,
+        w=170,
     )
     return pdf
 
@@ -102,7 +115,9 @@ def _make_d5_figure():
     pdf.add_page()
     draw_filled_rect(pdf, 20, 35, 120, 70, fill_color=(210, 210, 210))
     draw_text(pdf, "[Figure Area]", 68, 68, size=10, style="I", w=30, align="C")
-    draw_text(pdf, "Figure 1: Distribution of block types across document corpus.", 20, 113, size=10)
+    draw_text(
+        pdf, "Figure 1: Distribution of block types across document corpus.", 20, 113, size=10
+    )
     return pdf
 
 
@@ -120,52 +135,72 @@ def generate(out_dir: Path) -> list[Path]:
     paths = []
 
     # D1: invoice table — expected table block; metadata assertions done inline in test
-    _write_golden_d("grp_d_table_data", "invoice", [
-        {"type": "table", "text": "Description", "metadata": {}},
-    ])
+    _write_golden_d(
+        "grp_d_table_data",
+        "invoice",
+        [
+            {"type": "table", "text": "Description", "metadata": {}},
+        ],
+    )
     paths.append(save_pdf(_make_d1_invoice_table(), out_dir, "grp_d_table_data.pdf"))
 
     # D2: bibliographic — 3 author names in text; metadata is optional
-    _write_golden_d("grp_d_bibliographic", "scientific_paper", [
-        {
-            "type": "title",
-            "text": "Advances in Neural Document Parsing",
-            "metadata": {},
-            "_authors": ["Dr. Alice Johnson", "Prof. Bob Martinez", "Carol Chen"],
-        },
-    ])
+    _write_golden_d(
+        "grp_d_bibliographic",
+        "scientific_paper",
+        [
+            {
+                "type": "title",
+                "text": "Advances in Neural Document Parsing",
+                "metadata": {},
+                "_authors": ["Dr. Alice Johnson", "Prof. Bob Martinez", "Carol Chen"],
+            },
+        ],
+    )
     paths.append(save_pdf(_make_d2_bibliographic(), out_dir, "grp_d_bibliographic.pdf"))
 
     # D3: section — expected heading with section metadata
-    _write_golden_d("grp_d_section", "scientific_paper", [
-        {
-            "type": "heading",
-            "text": "2. Methodology",
-            "metadata": {},
-            "_section_number": "2",
-            "_section_title": "Methodology",
-        },
-    ])
+    _write_golden_d(
+        "grp_d_section",
+        "scientific_paper",
+        [
+            {
+                "type": "heading",
+                "text": "2. Methodology",
+                "metadata": {},
+                "_section_number": "2",
+                "_section_title": "Methodology",
+            },
+        ],
+    )
     paths.append(save_pdf(_make_d3_section(), out_dir, "grp_d_section.pdf"))
 
     # D4: references — 3 reference entries with years
-    _write_golden_d("grp_d_reference", "scientific_paper", [
-        {"type": "paragraph", "text": "[1]", "metadata": {}, "_year_present": True},
-        {"type": "paragraph", "text": "[2]", "metadata": {}, "_year_present": True},
-        {"type": "paragraph", "text": "[3]", "metadata": {}, "_year_present": True},
-    ])
+    _write_golden_d(
+        "grp_d_reference",
+        "scientific_paper",
+        [
+            {"type": "paragraph", "text": "[1]", "metadata": {}, "_year_present": True},
+            {"type": "paragraph", "text": "[2]", "metadata": {}, "_year_present": True},
+            {"type": "paragraph", "text": "[3]", "metadata": {}, "_year_present": True},
+        ],
+    )
     paths.append(save_pdf(_make_d4_references(), out_dir, "grp_d_reference.pdf"))
 
     # D5: figure_table — figure with label and caption
-    _write_golden_d("grp_d_figure_table", "scientific_paper", [
-        {
-            "type": "figure",
-            "text": "Figure 1",
-            "metadata": {},
-            "_label": "Figure 1",
-            "_caption": "Distribution of block types across document corpus.",
-        },
-    ])
+    _write_golden_d(
+        "grp_d_figure_table",
+        "scientific_paper",
+        [
+            {
+                "type": "figure",
+                "text": "Figure 1",
+                "metadata": {},
+                "_label": "Figure 1",
+                "_caption": "Distribution of block types across document corpus.",
+            },
+        ],
+    )
     paths.append(save_pdf(_make_d5_figure(), out_dir, "grp_d_figure_table.pdf"))
 
     return paths
@@ -173,6 +208,7 @@ def generate(out_dir: Path) -> list[Path]:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

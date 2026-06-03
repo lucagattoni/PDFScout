@@ -17,7 +17,9 @@ def _make_multipage(n_pages: int) -> object:
         draw_text(
             pdf,
             f"Page {page} content: This paragraph is exclusively on page {page}.",
-            20, 50, size=12,
+            20,
+            50,
+            size=12,
         )
     return pdf
 
@@ -35,13 +37,17 @@ def _make_continuation() -> object:
     draw_text(
         pdf,
         "The pipeline handles documents through extraction, classification, parsing, and",
-        20, 230, size=12,
+        20,
+        230,
+        size=12,
     )
     pdf.add_page()
     draw_text(
         pdf,
         "hierarchical assembly, making it suitable for production workloads.",
-        20, 20, size=12,
+        20,
+        20,
+        size=12,
     )
     return pdf
 
@@ -56,6 +62,7 @@ def generate(out_dir: Path) -> list[Path]:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

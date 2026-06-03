@@ -20,6 +20,7 @@ def generate(out_dir: Path) -> list[Path]:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

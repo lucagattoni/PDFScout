@@ -1,6 +1,6 @@
 {
   "grp_a": {
-    "hash": "921039c347fd1c840daf69b34988da575f70d3a002f7cf2e4c69dd7e69425e08",
+    "hash": "be3c0fc027a80d66186fe260e748f79c07a10ae547256075d4041a24b8a48698",
     "fixtures": [
       "grp_a_valid_1page.pdf",
       "grp_a_valid_10page.pdf",
@@ -8,14 +8,14 @@
     ]
   },
   "grp_b": {
-    "hash": "d4c1d9070801fe845404ef893c68d37b8cc80eb7a75a963583053663406906f5",
+    "hash": "f9702ab1dd14d92a2f6ea11ffcec32c0aa4be3ebcec2bb84efcdb7518792bd15",
     "fixtures": [
       "grp_b_invoice.pdf",
       "grp_b_scientific_paper.pdf"
     ]
   },
   "grp_c": {
-    "hash": "d3cfc2f232ca5547feaaa1963b9c0f8bf93d4233a43d2ee3e7bf05c41f839b0e",
+    "hash": "44edff7eb4bbf268fee8011b96e55ad1e3e897edbbb11363cb180ab72ff75556",
     "fixtures": [
       "grp_c_paragraph.pdf",
       "grp_c_title.pdf",
@@ -29,7 +29,7 @@
     ]
   },
   "grp_d": {
-    "hash": "7673940130596350b432065d06079c8768126a9122ea70c923b9fae7967697c2",
+    "hash": "cdc3d7722e2a1c58ba9df8ba02b2eb6fded5ccf37504aa0f4acc654865813b5f",
     "fixtures": [
       "grp_d_table_data.pdf",
       "grp_d_bibliographic.pdf",
@@ -39,7 +39,7 @@
     ]
   },
   "grp_e": {
-    "hash": "40417874e8960448d6b0c7dac6d6c7ee8f30e221dc570153ca15da00296bb7b9",
+    "hash": "4f4f7d92ce51505969116c270625f59ef45a4e27e50295c93bbf88d59db3335a",
     "fixtures": [
       "grp_e_2page.pdf",
       "grp_e_5page.pdf",
@@ -47,13 +47,13 @@
     ]
   },
   "grp_g": {
-    "hash": "07da01d84afc697874dfea8475be7de862421a48b2a6da2af19ed2c6133eafdf",
+    "hash": "7246ce54dfacc4b3a652fc18b35b44149915d0d3e9320bd4882ff4847d8c8048",
     "fixtures": [
       "grp_g_two_column.pdf"
     ]
   },
   "grp_h": {
-    "hash": "3048b9d413335f546266510143270c8c032246acd91e9dbc4c1c3eb04eba30fd",
+    "hash": "81380461dc58f03b9b6b993086d5d82173b371e03bf1ff9ddb1175f381c12f56",
     "fixtures": [
       "grp_h_blank.pdf"
     ]

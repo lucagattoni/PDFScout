@@ -57,9 +57,20 @@ def _make_b2_scientific_paper() -> object:
     pdf = make_pdf()
     pdf.add_page()
 
-    draw_text(pdf, "Neural Approaches to Synthetic Document Analysis", 20, 25, size=16, style="B", align="C", w=170)
+    draw_text(
+        pdf,
+        "Neural Approaches to Synthetic Document Analysis",
+        20,
+        25,
+        size=16,
+        style="B",
+        align="C",
+        w=170,
+    )
     draw_text(pdf, "Alice Smith, Bob Jones, Carol Lee", 20, 40, size=11, align="C", w=170)
-    draw_text(pdf, "Department of Computer Science, State University", 20, 48, size=10, align="C", w=170)
+    draw_text(
+        pdf, "Department of Computer Science, State University", 20, 48, size=10, align="C", w=170
+    )
 
     draw_text(pdf, "Abstract", 20, 63, size=13, style="B")
     draw_text(
@@ -71,7 +82,9 @@ def _make_b2_scientific_paper() -> object:
             "relying on real-world document collections, which often contain sensitive "
             "or proprietary information."
         ),
-        20, 73, size=11,
+        20,
+        73,
+        size=11,
         w=170,
     )
 
@@ -84,7 +97,10 @@ def _make_b2_scientific_paper() -> object:
             "freely distributed. We propose a synthetic generation approach that allows "
             "full control over document structure while remaining realistic."
         ),
-        20, 130, size=11, w=170,
+        20,
+        130,
+        size=11,
+        w=170,
     )
 
     draw_text(pdf, "DOI: 10.1234/synthpdf.2026.001", 20, 185, size=10)
@@ -117,6 +133,7 @@ def generate(out_dir: Path) -> list[Path]:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

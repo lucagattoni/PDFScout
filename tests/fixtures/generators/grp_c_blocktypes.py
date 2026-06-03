@@ -91,7 +91,9 @@ def _make_c5_footnote():
     pdf.add_page()
     # Body text with superscript marker (rendered as plain text indicator)
     draw_text(pdf, "This claim requires a citation.[1]", 20, 50, size=12)
-    draw_text(pdf, "Further analysis supports the main hypothesis presented above.[2]", 20, 62, size=12)
+    draw_text(
+        pdf, "Further analysis supports the main hypothesis presented above.[2]", 20, 62, size=12
+    )
     # Horizontal rule separator
     draw_hline(pdf, 20, 200, 60)
     # Footnote text: 7pt font
@@ -104,10 +106,17 @@ def _make_c6_margin_element():
     pdf = make_pdf()
     pdf.add_page()
     # Main body text
-    draw_multiline(pdf, "This is the main body text of the document. It contains the primary "
-                   "narrative content that spans the full readable width of the page and "
-                   "continues for several lines to establish a clear visual distinction "
-                   "from the sidebar element on the right.", 20, 50, size=12, w=110)
+    draw_multiline(
+        pdf,
+        "This is the main body text of the document. It contains the primary "
+        "narrative content that spans the full readable width of the page and "
+        "continues for several lines to establish a clear visual distinction "
+        "from the sidebar element on the right.",
+        20,
+        50,
+        size=12,
+        w=110,
+    )
     # Margin sidebar: grey background + narrow column (< 25% page width = < 52mm; use 45mm)
     draw_filled_rect(pdf, 160, 45, 30, 55, fill_color=(220, 220, 220))
     draw_text(pdf, "Key Point", 162, 48, size=8, style="B", w=26)
@@ -167,34 +176,88 @@ def generate(out_dir: Path) -> list[Path]:
     paths = []
 
     fixtures = [
-        ("grp_c_paragraph", _make_c1_paragraph, "baseline_core",
-         [{"type": "paragraph", "text": "The quick brown fox jumps over the lazy dog.", "metadata": {}}]),
-        ("grp_c_title", _make_c2_title, "baseline_core",
-         [{"type": "title", "text": "Synthetic Document Analysis", "metadata": {}}]),
-        ("grp_c_heading", _make_c3_heading, "baseline_core",
-         [{"type": "heading", "text": "1. Introduction", "metadata": {}}]),
-        ("grp_c_list_items", _make_c4_list_items, "baseline_core",
-         [
-             {"type": "list_item", "text": "First list item content", "metadata": {}},
-             {"type": "list_item", "text": "Second list item content", "metadata": {}},
-             {"type": "list_item", "text": "Third list item content", "metadata": {}},
-         ]),
-        ("grp_c_footnote", _make_c5_footnote, "baseline_core",
-         [{"type": "footnote", "text": "[1]", "metadata": {}}]),
-        ("grp_c_margin_element", _make_c6_margin_element, "baseline_core",
-         [{"type": "margin_element", "text": "Key Point", "metadata": {}}]),
-        ("grp_c_table", _make_c7_table, "baseline_core",
-         [{"type": "table", "text": "Column A", "metadata": {}}]),
-        ("grp_c_figure", _make_c8_figure, "baseline_core",
-         [{"type": "paragraph", "text": "Figure 1:", "metadata": {}}]),
-        ("grp_c_long_paragraph", _make_c9_long_paragraph, "baseline_core",
-         [{"type": "paragraph", "text": "The study of synthetic document generation", "metadata": {}}]),
+        (
+            "grp_c_paragraph",
+            _make_c1_paragraph,
+            "baseline_core",
+            [
+                {
+                    "type": "paragraph",
+                    "text": "The quick brown fox jumps over the lazy dog.",
+                    "metadata": {},
+                }
+            ],
+        ),
+        (
+            "grp_c_title",
+            _make_c2_title,
+            "baseline_core",
+            [{"type": "title", "text": "Synthetic Document Analysis", "metadata": {}}],
+        ),
+        (
+            "grp_c_heading",
+            _make_c3_heading,
+            "baseline_core",
+            [{"type": "heading", "text": "1. Introduction", "metadata": {}}],
+        ),
+        (
+            "grp_c_list_items",
+            _make_c4_list_items,
+            "baseline_core",
+            [
+                {"type": "list_item", "text": "First list item content", "metadata": {}},
+                {"type": "list_item", "text": "Second list item content", "metadata": {}},
+                {"type": "list_item", "text": "Third list item content", "metadata": {}},
+            ],
+        ),
+        (
+            "grp_c_footnote",
+            _make_c5_footnote,
+            "baseline_core",
+            [{"type": "footnote", "text": "[1]", "metadata": {}}],
+        ),
+        (
+            "grp_c_margin_element",
+            _make_c6_margin_element,
+            "baseline_core",
+            [{"type": "margin_element", "text": "Key Point", "metadata": {}}],
+        ),
+        (
+            "grp_c_table",
+            _make_c7_table,
+            "baseline_core",
+            [{"type": "table", "text": "Column A", "metadata": {}}],
+        ),
+        (
+            "grp_c_figure",
+            _make_c8_figure,
+            "baseline_core",
+            [{"type": "paragraph", "text": "Figure 1:", "metadata": {}}],
+        ),
+        (
+            "grp_c_long_paragraph",
+            _make_c9_long_paragraph,
+            "baseline_core",
+            [
+                {
+                    "type": "paragraph",
+                    "text": "The study of synthetic document generation",
+                    "metadata": {},
+                }
+            ],
+        ),
     ]
 
     pdf_names = [
-        "grp_c_paragraph.pdf", "grp_c_title.pdf", "grp_c_heading.pdf",
-        "grp_c_list_items.pdf", "grp_c_footnote.pdf", "grp_c_margin_element.pdf",
-        "grp_c_table.pdf", "grp_c_figure.pdf", "grp_c_long_paragraph.pdf",
+        "grp_c_paragraph.pdf",
+        "grp_c_title.pdf",
+        "grp_c_heading.pdf",
+        "grp_c_list_items.pdf",
+        "grp_c_footnote.pdf",
+        "grp_c_margin_element.pdf",
+        "grp_c_table.pdf",
+        "grp_c_figure.pdf",
+        "grp_c_long_paragraph.pdf",
     ]
 
     for (name, make_fn, doc_type, blocks), pdf_name in zip(fixtures, pdf_names):
@@ -206,6 +269,7 @@ def generate(out_dir: Path) -> list[Path]:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

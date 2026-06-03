@@ -22,7 +22,9 @@ class TestGroupH:
 
         app = build_app(checkpointer=None)
         with (
-            patch("src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")),
+            patch(
+                "src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")
+            ),
             patch(
                 "src.nodes.hierarchy_node._call_api",
                 new=AsyncMock(return_value=_make_relation_response([])),

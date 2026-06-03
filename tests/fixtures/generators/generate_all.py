@@ -57,9 +57,7 @@ def _run_generator(key: str, module_name: str, manifest: dict) -> bool:
     stored_hash = entry.get("hash", "")
     fixtures = entry.get("fixtures", [])
 
-    needs_regen = current_hash != stored_hash or any(
-        not (_PDFS_DIR / f).exists() for f in fixtures
-    )
+    needs_regen = current_hash != stored_hash or any(not (_PDFS_DIR / f).exists() for f in fixtures)
     if not needs_regen:
         return False
 
@@ -80,9 +78,7 @@ def hash_check_all(group: str | None = None) -> None:
     updated = False
 
     generators = (
-        {group: _GENERATOR_MAP[group]}
-        if group and group in _GENERATOR_MAP
-        else _GENERATOR_MAP
+        {group: _GENERATOR_MAP[group]} if group and group in _GENERATOR_MAP else _GENERATOR_MAP
     )
 
     for key, module_name in generators.items():
