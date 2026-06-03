@@ -23,7 +23,7 @@
             "required": ["page_number", "coordinates"]
           },
           "text": { "type": "string" },
-          "is_continued": { "type": "boolean", "default": false },
+          "is_continued": { "type": "boolean", "default": false, "description": "Set to true when this block's text is truncated at the bottom of the page and resumes at the top of the next page. Omit or set false for all complete blocks." },
           "metadata": { "type": "object" }
         },
         "required": ["block_id", "type", "bbox", "text"]

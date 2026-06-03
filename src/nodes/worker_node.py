@@ -59,6 +59,9 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 "text": (
                     f"CRITICAL TASK: Extract structure elements EXCLUSIVELY located on physical "
                     f"Page {current_page}. Coordinates must follow [ymin, xmin, ymax, xmax] order. "
+                    f"If a block's text is cut off at the bottom of the page and continues at the "
+                    f"top of the next page, set is_continued=true. Leave is_continued=false (or "
+                    f"omit it) for all complete blocks. "
                     f"Use the tool '{tool_definition['name']}' to return structured data matching "
                     f"the schema parameters.{extra_instructions}"
                 ),
