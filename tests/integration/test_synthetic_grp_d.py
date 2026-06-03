@@ -71,7 +71,6 @@ class TestGroupD:
         blocks = await _run_d_test(str(_PDFS / "grp_d_bibliographic.pdf"), "scientific_paper")
         authors = ["Alice Johnson", "Bob Martinez", "Carol Chen"]
         # Check bibliographic subfield if populated
-        title_blocks = [b for b in blocks if b["type"] in ("title", "paragraph", "heading")]
         for author in authors:
             bib_populated = any(
                 author in str(b.get("metadata", {}).get("bibliographic", {}).get("authors", []))
