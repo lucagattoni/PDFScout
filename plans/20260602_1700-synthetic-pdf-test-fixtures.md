@@ -1,22 +1,22 @@
 # Synthetic PDF Test Fixtures — Plan
 
-_Created: 2026-06-02 17:00_  
-_Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching strategy, compare helper spec_  
-_Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_  
-_Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-point devil's advocate review_  
-_Updated: 2026-06-02 19:00 · v5 — second devil's advocate pass: 18 further issues resolved_  
-_Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected_  
-_Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF storage resolved as approach 3 (manifest hash)_  
-_Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_  
-_Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_  
-_Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_  
-_Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_  
-_Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_  
-_Updated: 2026-06-02 22:30 · v13 — pass 8 (automated): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change; generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-API-key); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent no-preceding-heading edge case specified_  
-_Updated: 2026-06-02 22:45 · v14 — pass 9 (automated): 1 MEDIUM + 1 LOW: directory layout comment and prose updated to reflect fixture-in-conftest (generate_all.py is CLI only); HierarchyRule None case documented (asserts parent_id is None)_  
-_Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_  
-_Updated: 2026-06-03 · v16 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) to exercise the None case; Phase 2 optional-metadata helper clarified as inline conditional checks; Phase 1 make test updated with -m "not e2e"_  
-_Updated: 2026-06-03 · v17 — pass 11 (automated): 1 MEDIUM: "Phase 1" calibration label renamed to "Development Phase 4" to avoid collision with development phase naming_  
+- _Created: 2026-06-02 17:00_  
+- _Updated: 2026-06-02 17:30 · v2 — coordinate calibration, block-matching strategy, compare helper spec_  
+- _Updated: 2026-06-02 18:00 · v3 — full redesign: replace linear levels with concern-separated groups after code review_  
+- _Updated: 2026-06-02 18:30 · v4 — Option 2 narrow-test conclusions + full 33-point devil's advocate review_  
+- _Updated: 2026-06-02 19:00 · v5 — second devil's advocate pass: 18 further issues resolved_  
+- _Updated: 2026-06-02 19:30 · v6 — narrow-test section rewritten: per-group verdict table corrected_  
+- _Updated: 2026-06-02 20:00 · v7 — generator switched to fpdf2; binary-PDF storage resolved as approach 3 (manifest hash)_  
+- _Updated: 2026-06-02 20:30 · v8 — D/A section removed (all 24 resolutions applied); stale references cleaned up_  
+- _Updated: 2026-06-02 21:00 · v9 — pass 4 D/A: A3 classifier-mock assertion removed; hierarchy mock clarified to empty-relations pattern; E classifier mock documented; G1 column assertion rewritten to bucket-based (calibration-free); full-chain table_data assertion resolved; E cost corrected (7 not 4); all 6 risks rewritten; 2 new risks added_  
+- _Updated: 2026-06-02 21:30 · v10 — pass 5 (automated): 8 MEDIUM + 3 LOW resolved: "tests fallback path" wording corrected; e2e marker clarified (API-key-required, not no-mocks); A and F removed from positional-matching group; _make_relation_response moved to _compare.py spec; model_version added to golden file format + meta note; Group B mock setup fully specified; C5/C6 note aligned with Risk 1; Group D hierarchy mock specified; Group E orphan-warning note added; Phase 0 classifier mock value specified; Phase 2 prompt prerequisite added; H1 text threshold 10→30; C8 text-presence intent documented_  
+- _Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Group C stale reference to test_graph_pipeline.py corrected (import from _compare.py); Group G mock setup added (classifier + hierarchy mocked, same pattern as C/E)_  
+- _Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_  
+- _Updated: 2026-06-02 22:30 · v13 — pass 8 (automated): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change; generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-API-key); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent no-preceding-heading edge case specified_  
+- _Updated: 2026-06-02 22:45 · v14 — pass 9 (automated): 1 MEDIUM + 1 LOW: directory layout comment and prose updated to reflect fixture-in-conftest (generate_all.py is CLI only); HierarchyRule None case documented (asserts parent_id is None)_  
+- _Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_  
+- _Updated: 2026-06-03 · v16 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) to exercise the None case; Phase 2 optional-metadata helper clarified as inline conditional checks; Phase 1 make test updated with -m "not e2e"_  
+- _Updated: 2026-06-03 · v17 — pass 11 (automated): 1 MEDIUM: "Phase 1" calibration label renamed to "Development Phase 4" to avoid collision with development phase naming_  
 
 ---
 
