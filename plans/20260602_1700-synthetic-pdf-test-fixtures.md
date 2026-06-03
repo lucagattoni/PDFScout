@@ -15,7 +15,8 @@ _Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _mak
 _Updated: 2026-06-02 22:30 · v13 — pass 8 (automated): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change; generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-API-key); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent no-preceding-heading edge case specified_
 _Updated: 2026-06-02 22:45 · v14 — pass 9 (automated): 1 MEDIUM + 1 LOW: directory layout comment and prose updated to reflect fixture-in-conftest (generate_all.py is CLI only); HierarchyRule None case documented (asserts parent_id is None)_
 _Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_
-_Updated: 2026-06-03 · v16 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) to exercise the None case; Phase 2 optional-metadata helper clarified as inline conditional checks; Phase 1 make test updated with -m "not e2e"_  
+_Updated: 2026-06-03 · v16 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) to exercise the None case; Phase 2 optional-metadata helper clarified as inline conditional checks; Phase 1 make test updated with -m "not e2e"_
+_Updated: 2026-06-03 · v17 — pass 11 (automated): 1 MEDIUM: "Phase 1" calibration label renamed to "Development Phase 4" to avoid collision with development phase naming_  
 
 ---
 
@@ -202,7 +203,7 @@ returned `coordinates` against the known mm placement:
 - If `coordinates ≈ mm_values × k` for consistent k across 3 runs → `COORD_SCALE = k`.
 - If values vary widely across 3 runs → `BBOX_ASSERTIONS_VIABLE = False`.
 
-A second check in Phase 1 (when D1-table and G1-twocolumn exist) verifies scale
+A second check once D1 and G1 fixtures exist (Development Phase 4) verifies scale
 consistency across content types. If scale differs between C1 and D1/G1:
 `BBOX_ASSERTIONS_VIABLE = False`.
 
@@ -747,8 +748,7 @@ without crashing.
 - Record returned `coordinates` each run; derive `COORD_SCALE` or flag as non-viable
 - Commit `calibration_notes.md` with raw numbers and decision
 - Set `COORD_SCALE = <k>` or `BBOX_ASSERTIONS_VIABLE = False` in `_common.py`
-- Phase 1 (when D1 and G1 exist) repeats the check across content types to verify scale
-  consistency; if inconsistent, override to `BBOX_ASSERTIONS_VIABLE = False`
+- Once D1 and G1 fixtures exist (Development Phase 4), repeat the cross-content-type scale check; if inconsistent, override to `BBOX_ASSERTIONS_VIABLE = False`
 
 ### Phase 1 — Foundation: Groups A, B, C + infrastructure
 
@@ -906,4 +906,5 @@ _v12 — 2026-06-02 22:00 — pass 7 (automated /refine-plan): 2 MEDIUM + 2 LOW:
 _v13 — 2026-06-02 22:30 — pass 8 (automated /refine-plan): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change (setdefault fix); generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-key; Group A exception documented); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent edge case specified_
 _v14 — 2026-06-02 22:45 — pass 9 (automated /refine-plan): 1 MEDIUM + 1 LOW: directory layout comment updated (generate_all.py is CLI + hash-check function; fixture lives in conftest); directory prose updated to say conftest invokes generate_all.py; HierarchyRule None case documented_
 _v15 — 2026-06-02 23:00 — pass 10 (automated /refine-plan): 1 LOW: tests/integration/conftest.py added to directory layout_
-_v16 — 2026-06-03 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) (exercises the None case); Phase 2 optional-metadata helpers clarified as inline conditional checks; make test updated with -m "not e2e" in Phase 1 checklist_  
+_v16 — 2026-06-03 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) (exercises the None case); Phase 2 optional-metadata helpers clarified as inline conditional checks; make test updated with -m "not e2e" in Phase 1 checklist_
+_v17 — 2026-06-03 — pass 11 (automated /refine-plan): 1 MEDIUM: "Phase 1" calibration label renamed "Development Phase 4" in both calibration prose and Phase 0 checklist to avoid naming collision with development phases_  
