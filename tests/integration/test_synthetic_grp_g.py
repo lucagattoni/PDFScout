@@ -68,3 +68,63 @@ class TestGroupG:
             assert any(norm(expected_text) in norm(b["text"]) for b in blocks), (
                 f"Expected text {expected_text!r} not found in any block"
             )
+
+    async def test_g2_three_column_reading_order(self):
+        """Three-column layout: col-1 blocks before col-2, col-2 before col-3."""
+        import re
+        import unicodedata
+
+        from src.config import COLUMN_BUCKET_PX
+        from src.graph import build_app
+
+        golden = json.loads((_GOLDEN / "grp_g_three_column.json").read_text())
+
+        app = build_app(checkpointer=None)
+        with (
+            patch(
+                "src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")
+            ),
+            patch(
+                "src.nodes.hierarchy_node._call_api",
+                new=AsyncMock(return_value=_make_relation_response([])),
+            ),
+        ):
+            result = await app.ainvoke({"file_path": str(_PDFS / "grp_g_three_column.pdf")})
+
+        blocks = result["hierarchical_document_tree"]["structured_payload"]
+
+        buckets = [b["bbox"]["coordinates"][1] // COLUMN_BUCKET_PX for b in blocks]
+        unique_buckets = sorted(set(buckets))
+        assert len(unique_buckets) >= 3, (
+            f"Expected ≥3 column buckets, got {unique_buckets} — "
+            "three-column layout may not have been detected"
+        )
+
+        col1_bucket = unique_buckets[0]
+        col2_bucket = unique_buckets[1]
+        col3_bucket = unique_buckets[2]
+
+        col1_indices = [i for i, bkt in enumerate(buckets) if bkt == col1_bucket]
+        col2_indices = [i for i, bkt in enumerate(buckets) if bkt == col2_bucket]
+        col3_indices = [i for i, bkt in enumerate(buckets) if bkt == col3_bucket]
+
+        assert col1_indices, "No blocks in col-1 bucket"
+        assert col2_indices, "No blocks in col-2 bucket"
+        assert col3_indices, "No blocks in col-3 bucket"
+
+        assert max(col1_indices) < min(col2_indices), (
+            f"All col-1 blocks must precede col-2 blocks in output. "
+            f"Col-1 indices: {col1_indices}, col-2 indices: {col2_indices}"
+        )
+        assert max(col2_indices) < min(col3_indices), (
+            f"All col-2 blocks must precede col-3 blocks in output. "
+            f"Col-2 indices: {col2_indices}, col-3 indices: {col3_indices}"
+        )
+
+        def norm(s: str) -> str:
+            return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", s).strip()).lower()
+
+        for expected_text in golden["expected"]["texts"]:
+            assert any(norm(expected_text) in norm(b["text"]) for b in blocks), (
+                f"Expected text {expected_text!r} not found in any block"
+            )

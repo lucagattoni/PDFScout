@@ -39,3 +39,24 @@ class TestGroupH:
                 f"Block text on blank page should be < 30 chars, "
                 f"got {len(blocks[0]['text'].strip())!r}: {blocks[0]['text']!r}"
             )
+
+    async def test_h2_tiny_text(self):
+        """Pipeline completes on a page with only 4pt (sub-legibility) text; no exception."""
+        from src.graph import build_app
+
+        app = build_app(checkpointer=None)
+        with (
+            patch(
+                "src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")
+            ),
+            patch(
+                "src.nodes.hierarchy_node._call_api",
+                new=AsyncMock(return_value=_make_relation_response([])),
+            ),
+        ):
+            result = await app.ainvoke({"file_path": str(_PDFS / "grp_h_tiny.pdf")})
+
+        blocks = result["hierarchical_document_tree"]["structured_payload"]
+        # 0 blocks = Claude treated tiny text as noise; 1+ blocks = Claude extracted it.
+        # Both outcomes are acceptable; only no-exception matters.
+        assert isinstance(blocks, list)

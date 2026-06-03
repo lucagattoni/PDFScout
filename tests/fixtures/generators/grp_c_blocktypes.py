@@ -1,14 +1,16 @@
 """Group C fixtures: block-type extraction.
 
-C1 — paragraph
-C2 — title
-C3 — heading
-C4 — list_items (3 bullet points)
-C5 — footnote (7pt font + horizontal rule + superscript marker)
-C6 — margin_element (grey background rect, narrow column)
-C7 — table (3×4)
-C8 — figure (grey rect + caption)
-C9 — long paragraph (500 words)
+C1  — paragraph
+C2  — title
+C3  — heading
+C4  — list_items (3 bullet points)
+C5  — footnote (7pt font + horizontal rule + superscript marker)
+C6  — margin_element (grey background rect, narrow column)
+C7  — table (3×4)
+C8  — figure (grey rect + caption)
+C9  — long paragraph (500 words)
+C10 — unicode paragraph (Latin-1 extended accented characters)
+C12 — mixed emphasis (normal / bold / italic / bold-italic on same page)
 """
 
 import json
@@ -162,6 +164,24 @@ def _make_c9_long_paragraph():
     return pdf
 
 
+def _make_c10_unicode():
+    pdf = make_pdf()
+    pdf.add_page()
+    # Latin-1 extended characters: accented vowels, umlaut, tilde-n, cedilla
+    draw_text(pdf, "Café résumé: naïve über señor, crêpes façade.", 20, 50, size=12)
+    return pdf
+
+
+def _make_c12_emphasis():
+    pdf = make_pdf()
+    pdf.add_page()
+    draw_text(pdf, "Normal text introduces the content.", 20, 50, size=12)
+    draw_text(pdf, "Bold text emphasises key terms.", 20, 62, size=12, style="B")
+    draw_text(pdf, "Italic text provides softer emphasis.", 20, 74, size=12, style="I")
+    draw_text(pdf, "Bold italic text is strongest emphasis.", 20, 86, size=12, style="BI")
+    return pdf
+
+
 def _write_golden_c(name: str, doc_type: str, blocks: list) -> None:
     golden = {
         "meta": golden_meta(name),
@@ -246,6 +266,18 @@ def generate(out_dir: Path) -> list[Path]:
                 }
             ],
         ),
+        (
+            "grp_c_unicode",
+            _make_c10_unicode,
+            "baseline_core",
+            [{"type": "paragraph", "text": "Café résumé", "metadata": {}}],
+        ),
+        (
+            "grp_c_emphasis",
+            _make_c12_emphasis,
+            "baseline_core",
+            [{"type": "paragraph", "text": "Normal text", "metadata": {}}],
+        ),
     ]
 
     pdf_names = [
@@ -258,6 +290,8 @@ def generate(out_dir: Path) -> list[Path]:
         "grp_c_table.pdf",
         "grp_c_figure.pdf",
         "grp_c_long_paragraph.pdf",
+        "grp_c_unicode.pdf",
+        "grp_c_emphasis.pdf",
     ]
 
     for (name, make_fn, doc_type, blocks), pdf_name in zip(fixtures, pdf_names):

@@ -5,6 +5,7 @@ D2 — sci paper — title + 3 authors + Abstract → bibliographic
 D3 — sci paper — "2. Methodology" heading + 2 paragraphs → section
 D4 — sci paper — 3 numbered references → reference
 D5 — sci paper — grey rect + "Figure 1: Caption text" caption → figure_table
+D7 — baseline_core paragraph — verifies no schema metadata hallucinated
 """
 
 import json
@@ -121,6 +122,19 @@ def _make_d5_figure():
     return pdf
 
 
+def _make_d7_no_metadata():
+    pdf = make_pdf()
+    pdf.add_page()
+    draw_text(
+        pdf,
+        "This is a baseline document with no schema-specific metadata fields.",
+        20,
+        50,
+        size=12,
+    )
+    return pdf
+
+
 def _write_golden_d(name: str, doc_type: str, blocks: list) -> None:
     golden = {
         "meta": golden_meta(name),
@@ -202,6 +216,14 @@ def generate(out_dir: Path) -> list[Path]:
         ],
     )
     paths.append(save_pdf(_make_d5_figure(), out_dir, "grp_d_figure_table.pdf"))
+
+    # D7: no-metadata baseline_core — verifies no schema fields hallucinated
+    _write_golden_d(
+        "grp_d_no_metadata",
+        "baseline_core",
+        [{"type": "paragraph", "text": "baseline document", "metadata": {}}],
+    )
+    paths.append(save_pdf(_make_d7_no_metadata(), out_dir, "grp_d_no_metadata.pdf"))
 
     return paths
 

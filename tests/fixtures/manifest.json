@@ -15,7 +15,7 @@
     ]
   },
   "grp_c": {
-    "hash": "44edff7eb4bbf268fee8011b96e55ad1e3e897edbbb11363cb180ab72ff75556",
+    "hash": "740f0129489f9b95052d3cfa894a9df70827b1cba0784b271b03a5d1626c5277",
     "fixtures": [
       "grp_c_paragraph.pdf",
       "grp_c_title.pdf",
@@ -25,17 +25,20 @@
       "grp_c_margin_element.pdf",
       "grp_c_table.pdf",
       "grp_c_figure.pdf",
-      "grp_c_long_paragraph.pdf"
+      "grp_c_long_paragraph.pdf",
+      "grp_c_unicode.pdf",
+      "grp_c_emphasis.pdf"
     ]
   },
   "grp_d": {
-    "hash": "cdc3d7722e2a1c58ba9df8ba02b2eb6fded5ccf37504aa0f4acc654865813b5f",
+    "hash": "be2c477f62e42fcb7a6a0071ef229a61cc2d414c6219f6ffb604b98fe0469318",
     "fixtures": [
       "grp_d_table_data.pdf",
       "grp_d_bibliographic.pdf",
       "grp_d_section.pdf",
       "grp_d_reference.pdf",
-      "grp_d_figure_table.pdf"
+      "grp_d_figure_table.pdf",
+      "grp_d_no_metadata.pdf"
     ]
   },
   "grp_e": {
@@ -47,15 +50,17 @@
     ]
   },
   "grp_g": {
-    "hash": "7246ce54dfacc4b3a652fc18b35b44149915d0d3e9320bd4882ff4847d8c8048",
+    "hash": "6fe9fa4ed12cbffdbb399030c3e0ea0911ed9514a183d8e128255942fbad3004",
     "fixtures": [
-      "grp_g_two_column.pdf"
+      "grp_g_two_column.pdf",
+      "grp_g_three_column.pdf"
     ]
   },
   "grp_h": {
-    "hash": "81380461dc58f03b9b6b993086d5d82173b371e03bf1ff9ddb1175f381c12f56",
+    "hash": "3f89182cf4c9107a913d409ff2b2d87c7ea82af28916a2ad5211cef1e4ad38e9",
     "fixtures": [
-      "grp_h_blank.pdf"
+      "grp_h_blank.pdf",
+      "grp_h_tiny.pdf"
     ]
   }
 }

@@ -33,13 +33,22 @@ async def _run_e_test(pdf_path: str) -> list[dict]:
 @pytest.mark.grp_e
 class TestGroupE:
     async def test_e1_two_page(self):
-        """2-page doc: at least one block per page, no duplicate block_ids."""
+        """2-page doc: at least one block per page, no duplicate block_ids,
+        no page-boundary text bleeding."""
         blocks = await _run_e_test(str(_PDFS / "grp_e_2page.pdf"))
         pages = {b["bbox"]["page_number"] for b in blocks}
         assert 1 in pages, "No blocks found from page 1"
         assert 2 in pages, "No blocks found from page 2"
         block_ids = [b["block_id"] for b in blocks]
         assert len(block_ids) == len(set(block_ids)), "Duplicate block_ids after merge"
+        page1_text = " ".join(b["text"] for b in blocks if b["bbox"]["page_number"] == 1).lower()
+        page2_text = " ".join(b["text"] for b in blocks if b["bbox"]["page_number"] == 2).lower()
+        assert "exclusively on page 2" not in page1_text, (
+            "Page-1 blocks contain text from page 2 — possible page-bleeding in extraction"
+        )
+        assert "exclusively on page 1" not in page2_text, (
+            "Page-2 blocks contain text from page 1 — possible page-bleeding in extraction"
+        )
 
     async def test_e2_five_page(self):
         """5-page doc: at least one block from each page, no duplicate block_ids."""

@@ -129,3 +129,36 @@ class TestGroupD:
                 )
                 # referenced_block_id is not asserted (non-deterministic)
                 break
+
+    async def test_d7_absent_metadata(self):
+        """baseline_core doc → no schema-specific metadata fields hallucinated."""
+        from src.graph import build_app
+
+        app = build_app(checkpointer=None)
+        with (
+            patch(
+                "src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")
+            ),
+            patch(
+                "src.nodes.hierarchy_node._call_api",
+                new=AsyncMock(return_value=_make_relation_response([])),
+            ),
+        ):
+            result = await app.ainvoke({"file_path": str(_PDFS / "grp_d_no_metadata.pdf")})
+
+        blocks = result["hierarchical_document_tree"]["structured_payload"]
+        assert blocks, "Expected at least one block from D7 fixture"
+        schema_specific_keys = {
+            "bibliographic",
+            "section",
+            "reference",
+            "figure_table",
+            "table_data",
+        }
+        for block in blocks:
+            md = block.get("metadata") or {}
+            hallucinated = schema_specific_keys & md.keys()
+            assert not hallucinated, (
+                f"Block {block['block_id']!r} has schema-specific metadata for wrong doc_type: "
+                f"{hallucinated}"
+            )

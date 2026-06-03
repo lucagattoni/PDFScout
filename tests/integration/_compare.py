@@ -208,6 +208,29 @@ def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -
                 )
 
 
+def assert_valid_bbox_fields(blocks: list[dict]) -> None:
+    """Assert every block's bbox coordinates follow [ymin, xmin, ymax, xmax] order
+    and are non-negative. A block with ymin >= ymax or xmin >= xmax has malformed
+    coordinates — strict < catches that defect intentionally."""
+    for b in blocks:
+        coords = b["bbox"]["coordinates"]
+        assert len(coords) == 4, (
+            f"block {b['block_id']!r}: expected 4 coordinates, got {len(coords)}"
+        )
+        ymin, xmin, ymax, xmax = coords
+        assert ymin < ymax, (
+            f"block {b['block_id']!r}: ymin ({ymin}) >= ymax ({ymax}) — "
+            "wrong coordinate order or zero-height block"
+        )
+        assert xmin < xmax, (
+            f"block {b['block_id']!r}: xmin ({xmin}) >= xmax ({xmax}) — "
+            "wrong coordinate order or zero-width block"
+        )
+        assert ymin >= 0 and xmin >= 0, (
+            f"block {b['block_id']!r}: negative coordinates {coords}"
+        )
+
+
 def assert_nearest_heading_parent(blocks: list[dict]) -> None:
     """For each paragraph block, assert its parent_id points to the nearest preceding
     heading in the sorted block list (which must already be in geometric sort order).
