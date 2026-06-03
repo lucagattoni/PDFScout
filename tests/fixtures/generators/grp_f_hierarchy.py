@@ -50,6 +50,24 @@ F4_BLOCKS = [
     _block("pB2", "paragraph", "Second paragraph under second heading.", 140),
 ]
 
+# F5: [page-1 is_continued paragraph, page-2 continuation paragraph]
+# Verifies hierarchy Rule 2: is_continued=True → first page-2 block is its child.
+F5_BLOCKS = [
+    {
+        "block_id": "p1c",
+        "type": "paragraph",
+        "text": "This text is cut off at the bottom of page one, and",
+        "bbox": {"page_number": 1, "coordinates": [280, 70, 295, 500]},
+        "is_continued": True,
+    },
+    {
+        "block_id": "p2c",
+        "type": "paragraph",
+        "text": "continues at the top of page two.",
+        "bbox": {"page_number": 2, "coordinates": [20, 70, 35, 500]},
+    },
+]
+
 
 def make_state(blocks: list, doc_type: str = "baseline_core") -> dict:
     """Build the minimal state dict required by layout_hierarchy_agent_node."""
