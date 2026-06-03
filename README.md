@@ -57,10 +57,10 @@ START
 |---|---|
 | `native_extractor` | Counts pages with `pypdf`, guards against encrypted PDFs, and computes a chunked SHA-256 hash used as the LangGraph thread ID |
 | `classifier` | Sends the full PDF to Claude via the native PDF Chat API and returns one of the supported document type tokens; falls back to `baseline_core` for unknown values |
-| `pioneer_parser` | Sends page 1 as a `document` block to Claude via tool-calling; marks the document block with `cache_control: ephemeral` to establish the provider's prompt cache for all subsequent burst calls |
+| `pioneer_parser` | Sends page 1 as a `document` block to Claude via tool-calling; marks the document block with `cache_control: ephemeral` to establish the provider's prompt cache for all subsequent burst calls; appends doc-type-specific supplemental instructions (e.g. requests optional metadata subfields for `scientific_paper`) |
 | `retry_node` | Re-runs `jsonschema` validation to capture the specific error, increments `retry_count`, and writes the error detail to state for the model's next attempt |
 | `burst_dispatcher` | Emits one `Send("parser_worker", ...)` per remaining page using LangGraph's Send API; writes a degradation warning to state if pioneer validation exhausted its retries |
-| `parser_worker` | Same extraction logic as `pioneer_parser`, runs concurrently for pages 2–N under an `asyncio.Semaphore` to cap concurrent API calls |
+| `parser_worker` | Same extraction logic as `pioneer_parser` (including doc-type-specific supplemental instructions), runs concurrently for pages 2–N under an `asyncio.Semaphore` to cap concurrent API calls |
 | `hierarchy_node` | Deduplicates blocks by `block_id`, sorts by geometric reading order, then uses Claude tool-calling to assign `parent_id` relationships across the full flat block list |
 
 ### Self-Healing Loop (Pioneer Page)
@@ -163,7 +163,7 @@ Schemas live in `schemas/` as JSON Schema Draft-07 files. The `SchemaRegistry` l
 | File | Used for |
 |---|---|
 | `schemas/invoice.json` | Invoice documents — extends baseline with `metadata.table_data` |
-| `schemas/scientific_paper.json` | Academic papers — adds `bibliographic`, `section`, `reference`, and `figure_table` metadata fields |
+| `schemas/scientific_paper.json` | Academic papers — adds `bibliographic`, `section`, `reference`, and `figure_table` metadata fields; the extraction prompt explicitly requests these subfields so they are actively populated on relevant blocks |
 | `schemas/baseline_core.json` | Generic fallback for any unrecognized document type |
 
 When the classifier returns an unknown document type, the registry silently falls back to `baseline_core.json`. The tool definition passed to Claude strips `$schema` and `title` fields, which are rejected by Anthropic's `input_schema` spec.
