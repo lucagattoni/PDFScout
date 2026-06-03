@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.1.0] — 2026-06-03
+
+### Added
+
+- **9 new synthetic e2e tests** across five groups — full suite is now 37 tests:
+  - **C10** `grp_c_unicode` — Latin-1 extended characters (accented vowels, umlaut,
+    cedilla); asserts either unicode-preserved or ASCII-normalised form extracted.
+  - **C12** `grp_c_emphasis` — page with normal, bold, italic, and bold-italic text;
+    asserts all four emphasis variants are present in extracted blocks.
+  - **D7** `grp_d_no_metadata` — baseline_core document; asserts no schema-specific
+    metadata keys (`bibliographic`, `section`, `reference`, `figure_table`,
+    `table_data`) are hallucinated for a doc type that carries none.
+  - **E1 page-bleeding assertion** — added to existing E1 two-page test; asserts
+    page-1 blocks contain no text exclusive to page 2 and vice versa.
+  - **F6** `grp_f_hierarchy` — orphan paragraph before any heading must land at root
+    (`parent_id=None`); subsequent paragraph under heading must get `parent_id=h1`.
+  - **G2** `grp_g_three_column` — three-column A4 layout; asserts all col-1 blocks
+    precede col-2, col-2 precede col-3 in `structured_payload`. Column positions
+    chosen at ~74/225/376 Claude-unit bucket centres (≥24-unit boundary margin).
+  - **H2** `grp_h_tiny` — single page with 4 pt (sub-legibility) text; asserts
+    pipeline completes without exception regardless of whether Claude extracts it.
+  - **`assert_valid_bbox_fields` helper** added to `tests/integration/_compare.py`;
+    verifies `[ymin, xmin, ymax, xmax]` order and non-negative coordinates.
+  - **C1 coordinate check** — `assert_valid_bbox_fields` applied to the C1 paragraph
+    test as a standing bbox-order regression guard.
+
 ## [1.0.0] — 2026-06-03
 
 ### Added
