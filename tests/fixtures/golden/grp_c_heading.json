@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "generator": "grp_c_heading",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-4-6",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "baseline_core",
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "1. Introduction",
+        "metadata": {}
+      }
+    ]
+  }
+}

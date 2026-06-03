@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "generator": "grp_c_list_items",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-4-6",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "baseline_core",
+    "blocks": [
+      {
+        "type": "list_item",
+        "text": "First list item content",
+        "metadata": {}
+      },
+      {
+        "type": "list_item",
+        "text": "Second list item content",
+        "metadata": {}
+      },
+      {
+        "type": "list_item",
+        "text": "Third list item content",
+        "metadata": {}
+      }
+    ]
+  }
+}

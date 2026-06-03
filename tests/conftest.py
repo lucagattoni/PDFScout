@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture(autouse=True, scope="session")
 def set_test_env():
-    os.environ["ANTHROPIC_API_KEY"] = "sk-test-fake"
+    os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-fake")
     os.environ.setdefault("LANGFUSE_PUBLIC_KEY", "")
     os.environ.setdefault("LANGFUSE_SECRET_KEY", "")
 
