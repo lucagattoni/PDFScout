@@ -1,8 +1,8 @@
 """Group G fixtures: layout / reading order.
 
 G1 — 2-column A4 layout
-     Left column at x ≈ 12.7 mm (→ Claude xmin ≈ 36, bucket 0)
-     Right column at x ≈ 111 mm (→ Claude xmin ≈ 315, bucket ≥ 5)
+     Left column at x ≈ 12.7 mm (→ Claude xmin ≈ 55, bucket 1 with COLUMN_BUCKET_PX=50)
+     Right column at x ≈ 111 mm (→ Claude xmin ≈ 310, bucket 6 with COLUMN_BUCKET_PX=50)
 """
 
 import json
