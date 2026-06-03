@@ -20,6 +20,7 @@
 - _Updated: 2026-06-03 · v18 — coherence review pass 1: 3 MEDIUM + 5 LOW fixed: structured_payload access path added (pipeline output section + F state spec + full-chain assertions); E mock setup now explicitly states worker_node is NOT mocked; Phase 3 checklist adds assert_hierarchy_structure alongside assert_nearest_heading_parent; is_continued rule 2 added to Documented Rules (suspended pending E3); B1/B2 page count column added; Phase 1 _compare.py checklist lists all 5 helpers incl. mock factories; Phase 0 bbox-invalidation rollback note for meta.coord_scale; F state spec explains is_continued default behaviour; B removed from positional-matching list; integration-gap assertion cross-references Phase 4; pipeline output comment clarified_  
 - _Updated: 2026-06-03 · v19 — coherence review pass 2 (ambiguity + determinism): 3 MEDIUM fixed: classifier mock changed from AsyncAnthropic-class patch (3-level mock chain, unspecified) to `_classify` function patch (unambiguous, consistent across C/D/E/G/H); C test matching strategy clarified as scan-based (not positional) due to variable block count — D/E/H remain positional; golden file creation workflow section added (design-intent pre-written, not model-captured; first-run failures expected)_  
 - _Updated: 2026-06-03 · v20 — coherence review pass 3 (coverage + missing parts): 4 LOW fixed: stale AsyncAnthropic reference in narrow-tests "identity problem" paragraph corrected to _classify; _valid_block docstring extended with schema-compatibility requirement; assert_table_data docstring clarified (expected_rows = total rows incl. headers); F4 note added (heading parent_ids not asserted by design — covered by F1/F3); Phase 1 API key skip-guard approach specified_  
+- _Updated: 2026-06-03 · v21 — coherence review pass 4 (implicit assumptions + explicit instructions): 5 MEDIUM + 4 LOW fixed: H removed from positional-matching group (H1 never uses positional matching); worker/hierarchy mocks changed from AsyncAnthropic class patch (3-level chain, unspecified) to _call_api function patch throughout (B, C, D, E, G, H); HierarchyRule NamedTuple added as standalone class definition in _compare.py spec with valid Python syntax (removed from docstring only); API key skip guard corrected from session-scoped to function-scoped with explicit request.node.get_closest_marker check; Group B document_type access path added to pipeline output section; Phase 0 calibration mock targets made explicit (_classify + _call_api); B hierarchy mock no-op behaviour documented (single-block optimisation); _compare.py directory comment updated to list mock factories_  
 
 ---
 
@@ -158,7 +159,9 @@ tests/
     test_synthetic_grp_g.py         # layout / reading order
     test_synthetic_grp_h.py         # edge cases
     test_full_chain.py              # no mocks, all nodes real, integration chain
-    _compare.py                     # assert_blocks_match, assert_table_data,
+    _compare.py                     # HierarchyRule NamedTuple; mock factories: _make_tool_use_response,
+                                    # _valid_block, _make_relation_response; assertion helpers:
+                                    # assert_blocks_match, assert_table_data,
                                     # assert_hierarchy_structure, assert_nearest_heading_parent
 ```
 
@@ -200,8 +203,10 @@ the empirically measured factor matters.
 ### Calibration run (Phase 0)
 
 Before generating any golden files, run C1 (single paragraph at a known mm position) through
-the pioneer_parser only (mock classifier and hierarchy to save cost). Run it 3 times and compare
-returned `coordinates` against the known mm placement:
+the pioneer_parser only to save cost: mock the classifier by patching
+`src.nodes.classifier_node._classify` to return `"baseline_core"`, and mock the hierarchy by
+patching `src.nodes.hierarchy_node._call_api` with `AsyncMock(return_value=_make_relation_response([]))`.
+Run it 3 times and compare returned `coordinates` against the known mm placement:
 
 - If `coordinates ≈ mm_values × k` for consistent k across 3 runs → `COORD_SCALE = k`.
 - If values vary widely across 3 runs → `BBOX_ASSERTIONS_VIABLE = False`.
@@ -259,7 +264,7 @@ The pipeline's `geometric_pre_sorter` applies a deterministic sort on the output
 This means the order of blocks in `structured_payload` is fully determined by their
 bboxes — it is not the insertion order from the model.
 
-For **D, E, H** (single-column, stable block count), the geometric sort order is stable
+For **D, E** (single-column, stable block count), the geometric sort order is stable
 and blocks can be matched positionally: `output[i]` is compared to `golden[i]`.
 For **C** (single-column, variable block count), block count is deliberately asserted as
 `>= minimum` because the model may split or merge content. Use **scan-based** matching:
@@ -269,6 +274,8 @@ Group A does not use block matching at all — A assertions check `total_pages` 
 `pdf_hash` only. Group B only asserts `document_type` — no block matching.
 Group F uses structural hierarchy assertions (`assert_hierarchy_structure`,
 `assert_nearest_heading_parent`), not positional block matching.
+Group H (H1, blank page) uses no positional matching — only `len(blocks) <= 1`
+and a text-length check on the single block (if present).
 
 For **G1** (two-column layout), positional matching is unreliable because the sort
 interleaves columns. Use set-based matching: for each expected text string, assert that
@@ -280,7 +287,7 @@ pipeline completes without exception and `len(blocks) <= 1`.
 
 ### Pipeline output access
 
-In every group test (C, D, E, F, G, H) and the full-chain test, output blocks are accessed as:
+In every group test (B, C, D, E, F, G, H) and the full-chain test, output is accessed as:
 
 ```python
 graph  = build_app()
@@ -297,6 +304,12 @@ to `assert_hierarchy_structure` / `assert_nearest_heading_parent`.
 ### `_compare.py` helper spec
 
 ```python
+from typing import NamedTuple
+
+class HierarchyRule(NamedTuple):
+    child_type: str                    # block["type"] to match
+    expected_parent_type: str | None   # None asserts parent_id is None (top-level)
+
 # --- Mock factories (shared across grp_b through grp_g tests) ---
 
 def _make_tool_use_response(blocks: list) -> MagicMock:
@@ -334,7 +347,6 @@ def assert_blocks_match(
 def assert_hierarchy_structure(blocks: list[dict], rules: list[HierarchyRule]) -> None:
     """
     Checks parent-child relationships without pinning exact block_id values.
-    HierarchyRule = NamedTuple(child_type: str, expected_parent_type: str | None)
     Each rule applies to ALL blocks of the given child_type, not just some.
     When expected_parent_type is None, asserts block["parent_id"] is None (top-level).
     When non-None, looks up the parent by parent_id and asserts parent["type"] == expected_parent_type.
@@ -599,9 +611,11 @@ principles and §Narrow tests for the rationale).
 - `native_extractor_node` runs for real (deterministic pypdf calls on real PDF).
 - `src.nodes.classifier_node.encode_pdf_async`: **NOT mocked** — classifier must read
   real PDF bytes to classify.
-- `src.nodes.worker_node.AsyncAnthropic`: mock to return
-  `_make_tool_use_response([_valid_block(1)])` — prevents a real pioneer API call.
-- `src.nodes.hierarchy_node.AsyncAnthropic`: mock with `_make_relation_response([])`.
+- `patch("src.nodes.worker_node._call_api", new=AsyncMock(return_value=_make_tool_use_response([_valid_block(1)])))` — prevents a real pioneer API call.
+- `patch("src.nodes.hierarchy_node._call_api", new=AsyncMock(return_value=_make_relation_response([])))`.
+  > With `_valid_block(1)` returning exactly one block, the hierarchy node's single-block
+  > optimisation (`if len(sorted_blocks) > 1`) skips the `_call_api` call entirely. The patch
+  > is a safety measure in case `_valid_block` is later changed to return multiple blocks.
 
 | ID | PDF content | Pages | Expected `document_type` |
 |---|---|---|---|
@@ -619,9 +633,9 @@ principles and §Narrow tests for the rationale).
 Node under test: `window_parser_node` (pioneer page, 1-page PDFs so burst never fires).
 Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
 `"baseline_core"` — `encode_pdf_async` still runs (real PDF bytes are computed but ignored
-by the mock). Hierarchy is mocked by patching `src.nodes.hierarchy_node.AsyncAnthropic`
-to return `_make_relation_response([])` (empty `relations` list — import from
-`tests/integration/_compare.py`). All blocks fall through to the existing orphan-fallback branch
+by the mock). Hierarchy is mocked by patching `src.nodes.hierarchy_node._call_api` with
+`AsyncMock(return_value=_make_relation_response([]))` (empty `relations` list — import
+`_make_relation_response` from `tests/integration/_compare.py`). All blocks fall through to the existing orphan-fallback branch
 and receive `parent_id = null`; orphan warnings are emitted but not asserted in C tests.
 Deduplication and sort still run. One PDF per block type.
 
@@ -665,7 +679,7 @@ matching (strip + collapse whitespace).
 Node under test: `window_parser_node` + schema validation in `pioneer_validation_route`.
 Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
 the target doc type (see Group C for rationale). Hierarchy is mocked by patching
-`src.nodes.hierarchy_node.AsyncAnthropic` to return `_make_relation_response([])`
+`src.nodes.hierarchy_node._call_api` with `AsyncMock(return_value=_make_relation_response([]))`
 (empty relations — see Group C for rationale). 1-page PDFs.
 
 **Important:** `bibliographic`, `section`, `reference`, and `figure_table` are optional
@@ -689,8 +703,8 @@ a prompt change, not a test change.
 Nodes under test: `burst_dispatcher_node`, `window_parser_node` (pages 2–N), `merge_flat_blocks` reducer.
 Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
 `"baseline_core"` (see Group C for rationale). Hierarchy is mocked by patching
-`src.nodes.hierarchy_node.AsyncAnthropic` to return `_make_relation_response([])` (empty
-relations — see Group C for rationale). `src.nodes.worker_node.AsyncAnthropic` is **NOT mocked** — pioneer and all burst workers
+`src.nodes.hierarchy_node._call_api` with `AsyncMock(return_value=_make_relation_response([]))`
+(empty relations — see Group C for rationale). `src.nodes.worker_node._call_api` is **NOT mocked** — pioneer and all burst workers
 make real LLM calls, producing blocks with correct `bbox.page_number` values. This is
 what makes E different from B (which mocks the worker to isolate the classifier).
 Deduplication and sort still run, so the `block_id` uniqueness assertion reflects real
@@ -761,8 +775,9 @@ the extractor assigns `xmin` values that correctly distinguish columns, allowing
 sorter to order them correctly. G2 is dropped (duplicates existing sorter unit tests).
 
 Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
-`"baseline_core"` (see Group C for rationale). Hierarchy is mocked with
-`_make_relation_response([])` (same pattern as C and E). G1 is 1-page so burst does not fire.
+`"baseline_core"` (see Group C for rationale). Hierarchy is mocked by patching
+`src.nodes.hierarchy_node._call_api` with `AsyncMock(return_value=_make_relation_response([]))`
+(same pattern as C and E). G1 is 1-page so burst does not fire.
 
 Tests import `COLUMN_BUCKET_PX` from `src.config` and document the column placement
 calculation explicitly.
@@ -792,10 +807,10 @@ calculation explicitly.
 Reduced to H1 only. H2 (long paragraph) moved to C9.
 
 Classifier is mocked by patching `src.nodes.classifier_node._classify` to return
-`"baseline_core"` (see Group C for rationale). Hierarchy is mocked with
-`_make_relation_response([])`. H1 is a smoke test for the full pipeline path; mocking
-classifier and hierarchy keeps the focus on whether the pipeline handles blank input
-without crashing.
+`"baseline_core"` (see Group C for rationale). Hierarchy is mocked by patching
+`src.nodes.hierarchy_node._call_api` with `AsyncMock(return_value=_make_relation_response([]))`.
+H1 is a smoke test for the full pipeline path; mocking classifier and hierarchy keeps the
+focus on whether the pipeline handles blank input without crashing.
 
 | ID | PDF content | Assertions |
 |---|---|---|
@@ -811,7 +826,7 @@ without crashing.
 ### Phase 0 — Calibration (prerequisite, no tests written yet)
 
 - Implement `_common.py` and C1 generator only; add `tests/fixtures/pdfs/` to `.gitignore`
-- Mock classifier (returning `"baseline_core"`) and hierarchy; run only pioneer_parser on C1 PDF — 3 times
+- Patch `src.nodes.classifier_node._classify` → `"baseline_core"` and `src.nodes.hierarchy_node._call_api` → `AsyncMock(return_value=_make_relation_response([]))`; run only pioneer_parser on C1 PDF — 3 times
 - Record returned `coordinates` each run; derive `COORD_SCALE` or flag as non-viable
 - Commit `calibration_notes.md` with raw numbers and decision
 - Set `COORD_SCALE = <k>` or `BBOX_ASSERTIONS_VIABLE = False` in `_common.py`
@@ -832,11 +847,14 @@ without crashing.
 - **Register all pytest markers in `pyproject.toml`**:
   `e2e`, `grp_a`, `grp_b`, `grp_c`, `grp_d`, `grp_e`, `grp_f`, `grp_g`, `grp_h`,
   `integration_chain`
-- **API key skip guard in `tests/integration/conftest.py`**: add a session-scoped
-  fixture that calls `pytest.skip(...)` if `ANTHROPIC_API_KEY` is unset or equals
-  `"sk-test-fake"` — but only when the test is marked with a group B–H marker.
+- **API key skip guard in `tests/integration/conftest.py`**: add a **function-scoped**
+  autouse fixture (no `scope=` argument, so it runs once per test) that calls
+  `pytest.skip(...)` if `ANTHROPIC_API_KEY` is unset or equals `"sk-test-fake"` —
+  but only when the current test is marked with a group B–H marker. Check via
+  `request.node.get_closest_marker("grp_b") or ... request.node.get_closest_marker("grp_h")`.
   Do NOT skip on `@pytest.mark.e2e` alone; Group A carries that marker but makes
-  no API calls.
+  no API calls. A session-scoped fixture cannot skip individual tests and must not
+  be used here.
 
 ### Phase 2 — Schema metadata: Group D
 
@@ -986,3 +1004,4 @@ _v17 — 2026-06-03 — pass 11 (automated /refine-plan): 1 MEDIUM: "Phase 1" ca
 _v18 — 2026-06-03 — coherence review pass 1: 3 MEDIUM + 5 LOW fixed: structured_payload access path added (pipeline output section + F state spec + full-chain assertions); E mock setup now explicitly states worker_node is NOT mocked; Phase 3 checklist adds assert_hierarchy_structure alongside assert_nearest_heading_parent; is_continued rule 2 added to Documented Rules (suspended pending E3); B1/B2 page count column added; Phase 1 _compare.py checklist lists all 5 helpers incl. mock factories; Phase 0 bbox-invalidation rollback note for meta.coord_scale; F state spec explains is_continued default behaviour; B removed from positional-matching list; integration-gap assertion cross-references Phase 4; pipeline output comment clarified_  
 _v19 — 2026-06-03 — coherence review pass 2 (ambiguity + determinism): 3 MEDIUM fixed: classifier mock changed from AsyncAnthropic-class patch (3-level mock chain, unspecified) to `_classify` function patch (unambiguous, consistent across C/D/E/G/H); C test matching strategy clarified as scan-based (not positional) due to variable block count — D/E/H remain positional; golden file creation workflow section added (design-intent pre-written, not model-captured; first-run failures expected)_  
 _v20 — 2026-06-03 — coherence review pass 3 (coverage + missing parts): 4 LOW fixed: stale AsyncAnthropic reference in narrow-tests "identity problem" paragraph corrected to _classify; _valid_block docstring extended with schema-compatibility requirement; assert_table_data docstring clarified (expected_rows = total rows incl. headers); F4 note added (heading parent_ids not asserted by design — covered by F1/F3); Phase 1 API key skip-guard approach specified_  
+_v21 — 2026-06-03 — coherence review pass 4 (implicit assumptions + explicit instructions): 5 MEDIUM + 4 LOW fixed: H removed from positional-matching group (H1 never uses positional matching); worker/hierarchy mocks changed from AsyncAnthropic class patch (3-level chain, unspecified) to _call_api function patch throughout (B, C, D, E, G, H); HierarchyRule NamedTuple added as standalone class definition in _compare.py spec with valid Python syntax; API key skip guard corrected from session-scoped to function-scoped with explicit request.node.get_closest_marker check; Group B document_type access path added to pipeline output section; Phase 0 calibration mock targets made explicit; B hierarchy mock no-op behaviour documented (single-block optimisation); _compare.py directory comment updated to list mock factories_  
