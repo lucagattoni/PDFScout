@@ -14,7 +14,8 @@ _Updated: 2026-06-02 21:45 · v11 — pass 6 (automated): 1 MEDIUM + 1 LOW: Grou
 _Updated: 2026-06-02 22:00 · v12 — pass 7 (automated): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_
 _Updated: 2026-06-02 22:30 · v13 — pass 8 (automated): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change; generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-API-key); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent no-preceding-heading edge case specified_
 _Updated: 2026-06-02 22:45 · v14 — pass 9 (automated): 1 MEDIUM + 1 LOW: directory layout comment and prose updated to reflect fixture-in-conftest (generate_all.py is CLI only); HierarchyRule None case documented (asserts parent_id is None)_
-_Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_  
+_Updated: 2026-06-02 23:00 · v15 — pass 10 (automated): 1 LOW: tests/integration/conftest.py added to directory layout_
+_Updated: 2026-06-03 · v16 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) to exercise the None case; Phase 2 optional-metadata helper clarified as inline conditional checks; Phase 1 make test updated with -m "not e2e"_  
 
 ---
 
@@ -665,7 +666,7 @@ order within a page and in the same `xmin // 50` bucket (e.g., all `xmin = 70`) 
 |---|---|---|---|
 | F1 | `[heading, paragraph]` | paragraph under heading | `paragraph.parent_id` resolves to `heading.block_id`; heading `parent_id == null` |
 | F2 | `[heading, paragraph, paragraph, table]` | paragraphs + table under heading | all three blocks' `parent_id` → heading's `block_id`; use `assert_hierarchy_structure` with rules `[HierarchyRule("paragraph", "heading"), HierarchyRule("table", "heading")]` |
-| F3 | `[title, heading, paragraph]` | title at root; heading at root; paragraph under heading | `title.parent_id == null`; `heading.parent_id == null`; `paragraph.parent_id` → heading |
+| F3 | `[title, heading, paragraph]` | title at root; heading at root; paragraph under heading | `assert_hierarchy_structure(blocks, [HierarchyRule("title", None), HierarchyRule("heading", None), HierarchyRule("paragraph", "heading")])` |
 | F4 | `[heading-A, para-A1, para-A2, heading-B, para-B1, para-B2]` | each paragraph under its nearest preceding heading | `assert_nearest_heading_parent(blocks)` |
 
 > **F1 replaces the old "single title block" case.** The single-block path is already
@@ -758,7 +759,7 @@ without crashing.
 - `tests/integration/_compare.py`: `assert_blocks_match` (`normalize_text=True` default),
   `assert_table_data`
 - Integration tests for groups A, B, C
-- `make fixtures [GRP=x]` target; `make test-e2e` shortcut
+- `make fixtures [GRP=x]` target; `make test-e2e` shortcut; update existing `make test` command to add `-m "not e2e"` so synthetic tests are excluded from the default run
 - **`tests/conftest.py`**: change `os.environ["ANTHROPIC_API_KEY"] = "sk-test-fake"` to `os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-fake")` — without this, any real key in the shell is overwritten and all B–H API calls fail with authentication errors
 - **Register all pytest markers in `pyproject.toml`**:
   `e2e`, `grp_a`, `grp_b`, `grp_c`, `grp_d`, `grp_e`, `grp_f`, `grp_g`, `grp_h`,
@@ -772,7 +773,7 @@ request optional scientific_paper subfields (`bibliographic`, `section`, `refere
 Do not begin Phase 2 without this confirmation.
 
 - Generators and golden files for D1–D5
-- `_compare.py` extended with optional-metadata assertion helpers
+- No new shared helper needed for optional metadata — D2–D5 use inline conditional checks: `if block.get("metadata", {}).get("<subfield>"): assert ...; else: assert "<expected text>" in some_block["text"]`
 - Integration tests for group D
 
 ### Phase 3 — Pipeline behavior: Groups E and F
@@ -904,4 +905,5 @@ _v11 — 2026-06-02 21:45 — pass 6 (automated /refine-plan): 1 MEDIUM + 1 LOW:
 _v12 — 2026-06-02 22:00 — pass 7 (automated /refine-plan): 2 MEDIUM + 2 LOW: _make_tool_use_response and _valid_block added to _compare.py spec (same shared-import problem as _make_relation_response); Group H mock setup added; HierarchyRule defined as NamedTuple in _compare.py spec; F2 assertion now explicitly lists both HierarchyRule entries (paragraph + table)_
 _v13 — 2026-06-02 22:30 — pass 8 (automated /refine-plan): 1 HIGH + 3 MEDIUM + 2 LOW: conftest fake-key overwrite documented as Phase 1 change (setdefault fix); generate_all.py session fixture must live in tests/integration/conftest.py; e2e marker semantics clarified (excluded-from-make-test, not always requires-key; Group A exception documented); assert_table_data extended with expected_values param; F state spec annotated with required block fields; assert_nearest_heading_parent edge case specified_
 _v14 — 2026-06-02 22:45 — pass 9 (automated /refine-plan): 1 MEDIUM + 1 LOW: directory layout comment updated (generate_all.py is CLI + hash-check function; fixture lives in conftest); directory prose updated to say conftest invokes generate_all.py; HierarchyRule None case documented_
-_v15 — 2026-06-02 23:00 — pass 10 (automated /refine-plan): 1 LOW: tests/integration/conftest.py added to directory layout_  
+_v15 — 2026-06-02 23:00 — pass 10 (automated /refine-plan): 1 LOW: tests/integration/conftest.py added to directory layout_
+_v16 — 2026-06-03 — remaining LOWs resolved: F3 uses assert_hierarchy_structure with HierarchyRule(None) (exercises the None case); Phase 2 optional-metadata helpers clarified as inline conditional checks; make test updated with -m "not e2e" in Phase 1 checklist_  
