@@ -18,6 +18,7 @@ def _make_blank_pdf(n_pages: int) -> bytes:
     for _ in range(n_pages):
         pdf.add_page()
     from io import BytesIO
+
     buf = BytesIO()
     pdf.output(buf)
     return buf.getvalue()
@@ -29,6 +30,7 @@ def _make_encrypted_pdf() -> bytes:
     writer.add_blank_page(width=612, height=792)
     writer.encrypt("password123")
     from io import BytesIO
+
     buf = BytesIO()
     writer.write(buf)
     return buf.getvalue()
@@ -51,6 +53,7 @@ def save_pdf_bytes(data: bytes, out_dir: Path, filename: str) -> Path:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

@@ -27,10 +27,14 @@ def _make_g1_two_column():
     labels_right = ["R1", "R2", "R3"]
 
     for label, y in zip(labels_left, y_positions):
-        draw_text(pdf, f"{label}: Left column content for item {label}.", _LEFT_X, y, size=11, w=_COL_W)
+        draw_text(
+            pdf, f"{label}: Left column content for item {label}.", _LEFT_X, y, size=11, w=_COL_W
+        )
 
     for label, y in zip(labels_right, y_positions):
-        draw_text(pdf, f"{label}: Right column content for item {label}.", _RIGHT_X, y, size=11, w=_COL_W)
+        draw_text(
+            pdf, f"{label}: Right column content for item {label}.", _RIGHT_X, y, size=11, w=_COL_W
+        )
 
     return pdf
 
@@ -50,6 +54,7 @@ def generate(out_dir: Path) -> list[Path]:
 
 if __name__ == "__main__":
     import sys
+
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent.parent / "pdfs"
     for p in generate(out):
         print(p)

@@ -16,7 +16,7 @@ def require_real_api_key(request):
     """Skip B–H tests when no real ANTHROPIC_API_KEY is available.
     Group A carries @pytest.mark.e2e but makes no API calls — do NOT skip it here.
     """
-    api_groups = ["grp_b", "grp_c", "grp_d", "grp_e", "grp_f", "grp_g", "grp_h"]
+    api_groups = ["grp_b", "grp_c", "grp_d", "grp_e", "grp_f", "grp_g", "grp_h", "grp_i"]
     if any(request.node.get_closest_marker(g) for g in api_groups):
         key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not key or key == "sk-test-fake":

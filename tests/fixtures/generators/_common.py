@@ -62,7 +62,9 @@ def draw_text(
     pdf.set_font(font, style=style, size=size)
     if w is None:
         w = PAGE_W_MM - _LEFT_MARGIN - _RIGHT_MARGIN
-    pdf.cell(w, h, text, align=align, new_x="LMARGIN" if ln else "RIGHT", new_y="NEXT" if ln else "TOP")
+    pdf.cell(
+        w, h, text, align=align, new_x="LMARGIN" if ln else "RIGHT", new_y="NEXT" if ln else "TOP"
+    )
 
 
 def draw_multiline(
@@ -124,7 +126,15 @@ def draw_table(
     for row in rows:
         pdf.set_x(x_mm)
         for cell_val in row:
-            pdf.cell(col_width, row_height, str(cell_val), border=1, align="C", new_x="RIGHT", new_y="TOP")
+            pdf.cell(
+                col_width,
+                row_height,
+                str(cell_val),
+                border=1,
+                align="C",
+                new_x="RIGHT",
+                new_y="TOP",
+            )
         pdf.ln(row_height)
 
 

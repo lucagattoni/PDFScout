@@ -7,13 +7,14 @@ from unittest.mock import MagicMock
 
 
 class HierarchyRule(NamedTuple):
-    child_type: str                    # block["type"] to match
-    expected_parent_type: str | None   # None asserts parent_id is None (top-level)
+    child_type: str  # block["type"] to match
+    expected_parent_type: str | None  # None asserts parent_id is None (top-level)
 
 
 # ---------------------------------------------------------------------------
 # Mock factories
 # ---------------------------------------------------------------------------
+
 
 def _make_tool_use_response(blocks: list) -> MagicMock:
     """Mock Anthropic response for worker/pioneer node.
@@ -58,6 +59,7 @@ def _make_relation_response(relations: list) -> MagicMock:
 # Text normalisation
 # ---------------------------------------------------------------------------
 
+
 def _normalize(text: str) -> str:
     """Strip, collapse internal whitespace, and normalise unicode."""
     text = unicodedata.normalize("NFKC", text)
@@ -72,6 +74,7 @@ def _normalize(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Block assertion helpers
 # ---------------------------------------------------------------------------
+
 
 def assert_blocks_match(
     expected: list[dict],
@@ -106,9 +109,7 @@ def assert_blocks_match(
             _assert_bbox(i, exp["bbox"], act["bbox"], bbox_tolerance_pct)
 
 
-def _assert_bbox(
-    idx: int, expected_bbox: dict, actual_bbox: dict, tolerance_pct: float
-) -> None:
+def _assert_bbox(idx: int, expected_bbox: dict, actual_bbox: dict, tolerance_pct: float) -> None:
     assert expected_bbox["page_number"] == actual_bbox["page_number"], (
         f"Block {idx}: bbox page_number mismatch"
     )

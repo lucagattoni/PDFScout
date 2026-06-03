@@ -36,8 +36,7 @@ class TestGroupF:
 
         assert heading["parent_id"] is None, "heading should be root-level"
         assert paragraph["parent_id"] == heading["block_id"], (
-            f"paragraph.parent_id should be {heading['block_id']!r}, "
-            f"got {paragraph['parent_id']!r}"
+            f"paragraph.parent_id should be {heading['block_id']!r}, got {paragraph['parent_id']!r}"
         )
 
     async def test_f2_heading_with_paragraph_and_table(self):

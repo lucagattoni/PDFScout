@@ -83,7 +83,9 @@ class TestGroupC:
         blocks = await _run_c_test(str(_PDFS / "grp_c_table.pdf"))
         table_blocks = [b for b in blocks if b["type"] == "table"]
         assert len(table_blocks) >= 1
-        assert any(b["text"].strip() for b in table_blocks), "table block should have non-empty text"
+        assert any(b["text"].strip() for b in table_blocks), (
+            "table block should have non-empty text"
+        )
 
     async def test_c8_figure(self):
         blocks = await _run_c_test(str(_PDFS / "grp_c_figure.pdf"))
