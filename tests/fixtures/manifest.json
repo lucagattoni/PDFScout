@@ -1,6 +1,6 @@
 {
   "grp_a": {
-    "hash": "6001a497dd8f5f609ddfb02796820847fe9fb2b7256fcbc5f8d977c6336c0a9d",
+    "hash": "921039c347fd1c840daf69b34988da575f70d3a002f7cf2e4c69dd7e69425e08",
     "fixtures": [
       "grp_a_valid_1page.pdf",
       "grp_a_valid_10page.pdf",
@@ -8,7 +8,7 @@
     ]
   },
   "grp_b": {
-    "hash": "4437fcaba4a80de2917aa427a47c67523276ac6c3681040377de311cb0ffc6af",
+    "hash": "d4c1d9070801fe845404ef893c68d37b8cc80eb7a75a963583053663406906f5",
     "fixtures": [
       "grp_b_invoice.pdf",
       "grp_b_scientific_paper.pdf"
