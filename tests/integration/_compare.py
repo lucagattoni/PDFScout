@@ -215,7 +215,6 @@ def assert_nearest_heading_parent(blocks: list[dict]) -> None:
     A paragraph with no preceding heading raises AssertionError — the fixture
     must ensure at least one heading appears before the first paragraph.
     """
-    by_id = {b["block_id"]: b for b in blocks}
     for i, block in enumerate(blocks):
         if block["type"] != "paragraph":
             continue

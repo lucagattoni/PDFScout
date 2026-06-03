@@ -5,7 +5,6 @@ Classifier mocked via _classify patch; hierarchy mocked via _call_api patch.
 All assertions use scan-based matching (>= minimum count, text in some block).
 """
 
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -14,11 +13,6 @@ import pytest
 from tests.integration._compare import _make_relation_response
 
 _PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs"
-_GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden"
-
-
-def _load_golden(name: str) -> dict:
-    return json.loads((_GOLDEN / f"{name}.json").read_text())
 
 
 async def _run_c_test(pdf_path: str, doc_type: str = "baseline_core") -> list[dict]:

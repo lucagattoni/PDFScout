@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from tests.fixtures.generators._common import (
-    draw_filled_rect,
     draw_table,
     draw_text,
     golden_meta,

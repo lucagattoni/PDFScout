@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tests.integration._compare import _make_relation_response, _make_tool_use_response, _valid_block
+from tests.integration._compare import (
+    _make_relation_response,
+    _make_tool_use_response,
+    _valid_block,
+)
 
 _PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs"
 _GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden"

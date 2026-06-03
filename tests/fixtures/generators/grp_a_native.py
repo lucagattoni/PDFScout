@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pypdf import PdfWriter
 
-from tests.fixtures.generators._common import make_pdf, save_pdf
+from tests.fixtures.generators._common import make_pdf
 
 
 def _make_blank_pdf(n_pages: int) -> bytes:

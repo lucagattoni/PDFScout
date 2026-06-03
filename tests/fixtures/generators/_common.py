@@ -1,6 +1,6 @@
 """Shared fpdf2 helpers and constants for all fixture generators."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fpdf import FPDF
@@ -21,7 +21,7 @@ PAGE_H_MM: float = 297.0
 PAGE_W_PTS: float = 595.28
 PAGE_H_PTS: float = 841.89
 
-_PINNED_DATE = datetime(2000, 1, 1, tzinfo=timezone.utc)
+_PINNED_DATE = datetime(2000, 1, 1, tzinfo=UTC)
 _LEFT_MARGIN = 20.0
 _RIGHT_MARGIN = 20.0
 _TOP_MARGIN = 20.0
