@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.3.0] — 2026-06-03
+
+### Fixed
+
+- **A1 — Job store persistence** (`src/api/jobs.py`, `api.py`, `src/api/runner.py`) — job
+  records are now persisted to `api_jobs.db` (SQLite) using `aiosqlite`. On startup all
+  previous records are loaded back into memory; jobs still in `running` or `queued` state
+  are automatically marked `failed` (server restart interrupted them). `save()` is called
+  at each status transition (`running`, `completed`, `failed`); `remove()` is called on
+  job deletion. In-memory dict is preserved unchanged, so all existing tests pass without
+  modification. `api_jobs.db` added to `.gitignore`.
+- **A2 (partial) — Burst block validation** (`src/nodes/hierarchy_node.py`) — blocks
+  missing any required field (`block_id`, `type`, `bbox`, `text`) are now dropped before
+  the hierarchy step and logged as `extraction_warnings`. Prevents a `KeyError` crash when
+  the burst path returns a structurally invalid block. Full burst retry parity deferred.
+
+### Added
+
+- **C1 — Burst adversarial test** (`tests/integration/test_graph_pipeline.py`) — new
+  `TestBurstAdversarial.test_c1_burst_malformed_block_filtered`: all API calls mocked,
+  burst page 2 returns a block missing `block_id`. Asserts pipeline completes, page-1
+  block is present, malformed block is absent, and a warning is logged. No API key needed.
+
 ## [1.2.0] — 2026-06-03
 
 ### Fixed

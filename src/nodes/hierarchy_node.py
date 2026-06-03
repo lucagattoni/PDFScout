@@ -71,10 +71,24 @@ async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = 40
 async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
     client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+    # Drop blocks missing required fields — burst pages have no validation loop
+    _REQUIRED = {"block_id", "type", "bbox", "text"}
+    field_warnings: list[str] = []
+    well_formed: list[dict] = []
+    for block in state["extracted_flat_blocks"]:
+        missing = _REQUIRED - block.keys()
+        if missing:
+            field_warnings.append(
+                f"Block dropped: missing required fields {sorted(missing)}. "
+                f"Preview: {str(block)[:80]}"
+            )
+        else:
+            well_formed.append(block)
+
     # Deduplicate by block_id before sorting — guards against pioneer retry duplicates
     seen_ids: set = set()
     unique_blocks = []
-    for block in state["extracted_flat_blocks"]:
+    for block in well_formed:
         if block["block_id"] not in seen_ids:
             seen_ids.add(block["block_id"])
             unique_blocks.append(block)
@@ -129,12 +143,13 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
         for block in sorted_blocks:
             block["parent_id"] = None
 
+    all_warnings = field_warnings + orphan_warnings
     return {
-        "extraction_warnings": orphan_warnings,
+        "extraction_warnings": all_warnings,
         "hierarchical_document_tree": {
             "document_type": state["document_type"],
             "pdf_hash": state["pdf_hash"],
-            "extraction_warnings": state.get("extraction_warnings", []) + orphan_warnings,
+            "extraction_warnings": state.get("extraction_warnings", []) + all_warnings,
             "structured_payload": sorted_blocks,
         },
     }

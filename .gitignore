@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 state_checkpoint.db
 api_checkpoint.db
+api_jobs.db
 .env
 tmp/
 .coverage
