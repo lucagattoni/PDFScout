@@ -21,6 +21,7 @@
 - _Updated: 2026-06-03 · v19 — coherence review pass 2 (ambiguity + determinism): 3 MEDIUM fixed: classifier mock changed from AsyncAnthropic-class patch (3-level mock chain, unspecified) to `_classify` function patch (unambiguous, consistent across C/D/E/G/H); C test matching strategy clarified as scan-based (not positional) due to variable block count — D/E/H remain positional; golden file creation workflow section added (design-intent pre-written, not model-captured; first-run failures expected)_  
 - _Updated: 2026-06-03 · v20 — coherence review pass 3 (coverage + missing parts): 4 LOW fixed: stale AsyncAnthropic reference in narrow-tests "identity problem" paragraph corrected to _classify; _valid_block docstring extended with schema-compatibility requirement; assert_table_data docstring clarified (expected_rows = total rows incl. headers); F4 note added (heading parent_ids not asserted by design — covered by F1/F3); Phase 1 API key skip-guard approach specified_  
 - _Updated: 2026-06-03 · v21 — coherence review pass 4 (implicit assumptions + explicit instructions): 5 MEDIUM + 4 LOW fixed: H removed from positional-matching group (H1 never uses positional matching); worker/hierarchy mocks changed from AsyncAnthropic class patch (3-level chain, unspecified) to _call_api function patch throughout (B, C, D, E, G, H); HierarchyRule NamedTuple added as standalone class definition in _compare.py spec with valid Python syntax (removed from docstring only); API key skip guard corrected from session-scoped to function-scoped with explicit request.node.get_closest_marker check; Group B document_type access path added to pipeline output section; Phase 0 calibration mock targets made explicit (_classify + _call_api); B hierarchy mock no-op behaviour documented (single-block optimisation); _compare.py directory comment updated to list mock factories_  
+- _Updated: 2026-06-03 · v22 — coherence review pass 5 (final cleanup): 3 LOW fixed: duplicate H1 matching description removed from block-matching strategy (de-duplicated against pre-existing "For H1" paragraph); Phase 3 checklist adds HierarchyRule NamedTuple alongside assert_hierarchy_structure; H1 assertion table corrected from block.text (attribute) to block["text"] (dict); Risk 7 stale language updated (model_version field already specified; when to re-run calibration clarified)_  
 
 ---
 
@@ -274,8 +275,6 @@ Group A does not use block matching at all — A assertions check `total_pages` 
 `pdf_hash` only. Group B only asserts `document_type` — no block matching.
 Group F uses structural hierarchy assertions (`assert_hierarchy_structure`,
 `assert_nearest_heading_parent`), not positional block matching.
-Group H (H1, blank page) uses no positional matching — only `len(blocks) <= 1`
-and a text-length check on the single block (if present).
 
 For **G1** (two-column layout), positional matching is unreliable because the sort
 interleaves columns. Use set-based matching: for each expected text string, assert that
@@ -283,7 +282,8 @@ interleaves columns. Use set-based matching: for each expected text string, asse
 L-prefixed blocks before all R-prefixed blocks in `structured_payload`).
 
 For **H1** (blank page), no positional matching is attempted. The test only asserts
-pipeline completes without exception and `len(blocks) <= 1`.
+pipeline completes without exception, `len(blocks) <= 1`, and (if one block is returned)
+`len(block["text"].strip()) < 30`.
 
 ### Pipeline output access
 
@@ -814,7 +814,7 @@ focus on whether the pipeline handles blank input without crashing.
 
 | ID | PDF content | Assertions |
 |---|---|---|
-| H1 | 1 blank white page (no text, no objects) | Pipeline completes without exception; `len(blocks) <= 1`; if a block exists, `len(block.text.strip()) < 30` |
+| H1 | 1 blank white page (no text, no objects) | Pipeline completes without exception; `len(blocks) <= 1`; if a block exists, `len(block["text"].strip()) < 30` |
 
 > H1 is explicitly a smoke test: it checks the pipeline doesn't crash on degenerate
 > input. It does not assert meaningful extraction quality.
@@ -871,7 +871,7 @@ Do not begin Phase 2 without this confirmation.
 
 - Multi-page generators (E1, E2); E3 remains suspended pending prompt update
 - Hierarchy tests (F1–F4) as **narrow function calls** (no PDF; pre-built state)
-- `assert_hierarchy_structure` and `assert_nearest_heading_parent` helpers added to `_compare.py`
+- `HierarchyRule` NamedTuple, `assert_hierarchy_structure`, and `assert_nearest_heading_parent` added to `_compare.py`
 - Integration tests for group E; narrow tests for group F
 
 ### Phase 4 — Layout, edge cases, and full-chain
@@ -947,8 +947,9 @@ The following risks remain open.
 7. **Model version drift.** Golden files are written against `claude-sonnet-4-6` (from
    `src/config.py`). When `MODEL` is updated, golden diffs will be widespread. Any `MODEL`
    change must be followed immediately by `make fixtures` and a full golden diff review
-   before merging. The golden file `meta` block should have a `model_version` field added
-   at generation time; if it changes, Phase 0 calibration must re-run.
+   before merging. The golden file `meta` block has a `model_version` field set at
+   generation time from `src.config.MODEL`; when `MODEL` changes, Phase 0 calibration
+   must re-run before any other golden file work begins.
 
 8. **B1 PDF adequacy for the full-chain `table_data` assertion.** B1 is a simple 1-page
    invoice with a billing table. If the model does not reliably populate `table_data` on
@@ -1005,3 +1006,4 @@ _v18 — 2026-06-03 — coherence review pass 1: 3 MEDIUM + 5 LOW fixed: structu
 _v19 — 2026-06-03 — coherence review pass 2 (ambiguity + determinism): 3 MEDIUM fixed: classifier mock changed from AsyncAnthropic-class patch (3-level mock chain, unspecified) to `_classify` function patch (unambiguous, consistent across C/D/E/G/H); C test matching strategy clarified as scan-based (not positional) due to variable block count — D/E/H remain positional; golden file creation workflow section added (design-intent pre-written, not model-captured; first-run failures expected)_  
 _v20 — 2026-06-03 — coherence review pass 3 (coverage + missing parts): 4 LOW fixed: stale AsyncAnthropic reference in narrow-tests "identity problem" paragraph corrected to _classify; _valid_block docstring extended with schema-compatibility requirement; assert_table_data docstring clarified (expected_rows = total rows incl. headers); F4 note added (heading parent_ids not asserted by design — covered by F1/F3); Phase 1 API key skip-guard approach specified_  
 _v21 — 2026-06-03 — coherence review pass 4 (implicit assumptions + explicit instructions): 5 MEDIUM + 4 LOW fixed: H removed from positional-matching group (H1 never uses positional matching); worker/hierarchy mocks changed from AsyncAnthropic class patch (3-level chain, unspecified) to _call_api function patch throughout (B, C, D, E, G, H); HierarchyRule NamedTuple added as standalone class definition in _compare.py spec with valid Python syntax; API key skip guard corrected from session-scoped to function-scoped with explicit request.node.get_closest_marker check; Group B document_type access path added to pipeline output section; Phase 0 calibration mock targets made explicit; B hierarchy mock no-op behaviour documented (single-block optimisation); _compare.py directory comment updated to list mock factories_  
+_v22 — 2026-06-03 — coherence review pass 5 (final cleanup): 3 LOW fixed: duplicate H1 matching description removed; Phase 3 checklist adds HierarchyRule NamedTuple; H1 assertion table corrected to block["text"] (dict); Risk 7 stale language corrected (model_version field already in spec; calibration re-run ordering made explicit)_  
