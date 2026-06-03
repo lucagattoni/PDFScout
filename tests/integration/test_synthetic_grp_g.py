@@ -38,19 +38,20 @@ class TestGroupG:
 
         blocks = result["hierarchical_document_tree"]["structured_payload"]
 
-        # (1) Column ordering: all left-column blocks before all right-column blocks
-        left_indices = [
-            i for i, b in enumerate(blocks)
-            if b["bbox"]["coordinates"][1] // COLUMN_BUCKET_PX == 0
-        ]
-        right_indices = [
-            i for i, b in enumerate(blocks)
-            if b["bbox"]["coordinates"][1] // COLUMN_BUCKET_PX >= 1
-        ]
-        assert left_indices, "No blocks found in left column (xmin bucket 0)"
-        assert right_indices, "No blocks found in right column (xmin bucket >= 1)"
+        # (1) Column ordering: all left-column blocks before all right-column blocks.
+        # Identify the two columns by their natural xmin bucket split rather than
+        # hardcoding specific bucket numbers (Claude's coordinate output varies slightly).
+        buckets = [b["bbox"]["coordinates"][1] // COLUMN_BUCKET_PX for b in blocks]
+        unique_buckets = sorted(set(buckets))
+        assert len(unique_buckets) >= 2, f"Expected ≥2 column buckets, got {unique_buckets}"
+        left_bucket = unique_buckets[0]
+
+        left_indices = [i for i, bkt in enumerate(buckets) if bkt == left_bucket]
+        right_indices = [i for i, bkt in enumerate(buckets) if bkt != left_bucket]
+        assert left_indices, "No blocks found in left column"
+        assert right_indices, "No blocks found in right column"
         assert max(left_indices) < min(right_indices), (
-            "All left-column blocks (bucket 0) must appear before all right-column blocks "
+            "All left-column blocks must appear before all right-column blocks "
             f"in structured_payload. Left indices: {left_indices}, right indices: {right_indices}"
         )
 
