@@ -193,6 +193,10 @@ cp .env.example .env  # then fill in your API key
 | `make lint` | Check for linting violations and formatting drift (read-only) |
 | `make fix` | Auto-fix violations and reformat all files |
 | `make test` | Run the full test suite (113 tests, no API key required) |
+| `make test-e2e` | Run all synthetic e2e tests (requires `ANTHROPIC_API_KEY`) |
+| `make test-e2e GRP=c` | Run one group of e2e tests (a–h) |
+| `make fixtures` | Regenerate all synthetic PDF fixtures and golden files |
+| `make fixtures GRP=c` | Regenerate one group of fixtures |
 | `make coverage` | Run tests and print per-module coverage report |
 | `make ci` | Run `lint` then `test` — use before pushing |
 | `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache` |
@@ -211,6 +215,35 @@ The suite has 113 tests across two layers (run with `make test`, coverage with `
 | Integration | `tests/integration/` | All FastAPI endpoints (health, extract, jobs) via an ASGI test client; `run_extraction` background task; end-to-end LangGraph pipeline (happy path, pioneer retry-then-success, max-retry degradation) |
 
 No `ANTHROPIC_API_KEY` is required — the suite runs entirely in isolation with mocked Anthropic clients.
+
+### Synthetic e2e tests
+
+A separate tier of tests exercises the real pipeline against synthetic PDF fixtures. These require a real `ANTHROPIC_API_KEY` and are excluded from `make test` (they carry `@pytest.mark.e2e`).
+
+| Group | Concern | API calls |
+|---|---|---|
+| A | Native extraction (pypdf only) | 0 |
+| B | Classifier accuracy | 1 per test |
+| C | Block-type extraction | 1–2 per test |
+| D | Schema-specific metadata | 1–2 per test |
+| E | Multi-page burst + merge | N (one per page) |
+| F | Hierarchy assignment (narrow, direct function call) | 1 per test |
+| G | Two-column reading order | 1 |
+| H | Graceful degradation (blank page) | 1 |
+
+```bash
+# Run all e2e tests
+make test-e2e
+
+# Run one group
+make test-e2e GRP=c
+
+# Regenerate fixtures after a generator or prompt change
+make fixtures
+make fixtures GRP=b
+```
+
+PDF fixtures are not committed — they are generated at session start by a hash-check that compares each generator script's SHA-256 against `tests/fixtures/manifest.json`. Golden files (expected outputs, design-intent) are committed to `tests/fixtures/golden/`.
 
 **Coverage targets:**
 
