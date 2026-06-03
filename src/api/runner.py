@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from src.api.jobs import jobs
+from src.api.jobs import save as save_job
 from src.utils.tracing import tracing_span
 
 
@@ -27,6 +28,7 @@ async def run_extraction(
 ) -> None:
     job = jobs[job_id]
     job.status = "running"
+    await save_job(job)
     try:
         config = {"configurable": {"thread_id": job_id}}
         if langfuse:
@@ -61,9 +63,11 @@ async def run_extraction(
 
         job.status = "completed"
         job.completed_at = datetime.now(UTC)
+        await save_job(job)
     except Exception as exc:
         job.status = "failed"
         job.error = str(exc)
         job.completed_at = datetime.now(UTC)
+        await save_job(job)
     finally:
         Path(file_path).unlink(missing_ok=True)

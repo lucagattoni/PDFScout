@@ -3,6 +3,7 @@
 _Created: 2026-06-03 15:02_
 _Updated: 2026-06-03 15:05 · DA review v1 — A2 placement corrected (hierarchy entry not new node), A4 fallback risk added, B1 classifier dilution risk added_
 _Updated: 2026-06-03 15:12 · A3, A4, A6, A7 implemented and shipped in v1.2.0_
+_Updated: 2026-06-03 15:37 · A1, C1 implemented and A2 partial (block-field guard) shipped in v1.3.0_
 
 ## Purpose
 
@@ -28,7 +29,7 @@ Provides a prioritised menu for the next planning cycle; each item has its own p
 
 These are bugs or reliability gaps in the current codebase — not features.
 
-### A1 · Job store persistence ★★★ (High value, Low effort)
+### A1 · Job store persistence ✅ v1.3.0
 
 **Problem:** `jobs: dict[str, JobRecord] = {}` in `src/api/jobs.py` is in-memory. A server restart silently loses all in-flight and completed jobs. Any client polling `GET /jobs/{id}` gets 404 after a restart — no error, just a ghost job.
 
@@ -40,7 +41,7 @@ These are bugs or reliability gaps in the current codebase — not features.
 
 ---
 
-### A2 · Burst-page validation gap ★★ (Medium value, Medium effort)
+### A2 · Burst-page validation gap ★★ — partial ✅ v1.3.0 (block-field guard); retry parity deferred
 
 **Problem:** Pioneer (page 1) runs through a validation + retry loop (`pioneer_validation_route`, max 3 retries). Pages 2–N sent through `burst_dispatcher` go directly to `parser_worker` nodes with only tenacity retry for HTTP 429/529. A malformed page-2 JSON response (wrong field types, missing required fields) will propagate into `hierarchical_document_tree` undetected.
 
@@ -164,7 +165,7 @@ New capabilities that expand what PDFScout can do.
 
 ## Category C — Test coverage gaps
 
-### C1 · Burst-page adversarial test ★★ (Medium value, Low effort)
+### C1 · Burst-page adversarial test ✅ v1.3.0
 
 **Problem:** No test exercises what happens when a page-2 parser response is malformed. The current test suite only verifies the happy path for multi-page documents (E-group uses correctly-formed blocks).
 
@@ -202,9 +203,9 @@ New capabilities that expand what PDFScout can do.
 | 2 | **A7** (dead fixture) | ✅ v1.2.0 | Reduces fixture confusion |
 | 3 | **A6** (hierarchy max_tokens) | ✅ v1.2.0 | Prevents silent data loss on long documents |
 | 4 | **A3** (hierarchy validation) | ✅ v1.2.0 | Surfaces corrupt edges that previously propagated silently |
-| 5 | **A1** (job persistence) | ⬜ next | Correctness bug for production use; well-contained fix using existing SQLite dep |
-| 6 | **C1** (burst adversarial test) | ⬜ next | Validates the most important unguarded failure mode; low effort |
-| 7 | **A2** (burst validation) | ⬜ | Closes the gap C1 exposes; medium effort; plan separately |
+| 5 | **A1** (job persistence) | ✅ v1.3.0 | Correctness bug for production use; well-contained fix using existing SQLite dep |
+| 6 | **C1** (burst adversarial test) | ✅ v1.3.0 | Validates the most important unguarded failure mode; low effort |
+| 7 | **A2** (burst validation) | ⚡ partial v1.3.0 | Block-field guard done; burst retry parity deferred |
 | 8 | **B1** (new schema) | ⬜ | Highest feature value; warrants its own full plan |
 | 9 | **A5** (Files API) | ⬜ | Real cost win for large PDFs; medium risk; plan separately |
 | 10 | **B2** (confidence scores) | ⬜ | Nice-to-have; needs stability gate before asserting |

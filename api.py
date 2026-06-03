@@ -15,6 +15,9 @@ from langfuse import Langfuse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from src.api.jobs import JobRecord, jobs
+from src.api.jobs import init as init_jobs
+from src.api.jobs import remove as remove_job
+from src.api.jobs import save as save_job
 from src.api.models import HealthResponse, JobResponse
 from src.api.runner import run_extraction
 from src.config import FALLBACK_DOC_TYPE, MODEL, SUPPORTED_DOC_TYPES
@@ -34,9 +37,13 @@ _MAX_UPLOAD_BYTES = 32 * 1024 * 1024
 _LANGFUSE_ENABLED = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
 
 
+_JOBS_DB = str(_API_ROOT / "api_jobs.db")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    await init_jobs(_JOBS_DB)
     langfuse = Langfuse() if _LANGFUSE_ENABLED else None
     async with AsyncSqliteSaver.from_conn_string(_CHECKPOINT_DB) as checkpointer:
         app.state.graph = build_app(checkpointer)
@@ -108,7 +115,7 @@ async def extract(
             return JobResponse.from_record(existing)
         if not force:
             return JobResponse.from_record(existing)
-        del jobs[job_id]
+        await remove_job(job_id)
 
     new_record = JobRecord(
         job_id=job_id,
@@ -118,6 +125,7 @@ async def extract(
     existing = jobs.setdefault(job_id, new_record)
     if existing is not new_record:
         return JobResponse.from_record(existing)
+    await save_job(new_record)
 
     tmp_path = _UPLOAD_DIR / f"{job_id}.pdf"
     await asyncio.to_thread(tmp_path.write_bytes, content)
@@ -160,5 +168,5 @@ async def delete_job(job_id: str) -> None:
             status_code=409,
             detail=f"Cannot delete a {job.status} job. Wait for it to complete first.",
         )
-    del jobs[job_id]
+    await remove_job(job_id)
     (_UPLOAD_DIR / f"{job_id}.pdf").unlink(missing_ok=True)

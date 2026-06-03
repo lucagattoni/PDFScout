@@ -139,6 +139,68 @@ class TestGraphPipelineRetry:
         assert warnings == []
 
 
+class TestBurstAdversarial:
+    async def test_c1_burst_malformed_block_filtered(self, minimal_pdf_path, mocker):
+        """Burst page 2 returns a block missing the required 'block_id' field.
+        Pipeline must complete, page-1 block must be present, malformed block
+        must be absent from output, and a warning must be logged."""
+        mocker.patch("src.nodes.extractor_node.get_page_count", return_value=2)
+        mocker.patch("src.nodes.extractor_node.hash_file", return_value="e" * 64)
+        mocker.patch(
+            "src.nodes.classifier_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZQ=="),
+        )
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZQ=="),
+        )
+
+        classifier_mock = mocker.patch("src.nodes.classifier_node.AsyncAnthropic")
+        classifier_client = classifier_mock.return_value
+        classify_response = MagicMock()
+        classify_response.content = [MagicMock(text="baseline_core")]
+        classifier_client.messages.create = AsyncMock(return_value=classify_response)
+
+        malformed_block = {
+            # Intentionally missing "block_id" — required field
+            "type": "paragraph",
+            "text": "This page-2 block is missing its block_id.",
+            "bbox": {"page_number": 2, "coordinates": [50, 50, 200, 80]},
+            "is_continued": False,
+            "metadata": {},
+        }
+        worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
+        worker_client = worker_mock.return_value
+        worker_client.messages.create = AsyncMock(
+            side_effect=[
+                _make_tool_use_response([_valid_block(1)]),  # pioneer page 1 → valid
+                _make_tool_use_response([malformed_block]),  # burst page 2 → malformed
+            ]
+        )
+
+        hierarchy_mock = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
+        hierarchy_client = hierarchy_mock.return_value
+        hierarchy_client.messages.create = AsyncMock(
+            return_value=_make_relation_response([{"block_id": "blk-p1", "parent_id": None}])
+        )
+
+        _, final_state = await _stream_graph(minimal_pdf_path)
+
+        tree = final_state.get("hierarchical_document_tree")
+        assert tree is not None, "Pipeline must produce a tree"
+
+        blocks = tree["structured_payload"]
+        assert any(b["block_id"] == "blk-p1" for b in blocks), "Page-1 block must be in output"
+        assert all("block_id" in b for b in blocks), (
+            "Malformed block (missing block_id) must not appear in structured_payload"
+        )
+
+        warnings = tree.get("extraction_warnings", [])
+        assert any("block_id" in w for w in warnings), (
+            f"Expected a warning about the dropped block, got: {warnings}"
+        )
+
+
 class TestGraphPipelineMaxRetryDegradation:
     async def test_pioneer_max_retry_adds_warning(self, minimal_pdf_path, mocker):
         mocker.patch("src.nodes.extractor_node.get_page_count", return_value=1)
