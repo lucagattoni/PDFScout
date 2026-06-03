@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "generator": "grp_d_reference",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-4-6",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "scientific_paper",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "[1]",
+        "metadata": {},
+        "_year_present": true
+      },
+      {
+        "type": "paragraph",
+        "text": "[2]",
+        "metadata": {},
+        "_year_present": true
+      },
+      {
+        "type": "paragraph",
+        "text": "[3]",
+        "metadata": {},
+        "_year_present": true
+      }
+    ]
+  }
+}

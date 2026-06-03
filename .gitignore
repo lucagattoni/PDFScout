@@ -10,3 +10,4 @@ api_checkpoint.db
 tmp/
 .coverage
 htmlcov/
+tests/fixtures/pdfs/
