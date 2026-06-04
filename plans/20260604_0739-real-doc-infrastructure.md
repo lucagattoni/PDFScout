@@ -1,14 +1,15 @@
 # Real-Document Infrastructure — Downloader, Ground Truth, and Test Runner
 
 _Created: 2026-06-04 07:39_
+_Updated: 2026-06-04 · all PDFs download-only (no commit); SP-1 and BC-3 moved to NEEDS SELECTION; evaluator output changed to JSON with datetime-prefix filename_
 
 ## Goal
 
 Complement `20260603_1540-real-doc-test-corpus.md` with a concrete implementation plan
 covering:
 
-1. A **fixture downloader** that fetches (or converts) the 15 real PDFs at test time —
-   no PDF binary ever committed (exception: PDFs ≤200 KB may be committed directly).
+1. A **fixture downloader** that fetches the 15 real PDFs at test time — no PDF binary
+   ever committed to the repository.
 2. A **manifest** that records source URLs, checksums, and conversion flags for every
    document.
 3. A **ground-truth generator** that runs the pipeline N times and derives stable
@@ -57,16 +58,13 @@ Extends the selection criteria in the corpus plan with runtime fields needed by 
 {
   "slot_id": "sp-1",              // matches golden file name and test parameterisation
   "doc_type": "scientific_paper", // classifier expected value
-  "label": "Attention Is All You Need",
-  "url": "https://arxiv.org/pdf/1706.03762",
+  "label": "...",
+  "url": "https://arxiv.org/pdf/...",
   "fallback_url": null,           // secondary URL if primary returns 403/404
   "pdf_sha256": null,             // null until first successful download; filled by C1
   "size_bytes": null,             // filled by C1
-  "commit_directly": false,       // true when size_bytes ≤ 200 000 after download
-  "needs_pdf_conversion": false,  // true for BC-3 (text → PDF via fpdf2)
-  "conversion_params": null,      // e.g. {"source_url": "...", "encoding": "utf-8"}
   "license": "CC-BY-4.0",
-  "memorisation_risk": "high",    // null | "low" | "high"; informational only
+  "memorisation_risk": null,      // null | "low" | "high"; informational only
   "notes": ""
 }
 ```
@@ -79,23 +77,23 @@ changes.
 
 Derived from the corpus plan.  `pdf_sha256` and `size_bytes` left null until first run.
 
-| slot_id | commit_directly | needs_pdf_conversion | notes |
-|---------|----------------|----------------------|-------|
-| sp-1    | false | false | memorisation risk HIGH |
-| sp-2    | false | false | manual selection pending |
-| sp-3    | false | false | conditional on file size |
-| sp-4    | false | false | conditional on file size |
-| sp-5    | false | false | memorisation risk HIGH |
-| sp-6    | false | false | conditional on file size |
-| inv-1   | true  | false | strzibny/invoice_printer, 20 KB |
-| inv-2   | true  | false | strzibny/invoice_printer, 24 KB |
-| inv-3   | true  | false | strzibny/invoice_printer, 72 KB |
-| inv-4   | true  | false | strzibny/invoice_printer, 175 KB |
-| inv-5   | true  | false | strzibny/invoice_printer, 48 KB |
-| bc-1    | false | false | needs access verification |
-| bc-2    | false | false | govinfo.gov mirror |
-| bc-3    | false | true  | fpdf2 conversion; source is Gutenberg #17405 |
-| bc-4    | false | false | govinfo.gov mirror |
+| slot_id | notes |
+|---------|-------|
+| sp-1    | NEEDS SELECTION: non-landmark arXiv paper, ≥13 pp, two-column, figures, numbered refs |
+| sp-2    | NEEDS SELECTION: total PDF ≤4 pp; PRL preprint or 2-page workshop abstract |
+| sp-3    | conditional on file size ≤5 MB |
+| sp-4    | conditional on file size ≤5 MB |
+| sp-5    | memorisation risk HIGH |
+| sp-6    | conditional on file size ≤5 MB; scanned-quality axis |
+| inv-1   | strzibny/invoice_printer, 20 KB |
+| inv-2   | strzibny/invoice_printer, 24 KB |
+| inv-3   | strzibny/invoice_printer, 72 KB |
+| inv-4   | strzibny/invoice_printer, 175 KB |
+| inv-5   | strzibny/invoice_printer, 48 KB |
+| bc-1    | needs access verification |
+| bc-2    | govinfo.gov mirror |
+| bc-3    | NEEDS SELECTION: native PDF of public-domain text (no conversion) |
+| bc-4    | govinfo.gov mirror |
 
 ---
 
@@ -105,38 +103,12 @@ Derived from the corpus plan.  `pdf_sha256` and `size_bytes` left null until fir
 
 1. Read `real_manifest.json`.
 2. For each entry, resolve the target path `tests/fixtures/pdfs/real/<slot_id>.pdf`.
-3. If `commit_directly=true` and the file already exists in the repo, skip download.
-4. If the file exists on disk (gitignored), compute its SHA-256:
+3. If the file exists on disk (gitignored), compute its SHA-256:
    - If `pdf_sha256` in manifest is non-null and matches → skip (already fresh).
    - If it does not match → warn and re-download (upstream PDF changed).
-5. Download from `url`; if HTTP 4xx/5xx, retry `fallback_url` if set.
-6. For `needs_pdf_conversion=true` entries: fetch the source text, render to PDF with
-   fpdf2, write the result.
-7. Write back `pdf_sha256` and `size_bytes` into the manifest entry if they were null.
-8. Exit 1 if any required entry could not be fetched.
-
-### BC-3 conversion details
-
-```python
-# Source: Project Gutenberg #17405, "The Art of War" by Sun Tzu
-# Encoding: UTF-8; plain text
-# Library: fpdf2
-
-from fpdf import FPDF
-
-def text_to_pdf(text: str, output_path: Path) -> None:
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=11)
-    for line in text.splitlines():
-        pdf.multi_cell(0, 6, line)
-    pdf.output(str(output_path))
-```
-
-The resulting PDF is fully deterministic for a given input text + fpdf2 version, so its
-SHA-256 is stable across machines given the same library version.  The manifest pins
-`conversion_params.fpdf2_version` after the first generation.
+4. Download from `url`; if HTTP 4xx/5xx, retry `fallback_url` if set.
+5. Write back `pdf_sha256` and `size_bytes` into the manifest entry if they were null.
+6. Exit 1 if any required entry could not be fetched.
 
 ### CLI
 
@@ -313,22 +285,66 @@ def _text_in_some(fragment: str, blocks: list[dict]) -> bool:
 
 ## C4 — Offline evaluator (`evaluate_real_docs.py`)
 
-Produces a tabular pass/fail report without pytest overhead.  Useful for iterative
-development and for pre-commit sanity checks without full test infrastructure.
+Produces a JSON regression report without pytest overhead.  Useful for iterative
+development and pre-commit sanity checks.
 
 ```
-python scripts/evaluate_real_docs.py [--slot sp-1,inv-2] [--output report.txt]
+python scripts/evaluate_real_docs.py [--slot sp-1,inv-2] [--output-dir reports/]
 ```
 
-Output example:
+Output file: `<output-dir>/YYYYMMDD_HHMM-evaluation.json` (datetime prefix, same
+convention as plan files).  Default output-dir is the current working directory.
 
+Output format:
+
+```jsonc
+{
+  "generated_at": "2026-06-04T12:00:00Z",
+  "slots_evaluated": 15,
+  "results": [
+    {
+      "slot_id": "sp-1",
+      "doc_type": "scientific_paper",
+      "blocks_actual": 51,
+      "blocks_min_required": 42,
+      "text_check": true,
+      "metadata_required_pass": true,
+      "metadata_deferred_mismatches": [],
+      "verdict": "PASS"
+    },
+    {
+      "slot_id": "sp-2",
+      "doc_type": "scientific_paper",
+      "blocks_actual": null,
+      "blocks_min_required": null,
+      "text_check": null,
+      "metadata_required_pass": null,
+      "metadata_deferred_mismatches": [],
+      "verdict": "SKIP",
+      "skip_reason": "PDF not present"
+    },
+    {
+      "slot_id": "bc-2",
+      "doc_type": "baseline_core",
+      "blocks_actual": 18,
+      "blocks_min_required": 15,
+      "text_check": true,
+      "metadata_required_pass": true,
+      "metadata_deferred_mismatches": ["journal_or_venue"],
+      "verdict": "WARN"
+    }
+  ],
+  "summary": {
+    "pass": 12,
+    "warn": 1,
+    "skip": 2,
+    "fail": 0
+  }
+}
 ```
-slot   doc_type           blocks  min  txt  meta  verdict
-sp-1   scientific_paper    51    42   ✓    ✓     PASS
-sp-2   scientific_paper     -     -   -    -     SKIP (no PDF)
-inv-1  invoice             12     9   ✓    ✓     PASS
-bc-2   baseline_core       18    15   ✓    -     WARN (metadata_deferred mismatch)
-```
+
+Verdict levels: `PASS`, `WARN` (deferred-metadata mismatch only), `SKIP` (no PDF or no
+golden), `FAIL` (required assertion failed).
 
 The evaluator re-uses the exact same assertion helpers as `test_real_docs.py` by
 importing from `_compare.py` and the golden loader from `test_real_docs.py`.
@@ -339,11 +355,9 @@ importing from `_compare.py` and the golden loader from `test_real_docs.py`.
 
 | Package | Reason | Where used |
 |---------|--------|------------|
-| `fpdf2` | BC-3 text→PDF conversion | C1 |
 | `requests` (already present?) | HTTP download | C1 |
 
-Add `fpdf2` to `requirements.txt` (or `pyproject.toml` under `[tool.uv.extras]` if the
-project uses that pattern).  Verify `requests` is already a dependency before adding it.
+Verify `requests` is already a dependency before adding it.
 
 ---
 
@@ -357,9 +371,8 @@ project uses that pattern).  Verify `requests` is already a dependency before ad
 ### Phase 1 — Downloader (C1)
 1. Implement `scripts/download_real_fixtures.py`.
 2. Run with `--dry-run` to verify URL resolution logic without writing files.
-3. Run live for the 4 invoice entries that can be committed (`commit_directly=true`);
-   verify checksums land in manifest.
-   → verify: PDFs present on disk; SHA-256 written to manifest.
+3. Run live for the 5 invoice entries (INV-1 to INV-5); verify checksums land in manifest.
+   → verify: PDFs present on disk (gitignored); SHA-256 written to manifest.
 
 ### Phase 2 — conftest.py + `_compare.py` additions
 1. Add `"grp_r"` to `require_real_api_key` in `conftest.py`.
@@ -379,8 +392,9 @@ project uses that pattern).  Verify `requests` is already a dependency before ad
    → verify: zero failures, all SKIPs.
 
 ### Phase 5 — Remaining PDFs + golden files
-1. Verify access to the CONDITIONAL candidates (SP-3, SP-4, SP-6, BC-1, BC-2, BC-4).
-2. Run downloader for each; commit `commit_directly=true` ones; gitignore the rest.
+1. Finalise NEEDS SELECTION candidates (SP-1, SP-2, BC-3) and verify access to
+   CONDITIONAL candidates (SP-3, SP-4, SP-6, BC-1, BC-2, BC-4).
+2. Run downloader for each confirmed entry.
 3. Run ground-truth generator; commit golden files.
 4. Run full `grp_r` suite; confirm all 15 tests pass (or SKIP for still-pending slots).
    → verify: ≥10/15 PASS on first run; remaining are SKIP with clear reason.
@@ -409,12 +423,11 @@ _Mitigation:_ The checksum mismatch produces a `pytest.fail` with a clear remedi
 message.  Document in the runbook that only corpus maintainers should re-run C2.  Treat
 checksum mismatches as a corpus maintenance ticket, not a blocking CI failure.
 
-**DA-3: BC-3 conversion determinism across fpdf2 versions.**
-fpdf2 patch releases sometimes change pagination.  If the fpdf2 version upgrades, the
-generated PDF changes, SHA changes, and all BC-3 golden assertions are stale.  
-_Mitigation:_ Pin fpdf2 to an exact version in `requirements.txt`.  The manifest stores
-`conversion_params.fpdf2_version`; C1 asserts the installed version matches before
-writing the PDF.
+**DA-3: BC-3 and SP-1 are still NEEDS SELECTION.**
+Both slots will skip in the grp_r suite until a specific document is chosen.
+_Mitigation:_ The skip count appears in the evaluator summary JSON and serves as a
+visible reminder.  Neither slot blocks Phase 0–4.  Criteria are documented in the
+manifest initial-entries table.
 
 **DA-4: Accidental re-generation cost.**
 Running `generate_real_ground_truth.py` without `--slot` regenerates all 15 × 5 = 75
@@ -450,18 +463,28 @@ A regression in deferred metadata fields goes unnoticed indefinitely.
 _Mitigation:_ C4 (offline evaluator) flags deferred mismatches as WARN in its report.
 Document that evaluator output should be reviewed before merging corpus changes.
 
-**DA-9: SP-2 slot is still pending manual selection.**
-The test suite will have a SKIP for SP-2 until a suitable ≤4-page-total arXiv paper is
-identified.  This is acceptable as a known gap.  Best candidates: arXiv preprints of
-Physical Review Letters articles (exactly 4 typeset pages) or 2-page workshop extended
-abstracts.  Once selected, the slot can be populated without changing test code.
+**DA-9: Three slots (SP-1, SP-2, BC-3) are pending manual selection.**
+All three produce SKIP verdicts until a specific document is chosen.  Acceptable as a
+known gap at initial implementation.
+
+- SP-1: non-landmark arXiv paper, ≥13 pp, two-column, figures, numbered references.
+  Search in niche subfields (materials science, computational biology, civil engineering)
+  to minimise memorisation risk.
+- SP-2: total PDF ≤4 pp; best candidates are arXiv preprints of Physical Review Letters
+  papers (exactly 4 typeset pages) or 2-page workshop extended abstracts.
+- BC-3: native PDF of a public-domain text covering the "literary/mixed text" axis;
+  Standard Ebooks (standardebooks.org) provides high-quality PDFs of public-domain books.
+  No conversion required.
+
+Once any slot is selected, populate the manifest entry and run the ground-truth generator
+for that slot only.
 
 ---
 
 ## Open questions (not blocking Phase 0–2)
 
 1. **`requests` already a dependency?** Check `requirements.txt` before adding it.
-2. **fpdf2 version to pin?** Use latest stable at time of Phase 1 implementation.
-3. **BC-3 source text encoding?** Gutenberg #17405 is UTF-8; confirm with a HEAD request.
-4. **SP-2 candidate?** Awaiting manual selection by corpus maintainer.
+2. **SP-1 candidate?** Awaiting manual selection (non-landmark, ≥13 pp, two-column).
+3. **SP-2 candidate?** Awaiting manual selection (total PDF ≤4 pp).
+4. **BC-3 candidate?** Awaiting manual selection (native public-domain PDF, literary axis).
 5. **CONDITIONAL SP-3/SP-4/SP-6 file sizes?** Need live fetches to confirm ≤5 MB.
