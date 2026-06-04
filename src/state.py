@@ -8,6 +8,10 @@ def merge_flat_blocks(
     Passing None as new resets the buffer (used by extractor/retry nodes on fresh runs)."""
     if new is None:
         return []
+    if not isinstance(new, list):
+        # Guard: a non-list value (e.g. serialised JSON string from a model quirk) must
+        # never propagate — return the existing accumulator unchanged.
+        return existing if isinstance(existing, list) else []
     if not existing:
         return new
     return existing + new

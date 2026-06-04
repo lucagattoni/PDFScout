@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.1] — 2026-06-04
+
+### Fixed
+
+- **Worker node blocks type guard** (`src/nodes/worker_node.py`) — Claude occasionally
+  serialises the `blocks` array as a JSON string inside the tool call response instead of
+  a JSON array. The worker node now attempts `json.loads()` on a string return and falls
+  back to `[]` on failure, preventing a `TypeError: can only concatenate list (not "str")
+  to list` crash in the `merge_flat_blocks` reducer.
+- **`merge_flat_blocks` type guard** (`src/state.py`) — added a non-list guard so any
+  unexpected type for `new` returns the existing accumulator unchanged rather than
+  propagating a crash through LangGraph's `apply_writes`.
+- **Corpus manifest URL fixes** — three blocked slots replaced with verified-accessible
+  alternatives: sp-3 (PMC bot-blocked → Frontiers fbioe.2020.00001), bc-1 (CBO 403 →
+  NIST SP 1301), bc-2 (gao.gov 403 → govinfo primary), bc-4 (GAO-22-106118 no mirror →
+  CISA phishing-resistant MFA fact sheet).
+
 ## [1.4.0] — 2026-06-04
 
 ### Added

@@ -9,6 +9,7 @@ Does NOT invoke C1.  Run download_real_fixtures.py before this script.
 import argparse
 import asyncio
 import json
+import logging
 import math
 import os
 import sys
@@ -25,6 +26,10 @@ _GOLDEN_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "real_golden"
 _PDF_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "pdfs" / "real"
 
 from tests.fixtures._golden import CURRENT_SCHEMA_VERSION  # noqa: E402
+
+# httpx / anyio fire cleanup coroutines after asyncio.run() closes its loop; suppress the
+# resulting "Event loop is closed" noise — it doesn't affect correctness.
+logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 
 def _percentile_80(values: list[int]) -> int:

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from typing import Any
 
@@ -86,4 +87,13 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 f"API returned no tool_use block for page {current_page}. "
                 f"Content types: {[b.type for b in response.content]}"
             )
-        return {"extracted_flat_blocks": tool_block.input.get("blocks", [])}
+        blocks = tool_block.input.get("blocks", [])
+        if isinstance(blocks, str):
+            # Claude occasionally serialises the array as a JSON string inside the tool call.
+            try:
+                blocks = json.loads(blocks)
+            except (json.JSONDecodeError, ValueError):
+                blocks = []
+        if not isinstance(blocks, list):
+            blocks = []
+        return {"extracted_flat_blocks": blocks}
