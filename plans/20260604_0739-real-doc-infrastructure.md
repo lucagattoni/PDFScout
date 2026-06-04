@@ -177,7 +177,7 @@ the computed floor and record it in the golden file.
 **Classification:** C3 always asserts `result["document_type"] == golden["doc_type"]`.
 `classification_unstable` is an informational flag stored in the golden file for human
 review — it does NOT suppress the assertion.  If classification is genuinely unstable for
-a slot, add a `min_blocks_override` or investigate the document rather than weakening C3.
+a slot, investigate the document (it may be ambiguous) or replace it; do not weaken C3.
 
 **Metadata fields (scientific_paper only):** for each subfield of `metadata.bibliographic`
 that the schema supports (`title`, `authors`, `abstract`, `doi`):
@@ -492,7 +492,12 @@ Output format:
 ```
 
 Verdict levels: `PASS`, `WARN` (deferred-metadata mismatch only), `SKIP` (no PDF or no
-golden), `FAIL` (required assertion failed).
+golden), `FAIL` (required assertion failed, including PDF checksum mismatch).
+
+C4 performs the same PDF checksum guard as C3: if `golden["pdf_sha256"]` is set and does
+not match the on-disk PDF, a `sha256: …` error is appended to `errors` and the verdict
+is FAIL.  Unlike C3 (which stops at `pytest.fail`), C4 continues running the pipeline so
+the report shows both the checksum error and the pipeline assertion results together.
 
 The evaluator imports `_text_in_some` and `assert_valid_bbox_fields` from `_compare.py`,
 and the golden loader from `tests/fixtures/_golden.py`.  Since assertion helpers raise
