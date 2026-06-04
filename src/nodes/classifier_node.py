@@ -25,6 +25,7 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
                             "media_type": "application/pdf",
                             "data": pdf_base64,
                         },
+                        "cache_control": {"type": "ephemeral"},
                     },
                     {
                         "type": "text",
