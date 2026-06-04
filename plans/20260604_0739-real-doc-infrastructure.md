@@ -501,7 +501,19 @@ No new packages are required.
 
 ## Implementation phases
 
-### Phase 0 — Manifest skeleton (no API calls)
+| Phase | Title | Status | Result |
+|-------|-------|--------|--------|
+| 0 | Manifest skeleton | **DONE** | 15-entry manifest committed; gitignore already covered real/ dir |
+| 1 | Downloader (C1) | **DONE** | 5 invoice PDFs downloaded; sha256 + size_bytes recorded in manifest |
+| 2 | Config additions | **DONE** | grp_r marker, conftest, _compare, _golden.py; 76 existing tests green |
+| 3 | Generator (C2) + golden files | **DONE** | inv-1–5 golden files committed; 3 bugs found and fixed during generation |
+| 4 | Test runner skeleton (C3) | **DONE** | 5 passed / 10 skipped; exit 0 confirmed |
+| 5 | Remaining PDFs + golden files | **IN PROGRESS** | URL selection and verification in progress (this session) |
+| 6 | Offline evaluator (C4) | **DONE — not live-tested** | Script implemented and syntax-checked; full run deferred until Phase 5 completes |
+
+---
+
+### Phase 0 — Manifest skeleton (no API calls) `[DONE]`
 1. Create `tests/fixtures/real_manifest.json` with all 15 entries, `pdf_sha256=null`.
 2. Create `tests/fixtures/real_golden/` directory (empty, add `.gitkeep`).
    → verify: JSON parses; directory exists.
@@ -514,7 +526,7 @@ No new packages are required.
 - sp-3, sp-4, sp-5, sp-6, bc-1, bc-2, bc-4 were given URLs at manifest creation time
   (not deferred to Phase 5); sp-5 (`memorisation_risk: "high"`) is the BERT paper.
 
-### Phase 1 — Downloader (C1)
+### Phase 1 — Downloader (C1) `[DONE]`
 1. Implement `scripts/download_real_fixtures.py`.
 2. Run with `--dry-run` to verify URL resolution logic without writing files.
 3. Run live for the 5 invoice entries (INV-1 to INV-5); verify checksums land in manifest.
@@ -533,7 +545,7 @@ No new packages are required.
 - Manifest write-back uses `json.dump → .tmp → Path(tmp).rename(path)` (atomic); no
   partial-write risk even if the process is interrupted mid-manifest.
 
-### Phase 2 — conftest.py + `_compare.py` + `pyproject.toml` additions
+### Phase 2 — conftest.py + `_compare.py` + `pyproject.toml` additions `[DONE]`
 1. Add `"grp_r: Group R — real-document corpus"` to the `markers` list in `pyproject.toml`
    (alongside `grp_a` through `grp_i`).
 2. Add `"grp_r"` to `require_real_api_key` in `conftest.py`.
@@ -550,7 +562,7 @@ No new packages are required.
 - `_golden.py` is a pure loader with no side effects at import time (DA-7 mitigation:
   files are loaded lazily inside each test call, not at module load).
 
-### Phase 3 — Ground-truth generator (C2) + golden files
+### Phase 3 — Ground-truth generator (C2) + golden files `[DONE]`
 1. Implement `scripts/generate_real_ground_truth.py`.
 2. Run for the invoice PDFs first (INV-1–5 are small, download fast, and have no
    CONDITIONAL status).
@@ -595,7 +607,7 @@ column count is the only reliable structural check.
 This is expected — invoice documents have few headings and their text varies by locale/
 template.
 
-### Phase 4 — Test runner skeleton (C3)
+### Phase 4 — Test runner skeleton (C3) `[DONE]`
 1. Implement `tests/integration/test_real_docs.py` with skip-on-missing logic.
 2. Run `pytest tests/integration/test_real_docs.py -m grp_r`.
    Expected outcome depends on what has been done in earlier phases:
@@ -613,7 +625,7 @@ template.
 - The `_log_metadata_deferred` helper printed no warnings for the invoice slots
   (expected — invoices have no `metadata_deferred` entries in their golden files).
 
-### Phase 5 — Remaining PDFs + golden files
+### Phase 5 — Remaining PDFs + golden files `[IN PROGRESS]`
 1. Finalise NEEDS SELECTION candidates (SP-1, SP-2, BC-3) and verify access to
    CONDITIONAL candidates (SP-3, SP-4, SP-6, BC-1, BC-2, BC-4).
 2. Run downloader for each confirmed entry.
@@ -621,7 +633,7 @@ template.
 4. Run full `grp_r` suite; confirm all 15 tests pass (or SKIP for still-pending slots).
    → verify: ≥10/15 PASS on first run; remaining are SKIP with clear reason.
 
-### Phase 6 — Offline evaluator (C4)
+### Phase 6 — Offline evaluator (C4) `[DONE — not live-tested]`
 1. Implement `scripts/evaluate_real_docs.py`.
 2. Run against committed golden files; verify report matches pytest results.
    → verify: PASS/WARN/SKIP labels agree with pytest output for all present slots.
