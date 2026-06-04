@@ -4,6 +4,7 @@ _Created: 2026-06-04 07:39_
 _Updated: 2026-06-04 · all PDFs download-only (no commit); SP-1 and BC-3 moved to NEEDS SELECTION; evaluator output changed to JSON with datetime-prefix filename_
 _Updated: 2026-06-04 · fix stale "conversion flags" / "convert" text; fix result key doc_type→document_type; add null-URL skip to C1; add schema_version+raw_block_counts to golden schema; add _assert_metadata_required/_assert_table_dimensions specs; introduce shared _golden.py; fix Phase 3 wording; replace redundant DA-3_
 _Updated: 2026-06-04 · fix requests→httpx; add pyproject.toml grp_r marker requirement; specify _golden.py API; specify _run_pipeline; add min_blocks_override to manifest schema_
+_Updated: 2026-06-04 · fix C2 metadata fields (year/journal_or_venue not in schema); specify manifest as JSON array; fix C1 null-sha logic; specify C1 write-back timing; clarify C2-C1 coupling; add --all/--dry-run to C2 CLI; specify spot_check_fragments selection; fill parametrize list; remove dead _load_manifest fixture; fix _load_golden naming; add empty-golden skip guard; add schema_version check; define _log_metadata_deferred; fix _assert_metadata_required spec; fix C4 assertion wrapping; fix Phase 4 verify condition_
 
 ## Goal
 
@@ -17,8 +18,8 @@ covering:
    assertions from the consensus, then commits those golden files.
 4. A **test runner** (`test_real_docs.py`, marker `grp_r`) that compares live pipeline
    output against the committed golden files.
-5. An **offline evaluator** that produces a human-readable regression report without
-   spinning up pytest.
+5. An **offline evaluator** that produces a JSON regression report without spinning up
+   pytest.
 
 ---
 
@@ -76,6 +77,16 @@ Extends the selection criteria in the corpus plan with runtime fields needed by 
 first time a document is fetched and used by C1 on subsequent runs to detect upstream
 changes.
 
+The file is a **JSON array** of these objects:
+```json
+[
+  {"slot_id": "sp-1", "doc_type": "scientific_paper", "url": "...", ...},
+  {"slot_id": "inv-1", "doc_type": "invoice", "url": "...", ...}
+]
+```
+C1 reads the full array, updates entries in-memory, and writes the array back atomically
+at the end of the run.  Entries are looked up by `slot_id`.
+
 ### Initial entries
 
 Derived from the corpus plan.  `pdf_sha256` and `size_bytes` left null until first run.
@@ -109,11 +120,16 @@ Derived from the corpus plan.  `pdf_sha256` and `size_bytes` left null until fir
    skip gracefully (not an error; do NOT exit 1).
 3. Resolve the target path `tests/fixtures/pdfs/real/<slot_id>.pdf`.
 4. If the file exists on disk (gitignored), compute its SHA-256:
-   - If `pdf_sha256` in manifest is non-null and matches → skip (already fresh).
-   - If it does not match → warn and re-download (upstream PDF changed).
+   - If `pdf_sha256` in manifest is **null** → record the computed SHA and size; skip
+     download (file is already present; null just means it was never recorded).
+   - If `pdf_sha256` **matches** computed SHA → skip (already fresh).
+   - If `pdf_sha256` **does not match** → warn and re-download (upstream PDF changed).
 5. Download from `url`; if HTTP 4xx/5xx, retry `fallback_url` if set.
-6. Write back `pdf_sha256` and `size_bytes` into the manifest entry if they were null.
-7. Exit 1 if any entry with a non-null URL could not be fetched.
+6. Update `pdf_sha256` and `size_bytes` in the in-memory manifest entry.
+7. After processing all entries, write the updated manifest array back to disk atomically
+   (write to a temp file, then rename).  If C1 crashes before this point, unrecorded
+   sha fields will be re-computed on the next run.
+8. Exit 1 if any entry with a non-null URL could not be fetched.
 
 ### CLI
 
@@ -138,31 +154,40 @@ Output is committed and reviewed before merging.
 
 ```
 for each slot_id in manifest:
-    if url is null: log "slot <id>: no URL set — skipping" and continue
-    ensure pdf exists (call C1 if needed); if still missing, log and continue
+    if url is null: log "slot <id>: no URL — NEEDS SELECTION; skipping" and continue
+    if pdf file does not exist: log "slot <id>: PDF missing — run download_real_fixtures.py; skipping" and continue
     run pipeline N times (default N=5) collecting all block lists
     derive golden assertions (see below)
     write tests/fixtures/real_golden/<slot_id>.json
 ```
+
+C2 does **not** invoke C1.  It checks file existence only.  Run C1 before C2.
 
 ### Deriving stable assertions
 
 **Block count:** `min_blocks = floor(percentile_80(block_counts_across_runs))`
 This sets a floor: at least this many blocks must appear.  Using 80th percentile rather
 than the minimum avoids a single bad run dragging the threshold down.
+If the manifest entry has a non-null `min_blocks_override`, use that value instead of
+the computed floor and record it in the golden file.
 
 **Classification:** unanimous across all N runs, else mark as `classification_unstable`
 (informational flag, no assertion generated).
 
-**Metadata fields (scientific_paper only):** for each subfield
-(`title`, `authors`, `year`, `doi`, `abstract`, `journal_or_venue`):
+**Metadata fields (scientific_paper only):** for each subfield of `metadata.bibliographic`
+that the schema supports (`title`, `authors`, `abstract`, `doi`):
 - If the field value is identical across ≥4/5 runs: emit as `metadata_required`.
 - If 3/5: emit as `metadata_deferred` (soft assertion, not enforced in CI).
 - If <3/5: omit entirely.
 
-**Spot-check text:** For each run, collect `text` values of all blocks of type
-`heading` and `paragraph`.  A text fragment F is included in `spot_check_fragments` if
-F (after `_normalize`) appears in ≥4/5 runs somewhere in the block list.
+(`year` and `journal_or_venue` are NOT subfields of `metadata.bibliographic` in the
+scientific_paper schema and must not be asserted here.)
+
+**Spot-check text:** For each run, collect the full normalized `text` of all blocks
+with `type == "heading"`.  A heading text H is included in `spot_check_fragments` if H
+(after `_normalize`) appears in ≥4/5 runs in a block of type `heading`.  Cap at 10
+fragments per document.  Paragraph body text is excluded — headings are more stable
+across runs.
 
 **Table dimensions (invoice only):** `table_data.total_rows` / `total_cols` are included
 if identical across ≥4/5 runs.
@@ -181,12 +206,12 @@ if identical across ≥4/5 runs.
   "min_blocks": 43,                // floor(percentile_80(raw_block_counts))
   "classification": "scientific_paper",
   "classification_unstable": false,
-  "metadata_required": {           // assert ≥1 block contains each field
+  "metadata_required": {           // assert ≥1 block has metadata.bibliographic[key] == value
     "title": "<paper title>",
-    "year": 2024
+    "doi": "10.xxxx/..."
   },
   "metadata_deferred": {           // log-only; never fails the test
-    "journal_or_venue": "<venue>"
+    "abstract": "<first sentence of abstract>"
   },
   "spot_check_fragments": [        // each must appear in ≥1 block's text
     "<section heading fragment>",
@@ -200,12 +225,13 @@ if identical across ≥4/5 runs.
 ### CLI
 
 ```
-python scripts/generate_real_ground_truth.py [--slot sp-1] [--runs 5] [--force]
+python scripts/generate_real_ground_truth.py (--slot sp-1,sp-2 | --all) [--runs 5] [--force] [--dry-run]
 ```
 
+`--slot` / `--all` are mutually exclusive and one is required (no implicit "run all").
 `--force` regenerates even when a golden file already exists and the checksum matches.
-Without `--force`, exits early if `pdf_sha256` in the golden file matches the current
-file on disk (PDF unchanged → skip expensive re-run).
+`--dry-run` prints which slots would be processed without making any API calls.
+Without `--force`, skips a slot if its golden file exists and `pdf_sha256` matches.
 
 ---
 
@@ -214,21 +240,37 @@ file on disk (PDF unchanged → skip expensive re-run).
 ### Structure
 
 ```python
+from tests.fixtures._golden import load_golden
+from tests.integration._compare import _text_in_some, assert_valid_bbox_fields
+
+CURRENT_SCHEMA_VERSION = 1
+
+_REAL_PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs" / "real"
+
 @pytest.mark.e2e
 @pytest.mark.grp_r
 class TestRealDocs:
-    @pytest.fixture(autouse=True)
-    def _load_manifest(self): ...
 
-    @pytest.mark.parametrize("slot_id", [...])
+    @pytest.mark.parametrize("slot_id", [
+        "sp-1", "sp-2", "sp-3", "sp-4", "sp-5", "sp-6",
+        "inv-1", "inv-2", "inv-3", "inv-4", "inv-5",
+        "bc-1", "bc-2", "bc-3", "bc-4",
+    ])
     async def test_real_doc(self, slot_id):
-        golden = _load_golden(slot_id)
+        golden = load_golden(slot_id)
+        if not golden:
+            pytest.skip(f"{slot_id}: no golden file — run generate_real_ground_truth.py first")
+
+        assert golden.get("schema_version") == CURRENT_SCHEMA_VERSION, (
+            f"{slot_id}: golden schema_version mismatch — re-run generate_real_ground_truth.py"
+        )
+
         pdf_path = _REAL_PDFS / f"{slot_id}.pdf"
         if not pdf_path.exists():
-            pytest.skip(f"PDF not present: run download_real_fixtures.py first")
+            pytest.skip(f"{slot_id}: PDF not present — run download_real_fixtures.py first")
 
         # checksum guard
-        actual_sha = sha256(pdf_path)
+        actual_sha = _sha256(pdf_path)
         if golden["pdf_sha256"] and actual_sha != golden["pdf_sha256"]:
             pytest.fail(
                 f"{slot_id}: PDF checksum mismatch — "
@@ -268,16 +310,47 @@ class TestRealDocs:
 
 ### Private helpers in `test_real_docs.py`
 
-`_assert_metadata_required(blocks, golden)` — for each `(key, expected)` pair in
-`golden["metadata_required"]`, searches all blocks for a block whose
-`metadata.bibliographic` (scientific_paper) or `metadata.table_data` (invoice) contains
-a field matching `key` with value equal to `expected`.  Fails if none found.
+```python
+import hashlib
 
-`_assert_table_dimensions(blocks, ta)` — finds at least one block where
-`metadata.table_data.total_rows >= ta["min_rows"]` and
-`metadata.table_data.total_cols >= ta["min_cols"]`.  Fails if no such block exists.
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
-Both helpers are private to `test_real_docs.py`.  They are NOT added to `_compare.py`
+def _assert_metadata_required(blocks: list[dict], golden: dict) -> None:
+    """For each (key, expected) in golden["metadata_required"], assert that at least
+    one block has metadata.bibliographic[key] == expected.  scientific_paper only."""
+    for key, expected in golden["metadata_required"].items():
+        found = any(
+            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected
+            for b in blocks
+        )
+        assert found, (
+            f"metadata_required[{key!r}]={expected!r} not found in any block"
+        )
+
+def _log_metadata_deferred(blocks: list[dict], golden: dict) -> None:
+    """Log deferred metadata mismatches to stdout.  Never raises."""
+    for key, expected in golden.get("metadata_deferred", {}).items():
+        found = any(
+            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected
+            for b in blocks
+        )
+        if not found:
+            print(f"[grp_r deferred] {key!r}: expected {expected!r} not found in any block")
+
+def _assert_table_dimensions(blocks: list[dict], ta: dict) -> None:
+    """Assert at least one block has table_data.total_rows >= min_rows and
+    total_cols >= min_cols."""
+    for b in blocks:
+        td = b.get("metadata", {}).get("table_data")
+        if td and td["total_rows"] >= ta["min_rows"] and td["total_cols"] >= ta["min_cols"]:
+            return
+    raise AssertionError(
+        f"No table block found with ≥{ta['min_rows']} rows and ≥{ta['min_cols']} cols"
+    )
+```
+
+These helpers are private to `test_real_docs.py`.  They are NOT added to `_compare.py`
 (too real-doc-specific to be general).
 
 ### Shared golden loader (`tests/fixtures/_golden.py`)
@@ -382,7 +455,7 @@ Output format:
       "blocks_min_required": 15,
       "text_check": true,
       "metadata_required_pass": true,
-      "metadata_deferred_mismatches": ["journal_or_venue"],
+      "metadata_deferred_mismatches": ["abstract"],
       "verdict": "WARN"
     }
   ],
@@ -398,11 +471,21 @@ Output format:
 Verdict levels: `PASS`, `WARN` (deferred-metadata mismatch only), `SKIP` (no PDF or no
 golden), `FAIL` (required assertion failed).
 
-The evaluator imports assertion helpers from `_compare.py` and the golden loader from
-`tests/fixtures/_golden.py`.  It does NOT import from `test_real_docs.py` — pytest test
-modules cannot be safely imported outside of a pytest session (fixtures do not
-initialise).  The shared `_golden.py` module is also imported by C3, ensuring both
-consumers use identical loading logic.
+The evaluator imports `_text_in_some` and `assert_valid_bbox_fields` from `_compare.py`,
+and the golden loader from `tests/fixtures/_golden.py`.  Since assertion helpers raise
+`AssertionError`, C4 wraps each call in a `_try_assert` helper to convert raise → bool:
+
+```python
+def _try_assert(fn, *args, **kwargs) -> tuple[bool, str]:
+    try:
+        fn(*args, **kwargs)
+        return True, ""
+    except AssertionError as e:
+        return False, str(e)
+```
+
+C4 does NOT import from `test_real_docs.py` — pytest test modules cannot be safely
+imported outside of a pytest session (fixtures do not initialise).
 
 ---
 
@@ -433,7 +516,7 @@ No new packages are required.
    (alongside `grp_a` through `grp_i`).
 2. Add `"grp_r"` to `require_real_api_key` in `conftest.py`.
 3. Add `_text_in_some` to `_compare.py`.
-4. Create `tests/fixtures/_golden.py` (see spec below).
+4. Create `tests/fixtures/_golden.py` (see spec in C3 section above).
    → verify: no existing tests broken (`pytest tests/integration/ -x --ignore=tests/integration/test_real_docs.py`).
 
 ### Phase 3 — Ground-truth generator (C2) + golden files
@@ -445,9 +528,11 @@ No new packages are required.
 
 ### Phase 4 — Test runner skeleton (C3)
 1. Implement `tests/integration/test_real_docs.py` with skip-on-missing logic.
-2. Run `pytest tests/integration/test_real_docs.py -m grp_r` with no PDFs present;
-   all 15 tests should skip gracefully.
-   → verify: zero failures, all SKIPs.
+2. Run `pytest tests/integration/test_real_docs.py -m grp_r`.
+   Expected outcome depends on what has been done in earlier phases:
+   - inv-1–5: golden files exist (Phase 3) and PDFs are on disk (Phase 1) → **PASS**
+   - All other slots: no golden file → **SKIP** ("no golden file")
+   → verify: zero FAIL; inv-1–5 PASS; remaining 10 SKIP.
 
 ### Phase 5 — Remaining PDFs + golden files
 1. Finalise NEEDS SELECTION candidates (SP-1, SP-2, BC-3) and verify access to
