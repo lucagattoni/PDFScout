@@ -8,6 +8,7 @@ Usage:
 """
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -62,13 +63,22 @@ def _evaluate_slot(entry: dict, golden: dict) -> dict:
             "skip_reason": "PDF not present",
         }
 
+    errors = []
+
+    if golden.get("pdf_sha256"):
+        actual_sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+        if actual_sha != golden["pdf_sha256"]:
+            errors.append(
+                f"sha256: PDF checksum mismatch — "
+                f"expected {golden['pdf_sha256'][:16]}…, got {actual_sha[:16]}… "
+                f"(re-run download_real_fixtures.py and generate_real_ground_truth.py)"
+            )
+
     print(f"  {slot_id}: running pipeline…", end=" ", flush=True)
     result = asyncio.run(_run_pipeline(pdf_path))
     blocks = result["hierarchical_document_tree"]["structured_payload"]
     blocks_actual = len(blocks)
     print(f"{blocks_actual} blocks")
-
-    errors = []
 
     # Schema validity
     ok, msg = _try_assert(assert_valid_bbox_fields, blocks)

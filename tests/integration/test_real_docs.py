@@ -4,11 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.fixtures._golden import load_golden
+from tests.fixtures._golden import CURRENT_SCHEMA_VERSION, load_golden
 from tests.integration._compare import _text_in_some, assert_valid_bbox_fields
 
 _REAL_PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs" / "real"
-CURRENT_SCHEMA_VERSION = 1
 
 
 async def _run_pipeline(pdf_path: Path) -> dict:

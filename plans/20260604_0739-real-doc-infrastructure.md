@@ -6,6 +6,7 @@ _Updated: 2026-06-04 · fix stale "conversion flags" / "convert" text; fix resul
 _Updated: 2026-06-04 · fix requests→httpx; add pyproject.toml grp_r marker requirement; specify _golden.py API; specify _run_pipeline; add min_blocks_override to manifest schema_
 _Updated: 2026-06-04 · fix C2 metadata fields (year/journal_or_venue not in schema); specify manifest as JSON array; fix C1 null-sha logic; specify C1 write-back timing; clarify C2-C1 coupling; add --all/--dry-run to C2 CLI; specify spot_check_fragments selection; fill parametrize list; remove dead _load_manifest fixture; fix _load_golden naming; add empty-golden skip guard; add schema_version check; define _log_metadata_deferred; fix _assert_metadata_required spec; fix C4 assertion wrapping; fix Phase 4 verify condition_
 _Updated: 2026-06-04 · implementation findings added for Phases 0–4 and 6_
+_Updated: 2026-06-04 · plan review fixes: correct min_blocks formula, table-dims algo, threshold formulas, classification_unstable semantics, CURRENT_SCHEMA_VERSION single source of truth, Phase 6 verify note, DA-5, golden format example_
 
 ## Goal
 
@@ -166,32 +167,48 @@ C2 does **not** invoke C1.  It checks file existence only.  Run C1 before C2.
 
 ### Deriving stable assertions
 
-**Block count:** `min_blocks = floor(percentile_80(block_counts_across_runs))`
+**Block count:** `min_blocks = max(1, floor(percentile_80(block_counts_across_runs) × 0.85))`
 This sets a floor: at least this many blocks must appear.  Using 80th percentile rather
-than the minimum avoids a single bad run dragging the threshold down.
+than the minimum avoids a single bad run dragging the threshold down.  The 15% safety
+margin absorbs LLM non-determinism (±10–20% block-count variance observed in practice).
 If the manifest entry has a non-null `min_blocks_override`, use that value instead of
 the computed floor and record it in the golden file.
 
-**Classification:** unanimous across all N runs, else mark as `classification_unstable`
-(informational flag, no assertion generated).
+**Classification:** C3 always asserts `result["document_type"] == golden["doc_type"]`.
+`classification_unstable` is an informational flag stored in the golden file for human
+review — it does NOT suppress the assertion.  If classification is genuinely unstable for
+a slot, add a `min_blocks_override` or investigate the document rather than weakening C3.
 
 **Metadata fields (scientific_paper only):** for each subfield of `metadata.bibliographic`
 that the schema supports (`title`, `authors`, `abstract`, `doi`):
-- If the field value is identical across ≥4/5 runs: emit as `metadata_required`.
-- If 3/5: emit as `metadata_deferred` (soft assertion, not enforced in CI).
-- If <3/5: omit entirely.
+
+Let `required_threshold = ceil(0.8 × n_runs)` and `deferred_threshold = ceil(0.6 × n_runs)`.
+For the default `--runs 5`: required=4, deferred=3.
+
+- If the field value appears with the same string representation in ≥`required_threshold`
+  runs: emit as `metadata_required`.
+- If ≥`deferred_threshold` but < `required_threshold`: emit as `metadata_deferred`
+  (soft assertion, log-only; never fails C3 or C4).
+- Otherwise: omit entirely.
 
 (`year` and `journal_or_venue` are NOT subfields of `metadata.bibliographic` in the
 scientific_paper schema and must not be asserted here.)
 
 **Spot-check text:** For each run, collect the full normalized `text` of all blocks
 with `type == "heading"`.  A heading text H is included in `spot_check_fragments` if H
-(after `_normalize`) appears in ≥4/5 runs in a block of type `heading`.  Cap at 10
-fragments per document.  Paragraph body text is excluded — headings are more stable
-across runs.
+(after `_normalize`) appears in ≥`required_threshold` runs (ceil(0.8 × n_runs)) in a
+block of type `heading`.  Cap at 10 fragments per document.  Paragraph body text is
+excluded — headings are more stable across runs.  Invoices often produce zero fragments
+(unstable or absent headings); this is expected and means no text-content assertion is
+generated for those slots.
 
-**Table dimensions (invoice only):** `table_data.total_rows` / `total_cols` are included
-if identical across ≥4/5 runs.
+**Table dimensions (invoice only):** Collect `(total_rows, total_cols)` pairs from all
+table blocks across runs.  A pair present in ≥`required_threshold` runs is a candidate.
+Keep only the candidate with the largest area (rows × cols) to avoid flakiness from small
+auxiliary blocks.  Apply a 40% safety margin to min_rows only:
+`min_rows = max(2, floor(best_rows × 0.6))`.  Column count is stable and is left exact.
+For multi-page invoices the pipeline splits table rows per page — assert column count only
+(set `min_rows: 2`).
 
 ### Golden file format
 
@@ -204,7 +221,7 @@ if identical across ≥4/5 runs.
   "pdf_sha256": "abc123...",       // must match manifest at assert time
   "n_runs": 5,
   "raw_block_counts": [42, 45, 44, 43, 46],  // one entry per run; aids debugging
-  "min_blocks": 43,                // floor(percentile_80(raw_block_counts))
+  "min_blocks": 43,                // max(1, floor(percentile_80(raw_block_counts) × 0.85))
   "classification": "scientific_paper",
   "classification_unstable": false,
   "metadata_required": {           // assert ≥1 block has metadata.bibliographic[key] == value
@@ -214,9 +231,9 @@ if identical across ≥4/5 runs.
   "metadata_deferred": {           // log-only; never fails the test
     "abstract": "<first sentence of abstract>"
   },
-  "spot_check_fragments": [        // each must appear in ≥1 block's text
+  "spot_check_fragments": [        // each must appear in ≥1 block's text (heading-only)
     "<section heading fragment>",
-    "<body text fragment>"
+    "<another heading fragment>"
   ],
   "table_assertions": [],          // [{min_rows, min_cols}] for invoice docs
   "stability_notes": ""
@@ -241,10 +258,8 @@ Without `--force`, skips a slot if its golden file exists and `pdf_sha256` match
 ### Structure
 
 ```python
-from tests.fixtures._golden import load_golden
+from tests.fixtures._golden import CURRENT_SCHEMA_VERSION, load_golden
 from tests.integration._compare import _text_in_some, assert_valid_bbox_fields
-
-CURRENT_SCHEMA_VERSION = 1
 
 _REAL_PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs" / "real"
 
@@ -353,6 +368,13 @@ def _assert_table_dimensions(blocks: list[dict], ta: dict) -> None:
 
 These helpers are private to `test_real_docs.py`.  They are NOT added to `_compare.py`
 (too real-doc-specific to be general).
+
+### `CURRENT_SCHEMA_VERSION` — single source of truth
+
+`CURRENT_SCHEMA_VERSION = 1` lives in `tests/fixtures/_golden.py` and is imported by
+both C2 and C3.  It must never be re-declared in either file.  When bumping the schema
+version, change the constant once in `_golden.py`, then re-run C2 to regenerate golden
+files.
 
 ### Shared golden loader (`tests/fixtures/_golden.py`)
 
@@ -636,7 +658,9 @@ template.
 ### Phase 6 — Offline evaluator (C4) `[DONE — not live-tested]`
 1. Implement `scripts/evaluate_real_docs.py`.
 2. Run against committed golden files; verify report matches pytest results.
-   → verify: PASS/WARN/SKIP labels agree with pytest output for all present slots.
+   → verify: PASS/WARN/SKIP/FAIL labels agree with pytest output for all present slots.
+   Note: C4 now performs the same PDF checksum guard as C3 — a mismatch adds a
+   `sha256: …` error to the report and yields FAIL, matching C3's `pytest.fail` behavior.
 
 **Implementation findings:**
 - Script implemented and syntax-checked; not live-run against committed golden files
@@ -685,12 +709,15 @@ _Mitigation:_ The generator requires `--slot` or explicit `--all` flag; there is
 making API calls.
 
 **DA-5: `min_blocks` floor can still flake.**
-80th-percentile floor over 5 runs means a single run with 20% fewer blocks sets the
-floor.  For long documents with genuine LLM non-determinism, this floor may be too high.  
-_Mitigation:_ The generator stores all 5 block counts in the golden file under
-`raw_block_counts`.  If a test fails the `min_blocks` assertion, the developer can
-inspect whether the variance is systematic or a one-off.  For known-flaky slots, allow
-a per-slot `min_blocks_override` in the manifest.
+80th-percentile floor over N runs means a single low run drags the threshold down.
+For long documents with genuine LLM non-determinism, the raw percentile may be too high.
+_Mitigation (three layers):_
+1. Run 5 times (not 3) so the 80th-percentile estimate is more stable.
+2. Apply a 15% safety margin: `min_blocks = max(1, floor(percentile_80 × 0.85))`, so
+   the test tolerates individual runs ~15% below the observed mode.
+3. Store `raw_block_counts` in the golden file — if a test fails, the developer can
+   inspect whether variance is systematic or a one-off.
+For known-flaky slots, add a per-slot `min_blocks_override` in the manifest.
 
 **DA-6: Link rot.**
 arXiv, govinfo.gov, and GitHub raw URLs can change.  A 404 silently degrades to a SKIP,

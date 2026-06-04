@@ -23,7 +23,8 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 _MANIFEST_PATH = _PROJECT_ROOT / "tests" / "fixtures" / "real_manifest.json"
 _GOLDEN_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "real_golden"
 _PDF_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "pdfs" / "real"
-CURRENT_SCHEMA_VERSION = 1
+
+from tests.fixtures._golden import CURRENT_SCHEMA_VERSION  # noqa: E402
 
 
 def _percentile_80(values: list[int]) -> int:
