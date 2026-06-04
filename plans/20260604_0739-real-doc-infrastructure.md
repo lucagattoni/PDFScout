@@ -2,6 +2,7 @@
 
 _Created: 2026-06-04 07:39_
 _Updated: 2026-06-04 · all PDFs download-only (no commit); SP-1 and BC-3 moved to NEEDS SELECTION; evaluator output changed to JSON with datetime-prefix filename_
+_Updated: 2026-06-04 · fix stale "conversion flags" / "convert" text; fix result key doc_type→document_type; add null-URL skip to C1; add schema_version+raw_block_counts to golden schema; add _assert_metadata_required/_assert_table_dimensions specs; introduce shared _golden.py; fix Phase 3 wording; replace redundant DA-3_
 
 ## Goal
 
@@ -10,8 +11,7 @@ covering:
 
 1. A **fixture downloader** that fetches the 15 real PDFs at test time — no PDF binary
    ever committed to the repository.
-2. A **manifest** that records source URLs, checksums, and conversion flags for every
-   document.
+2. A **manifest** that records source URLs and checksums for every document.
 3. A **ground-truth generator** that runs the pipeline N times and derives stable
    assertions from the consensus, then commits those golden files.
 4. A **test runner** (`test_real_docs.py`, marker `grp_r`) that compares live pipeline
@@ -25,13 +25,14 @@ covering:
 
 ```
 scripts/
-  download_real_fixtures.py      # C1 — fetch / convert / checksum
+  download_real_fixtures.py      # C1 — fetch / checksum
   generate_real_ground_truth.py  # C2 — multi-run consensus → golden JSON
   evaluate_real_docs.py          # C4 — offline diff report
 
 tests/
   fixtures/
     real_manifest.json           # authoritative source-of-truth for all 15 slots
+    _golden.py                   # shared golden loader; imported by C3 and C4
     real_golden/                 # committed golden files (one per slot)
       sp-1.json
       sp-2.json
@@ -102,13 +103,15 @@ Derived from the corpus plan.  `pdf_sha256` and `size_bytes` left null until fir
 ### Responsibilities
 
 1. Read `real_manifest.json`.
-2. For each entry, resolve the target path `tests/fixtures/pdfs/real/<slot_id>.pdf`.
-3. If the file exists on disk (gitignored), compute its SHA-256:
+2. For each entry: if `url` is null, log `slot <id>: no URL set — NEEDS SELECTION` and
+   skip gracefully (not an error; do NOT exit 1).
+3. Resolve the target path `tests/fixtures/pdfs/real/<slot_id>.pdf`.
+4. If the file exists on disk (gitignored), compute its SHA-256:
    - If `pdf_sha256` in manifest is non-null and matches → skip (already fresh).
    - If it does not match → warn and re-download (upstream PDF changed).
-4. Download from `url`; if HTTP 4xx/5xx, retry `fallback_url` if set.
-5. Write back `pdf_sha256` and `size_bytes` into the manifest entry if they were null.
-6. Exit 1 if any required entry could not be fetched.
+5. Download from `url`; if HTTP 4xx/5xx, retry `fallback_url` if set.
+6. Write back `pdf_sha256` and `size_bytes` into the manifest entry if they were null.
+7. Exit 1 if any entry with a non-null URL could not be fetched.
 
 ### CLI
 
@@ -133,7 +136,8 @@ Output is committed and reviewed before merging.
 
 ```
 for each slot_id in manifest:
-    ensure pdf exists (call C1 if needed)
+    if url is null: log "slot <id>: no URL set — skipping" and continue
+    ensure pdf exists (call C1 if needed); if still missing, log and continue
     run pipeline N times (default N=5) collecting all block lists
     derive golden assertions (see below)
     write tests/fixtures/real_golden/<slot_id>.json
@@ -165,24 +169,26 @@ if identical across ≥4/5 runs.
 
 ```jsonc
 {
+  "schema_version": 1,             // bump manually when golden format changes
   "slot_id": "sp-1",
   "doc_type": "scientific_paper",
   "generated_at": "2026-06-04T12:00:00Z",
   "pdf_sha256": "abc123...",       // must match manifest at assert time
   "n_runs": 5,
-  "min_blocks": 42,
+  "raw_block_counts": [42, 45, 44, 43, 46],  // one entry per run; aids debugging
+  "min_blocks": 43,                // floor(percentile_80(raw_block_counts))
   "classification": "scientific_paper",
   "classification_unstable": false,
-  "metadata_required": {           // assert exact match in test
-    "title": "Attention Is All You Need",
-    "year": 2017
+  "metadata_required": {           // assert ≥1 block contains each field
+    "title": "<paper title>",
+    "year": 2024
   },
-  "metadata_deferred": {           // log-only in test; do not fail
-    "journal_or_venue": "NeurIPS"
+  "metadata_deferred": {           // log-only; never fails the test
+    "journal_or_venue": "<venue>"
   },
-  "spot_check_fragments": [        // each must appear in ≥1 block text
-    "multi-head attention",
-    "encoder-decoder"
+  "spot_check_fragments": [        // each must appear in ≥1 block's text
+    "<section heading fragment>",
+    "<body text fragment>"
   ],
   "table_assertions": [],          // [{min_rows, min_cols}] for invoice docs
   "stability_notes": ""
@@ -236,7 +242,7 @@ class TestRealDocs:
         assert_valid_bbox_fields(blocks)
 
         # Tier 2 — classification
-        assert result["doc_type"] == golden["doc_type"]
+        assert result["document_type"] == golden["doc_type"]
 
         # Tier 3 — completeness
         assert len(blocks) >= golden["min_blocks"], (
@@ -257,6 +263,20 @@ class TestRealDocs:
         for ta in golden.get("table_assertions", []):
             _assert_table_dimensions(blocks, ta)
 ```
+
+### Private helpers in `test_real_docs.py`
+
+`_assert_metadata_required(blocks, golden)` — for each `(key, expected)` pair in
+`golden["metadata_required"]`, searches all blocks for a block whose
+`metadata.bibliographic` (scientific_paper) or `metadata.table_data` (invoice) contains
+a field matching `key` with value equal to `expected`.  Fails if none found.
+
+`_assert_table_dimensions(blocks, ta)` — finds at least one block where
+`metadata.table_data.total_rows >= ta["min_rows"]` and
+`metadata.table_data.total_cols >= ta["min_cols"]`.  Fails if no such block exists.
+
+Both helpers are private to `test_real_docs.py`.  They are NOT added to `_compare.py`
+(too real-doc-specific to be general).
 
 ### Required changes to conftest.py
 
@@ -346,8 +366,11 @@ Output format:
 Verdict levels: `PASS`, `WARN` (deferred-metadata mismatch only), `SKIP` (no PDF or no
 golden), `FAIL` (required assertion failed).
 
-The evaluator re-uses the exact same assertion helpers as `test_real_docs.py` by
-importing from `_compare.py` and the golden loader from `test_real_docs.py`.
+The evaluator imports assertion helpers from `_compare.py` and the golden loader from
+`tests/fixtures/_golden.py`.  It does NOT import from `test_real_docs.py` — pytest test
+modules cannot be safely imported outside of a pytest session (fixtures do not
+initialise).  The shared `_golden.py` module is also imported by C3, ensuring both
+consumers use identical loading logic.
 
 ---
 
@@ -381,7 +404,8 @@ Verify `requests` is already a dependency before adding it.
 
 ### Phase 3 — Ground-truth generator (C2) + golden files
 1. Implement `scripts/generate_real_ground_truth.py`.
-2. Run for the committed invoice PDFs first (fastest; no download step).
+2. Run for the invoice PDFs first (INV-1–5 are small, download fast, and have no
+   CONDITIONAL status).
 3. Commit the resulting `tests/fixtures/real_golden/inv-*.json` files.
    → verify: golden files pass JSON schema validation; checksums match manifest.
 
@@ -423,11 +447,12 @@ _Mitigation:_ The checksum mismatch produces a `pytest.fail` with a clear remedi
 message.  Document in the runbook that only corpus maintainers should re-run C2.  Treat
 checksum mismatches as a corpus maintenance ticket, not a blocking CI failure.
 
-**DA-3: BC-3 and SP-1 are still NEEDS SELECTION.**
-Both slots will skip in the grp_r suite until a specific document is chosen.
-_Mitigation:_ The skip count appears in the evaluator summary JSON and serves as a
-visible reminder.  Neither slot blocks Phase 0–4.  Criteria are documented in the
-manifest initial-entries table.
+**DA-3: NEEDS SELECTION entries have null URL — C1 must distinguish "no URL" from "fetch failed".**
+If null URL is treated the same as a failed download, C1 exits 1 whenever any pending
+slot exists, blocking all other downloads.  
+_Mitigation:_ C1 step 2 explicitly skips null-URL entries with a warning; only non-null
+URL fetch failures trigger exit 1.  This means 12 slots can be downloaded and tested
+before the 3 pending slots are resolved.
 
 **DA-4: Accidental re-generation cost.**
 Running `generate_real_ground_truth.py` without `--slot` regenerates all 15 × 5 = 75
