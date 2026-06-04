@@ -247,6 +247,28 @@ make fixtures GRP=b
 
 PDF fixtures are not committed — they are generated at session start by a hash-check that compares each generator script's SHA-256 against `tests/fixtures/manifest.json`. Golden files (expected outputs, design-intent) are committed to `tests/fixtures/golden/`.
 
+### Real-document corpus tests (Group R)
+
+A third tier runs the full pipeline against real PDFs sourced from public repositories and
+government/institutional open-access publications. Unlike Groups A–I (which use synthetic
+PDFs), Group R tests the pipeline against documents it will encounter in production.
+
+```bash
+# Download PDFs (first time, or when URLs change)
+python scripts/download_real_fixtures.py
+
+# Run Group R tests (requires ANTHROPIC_API_KEY)
+pytest tests/integration/test_real_docs.py -m grp_r
+```
+
+Real PDFs are never committed — they land in `tests/fixtures/pdfs/real/` (gitignored) and
+are fetched on demand by `download_real_fixtures.py`. Golden assertion files are committed
+to `tests/fixtures/real_golden/`. The corpus manifest (`tests/fixtures/real_manifest.json`)
+records URLs, checksums, and licenses for all 15 slots.
+
+**Managing the corpus** (adding slots, updating golden files, replacing stale URLs) — see
+[`docs/real_doc_workflow.md`](docs/real_doc_workflow.md).
+
 **Coverage targets:**
 
 | Module | Coverage |
