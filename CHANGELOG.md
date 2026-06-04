@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.4.0] — 2026-06-04
+
+### Added
+
+- **Real-document corpus infrastructure (C0–C4)** — a full pipeline for managing, downloading,
+  generating ground-truth for, and testing against a 15-slot corpus of real-world PDFs
+  (scientific papers, invoices, baseline documents).
+
+- **C0 — Manifest** (`tests/fixtures/real_manifest.json`) — 15-entry JSON array recording
+  source URL, SHA-256 checksum, license, and memorisation risk for each slot.  All 15 URLs
+  now populated (sp-1–6, inv-1–5, bc-1–4).
+
+- **C1 — Downloader** (`scripts/download_real_fixtures.py`) — fetches real PDFs, records
+  checksums in the manifest, handles null-URL slots gracefully, and retries `fallback_url`
+  on 4xx/5xx.  PDFs land in `tests/fixtures/pdfs/real/` (gitignored; never committed).
+
+- **C2 — Ground-truth generator** (`scripts/generate_real_ground_truth.py`) — runs the
+  full pipeline N times (default 5) per slot and derives stable assertions by consensus:
+  `min_blocks` (80th-percentile floor × 0.85), `spot_check_fragments` (headings stable
+  across ≥80% of runs), `metadata_required`/`metadata_deferred` (scientific papers),
+  `table_assertions` (invoices, largest table by area with 40% row safety margin).
+  Golden files for inv-1–5 committed to `tests/fixtures/real_golden/`.
+
+- **C3 — Test runner** (`tests/integration/test_real_docs.py`, marker `grp_r`) — 15
+  parametrized tests (one per slot) comparing live pipeline output against committed
+  golden files.  Slots without a golden file or PDF skip gracefully.  Tiered assertions:
+  schema validity, classification, block count, spot-check text, metadata, table dimensions.
+  Current result: 5 pass (inv-1–5), 10 skip (remaining slots pending Phase 5 local run).
+
+- **C4 — Offline evaluator** (`scripts/evaluate_real_docs.py`) — produces a
+  `YYYYMMDD_HHMM-evaluation.json` report without pytest overhead.  Verdicts: PASS, WARN
+  (deferred-metadata mismatch), SKIP (no PDF or no golden), FAIL (required assertion
+  failed, including PDF checksum mismatch).
+
+- **Shared golden loader** (`tests/fixtures/_golden.py`) — exports `load_golden(slot_id)`
+  and `CURRENT_SCHEMA_VERSION` (single source of truth; imported by C2 and C3).
+
+- **Corpus runbook** (`docs/real_doc_workflow.md`) — step-by-step instructions for adding
+  slots, updating golden files, and handling upstream PDF changes.
+
+- **`grp_r` pytest marker** — registered in `pyproject.toml`; `conftest.py` gates these
+  tests on `ANTHROPIC_API_KEY` (same pattern as Groups B–I).
+
 ## [1.3.0] — 2026-06-03
 
 ### Fixed

@@ -231,6 +231,15 @@ def assert_valid_bbox_fields(blocks: list[dict]) -> None:
         )
 
 
+def _text_in_some(fragment: str, blocks: list[dict]) -> bool:
+    """Return True if the normalised fragment appears in any block's text."""
+    norm_fragment = _normalize(fragment).lower()
+    return any(
+        norm_fragment in _normalize(b.get("text", "")).lower()
+        for b in blocks
+    )
+
+
 def assert_nearest_heading_parent(blocks: list[dict]) -> None:
     """For each paragraph block, assert its parent_id points to the nearest preceding
     heading in the sorted block list (which must already be in geometric sort order).

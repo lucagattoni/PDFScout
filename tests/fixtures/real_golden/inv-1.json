@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "slot_id": "inv-1",
+  "doc_type": "invoice",
+  "generated_at": "2026-06-04T11:37:13Z",
+  "pdf_sha256": "257641f783ad4d1e5d5273a8179a7f55a6e11202fac307898a867c43e97e927f",
+  "n_runs": 5,
+  "raw_block_counts": [
+    11,
+    11,
+    11,
+    11,
+    11
+  ],
+  "min_blocks": 9,
+  "classification": "invoice",
+  "classification_unstable": false,
+  "metadata_required": {},
+  "metadata_deferred": {},
+  "spot_check_fragments": [],
+  "table_assertions": [
+    {
+      "min_rows": 2,
+      "min_cols": 5
+    }
+  ],
+  "stability_notes": ""
+}
