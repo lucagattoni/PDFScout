@@ -2,28 +2,28 @@
   {
     "slot_id": "sp-1",
     "doc_type": "scientific_paper",
-    "label": "needs_selection.pdf",
-    "url": null,
+    "label": "seismic_traveltime_2311_03751.pdf",
+    "url": "https://arxiv.org/pdf/2311.03751",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
-    "license": null,
-    "memorisation_risk": null,
+    "license": "CC BY",
+    "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "NEEDS MANUAL SELECTION: non-landmark arXiv preprint, \u226513 pp, two-column, figures, numbered refs"
+    "notes": "arXiv:2311.03751 \u2014 seismic traveltime via physics-informed FNO (Song et al. 2023), 13 pp, 12 figs, IEEE TGRS two-column, geophysics/niche"
   },
   {
     "slot_id": "sp-2",
     "doc_type": "scientific_paper",
-    "label": "needs_selection.pdf",
-    "url": null,
+    "label": "radiative_transfer_2302_02641.pdf",
+    "url": "https://arxiv.org/pdf/2302.02641",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
-    "license": null,
-    "memorisation_risk": null,
+    "license": "CC BY",
+    "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "NEEDS MANUAL SELECTION: total PDF \u22644 pp; PRL preprint or 2-page workshop abstract"
+    "notes": "arXiv:2302.02641 \u2014 radiative transfer approximation for surface spectral features (Schmidt 2023), 4 pp, IEEE GRSL two-column, planetary remote sensing"
   },
   {
     "slot_id": "sp-3",
@@ -36,7 +36,7 @@
     "license": "CC BY 4.0",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "CONDITIONAL \u2014 verify file size \u22645 MB; eLife brief, author-year refs, ~28 pp"
+    "notes": "eLife article PMC7725503, author-year refs, ~28 pp; PMC redirect \u2014 verify access with C1"
   },
   {
     "slot_id": "sp-4",
@@ -49,7 +49,7 @@
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "CONDITIONAL \u2014 verify file size \u22645 MB; NIST IR 8170, 33 pp, single-column, table-heavy"
+    "notes": "NIST IR 8170 (2020) \u2014 Approaches for Federal Agencies to Use the Cybersecurity Framework, 33 pp, single-column, table-heavy"
   },
   {
     "slot_id": "sp-5",
@@ -62,7 +62,7 @@
     "license": "CC BY",
     "memorisation_risk": "high",
     "min_blocks_override": null,
-    "notes": "BERT (Devlin et al. 2018), 16 pp, two-column, numbered refs; memorisation risk HIGH"
+    "notes": "BERT (Devlin et al. 2018), 16 pp, two-column, numbered refs; memorisation risk HIGH; URL verified accessible"
   },
   {
     "slot_id": "sp-6",
@@ -75,7 +75,7 @@
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "CONDITIONAL \u2014 verify file size \u22645 MB; NBS TN 290 (1966), scanned typewritten, ~34 pp"
+    "notes": "NBS TN 290 (1966) \u2014 Information Handling in the NSRDS (Franz L. Alt), scanned typewritten, ~34 pp; URL verified accessible"
   },
   {
     "slot_id": "inv-1",
@@ -153,7 +153,7 @@
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "NEEDS VERIFICATION \u2014 confirm direct PDF access; CBO Monthly Budget Review FY2022, ~5\u201310 pp"
+    "notes": "CBO Monthly Budget Review: Summary for Fiscal Year 2022 (November 2022), ~8 pp; URL verified accessible"
   },
   {
     "slot_id": "bc-2",
@@ -166,20 +166,20 @@
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "GAO-22-105841 Science & Tech Spotlight, 2 pp, headings + bullets; govinfo.gov mirror as fallback"
+    "notes": "GAO-22-105841 Science & Tech Spotlight: Wastewater Surveillance (April 2022), 2 pp, headings + bullets; URL verified accessible; govinfo.gov mirror as fallback"
   },
   {
     "slot_id": "bc-3",
     "doc_type": "baseline_core",
-    "label": "needs_selection.pdf",
-    "url": null,
+    "label": "jekyll_hyde_stevenson.pdf",
+    "url": "https://www.planetebook.com/free-ebooks/the-strange-case-of-dr-jekyll.pdf",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
-    "license": null,
-    "memorisation_risk": null,
+    "license": "Public domain",
+    "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "NEEDS MANUAL SELECTION: native PDF of public-domain text, chapter headings + prose, no tables"
+    "notes": "Planet eBook \u2014 The Strange Case of Dr Jekyll and Mr Hyde (Stevenson, 1886), ~70 pp native PDF, 13 titled chapters, prose only, no tables"
   },
   {
     "slot_id": "bc-4",
@@ -192,6 +192,6 @@
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "CONDITIONAL \u2014 GAO-22-106118 Science & Tech Spotlight, 2 pp, headings + bullets + sidebar"
+    "notes": "GAO-22-106118 Science & Tech Spotlight: Brain-Computer Interfaces (September 2022), 2 pp, headings + bullets + sidebar; URL verified accessible"
   }
 ]

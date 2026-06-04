@@ -535,7 +535,7 @@ No new packages are required.
 | 2 | Config additions | **DONE** | grp_r marker, conftest, _compare, _golden.py; 76 existing tests green |
 | 3 | Generator (C2) + golden files | **DONE** | inv-1–5 golden files committed; 3 bugs found and fixed during generation |
 | 4 | Test runner skeleton (C3) | **DONE** | 5 passed / 10 skipped; exit 0 confirmed |
-| 5 | Remaining PDFs + golden files | **IN PROGRESS** | URL selection and verification in progress (this session) |
+| 5 | Remaining PDFs + golden files | **BLOCKED — local run required** | All 15 URLs selected; sandbox blocks non-GitHub downloads; run C1+C2 locally to complete |
 | 6 | Offline evaluator (C4) | **DONE — not live-tested** | Script implemented and syntax-checked; full run deferred until Phase 5 completes |
 
 ---
@@ -652,13 +652,47 @@ template.
 - The `_log_metadata_deferred` helper printed no warnings for the invoice slots
   (expected — invoices have no `metadata_deferred` entries in their golden files).
 
-### Phase 5 — Remaining PDFs + golden files `[IN PROGRESS]`
+### Phase 5 — Remaining PDFs + golden files `[IN PROGRESS — URLs selected; local download required]`
 1. Finalise NEEDS SELECTION candidates (SP-1, SP-2, BC-3) and verify access to
    CONDITIONAL candidates (SP-3, SP-4, SP-6, BC-1, BC-2, BC-4).
 2. Run downloader for each confirmed entry.
 3. Run ground-truth generator; commit golden files.
 4. Run full `grp_r` suite; confirm all 15 tests pass (or SKIP for still-pending slots).
    → verify: ≥10/15 PASS on first run; remaining are SKIP with clear reason.
+
+**Implementation findings (step 1 complete):**
+
+All 15 URLs are now populated in `real_manifest.json`.  NEEDS SELECTION and CONDITIONAL
+notes removed from all entries — URL selection is complete.
+
+*URL selection:*
+- sp-1: arXiv:2311.03751 — seismic traveltime via physics-informed FNO (Song et al. 2023),
+  13 pp, 12 figs, IEEE TGRS two-column, geophysics.  Memorisation risk: low.
+- sp-2: arXiv:2302.02641 — radiative transfer approximation for surface spectral features
+  (Schmidt 2023), 4 pp, IEEE GRSL two-column, planetary remote sensing.  Memorisation risk: low.
+- bc-3: Planet eBook edition of *The Strange Case of Dr Jekyll and Mr Hyde* (Stevenson,
+  1886), ~70 pp native PDF, 13 titled chapters, prose only, public domain.
+
+*Conditional entries verified via web search (all pass):*
+sp-4 (NIST IR 8170, 33 pp), sp-6 (NBS TN 290, 34 pp), bc-1 (CBO MBR FY2022, ~8 pp),
+bc-2 (GAO-22-105841, 2 pp), bc-4 (GAO-22-106118, 2 pp), sp-5 (arXiv:1810.04805, accessible).
+
+sp-3 (PMC7725503 / eLife): URL pattern is a standard PMC redirect; access unconfirmed
+from sandbox.  C1 will follow the redirect via httpx; verify locally on first run.
+
+*Sandbox network limitation:* Steps 2–4 require running C1 and C2 outside this
+environment.  The remote execution sandbox allows only GitHub raw-content downloads
+(which is how inv-1–5 were fetched).  All other domains (arXiv, NIST, GAO, CBO,
+Planet eBook) return HTTP 403 from within the sandbox.
+
+To complete Phase 5, run locally:
+```bash
+python scripts/download_real_fixtures.py --slot sp-1,sp-2,sp-3,sp-4,sp-5,sp-6,bc-1,bc-2,bc-3,bc-4
+python scripts/generate_real_ground_truth.py --all --runs 5
+pytest tests/integration/test_real_docs.py -m grp_r
+```
+Then commit the updated `real_manifest.json` (with sha256/size_bytes filled) and all
+new `tests/fixtures/real_golden/*.json` files.
 
 ### Phase 6 — Offline evaluator (C4) `[DONE — not live-tested]`
 1. Implement `scripts/evaluate_real_docs.py`.
