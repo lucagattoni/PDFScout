@@ -28,15 +28,15 @@
   {
     "slot_id": "sp-3",
     "doc_type": "scientific_paper",
-    "label": "elife_pmc7725503.pdf",
-    "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7725503/pdf/",
+    "label": "frontiers_fbioe_2020_00001.pdf",
+    "url": "https://www.frontiersin.org/articles/10.3389/fbioe.2020.00001/pdf",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
     "license": "CC BY 4.0",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "eLife article PMC7725503, author-year refs, ~28 pp; PMC redirect \u2014 verify access with C1"
+    "notes": "Frontiers fbioe.2020.00001 \u2014 iPS cell cryopreservation (Hubel et al.), ~13 pp, author-year refs, CC BY; replaces blocked PMC7725503"
   },
   {
     "slot_id": "sp-4",
@@ -159,14 +159,14 @@
     "slot_id": "bc-2",
     "doc_type": "baseline_core",
     "label": "gao_wastewater_surveillance.pdf",
-    "url": "https://www.gao.gov/assets/gao-22-105841.pdf",
-    "fallback_url": "https://govinfo.gov/content/pkg/GOVPUB-GA-PURL-gpo177086/pdf/GOVPUB-GA-PURL-gpo177086.pdf",
+    "url": "https://govinfo.gov/content/pkg/GOVPUB-GA-PURL-gpo177086/pdf/GOVPUB-GA-PURL-gpo177086.pdf",
+    "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "GAO-22-105841 Science & Tech Spotlight: Wastewater Surveillance (April 2022), 2 pp, headings + bullets; URL verified accessible; govinfo.gov mirror as fallback"
+    "notes": "GAO-22-105841 Wastewater Surveillance — govinfo primary (gao.gov blocks bots); same document as before"
   },
   {
     "slot_id": "bc-3",
@@ -184,14 +184,14 @@
   {
     "slot_id": "bc-4",
     "doc_type": "baseline_core",
-    "label": "gao_brain_computer_interfaces.pdf",
-    "url": "https://www.gao.gov/assets/gao-22-106118.pdf",
+    "label": "cisa_phishing_resistant_mfa.pdf",
+    "url": "https://www.cisa.gov/sites/default/files/publications/fact-sheet-implementing-phishing-resistant-mfa-508c.pdf",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "GAO-22-106118 Science & Tech Spotlight: Brain-Computer Interfaces (September 2022), 2 pp, headings + bullets + sidebar; URL verified accessible"
+    "notes": "CISA fact sheet Oct 2022 — phishing-resistant MFA, ~5 pp, headings + bullets; replaces blocked GAO-22-106118 (no govinfo mirror found)"
   }
 ]
