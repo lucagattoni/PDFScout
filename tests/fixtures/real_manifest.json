@@ -28,15 +28,15 @@
   {
     "slot_id": "sp-3",
     "doc_type": "scientific_paper",
-    "label": "frontiers_fbioe_2020_00001.pdf",
-    "url": "https://www.frontiersin.org/articles/10.3389/fbioe.2020.00001/pdf",
+    "label": "helioseismology_2007_01432.pdf",
+    "url": "https://arxiv.org/pdf/2007.01432",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
-    "license": "CC BY 4.0",
+    "license": "arXiv (CC BY)",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "Frontiers fbioe.2020.00001 \u2014 iPS cell cryopreservation (Hubel et al.), ~13 pp, author-year refs, CC BY; replaces blocked PMC7725503"
+    "notes": "arXiv:2007.01432 \u2014 Probabilistic Inversions for Time-Distance Helioseismology (Jackiewicz 2020), ~25 pp, author-year refs, niche astrophysics; replaces bot-blocked Frontiers/PMC"
   },
   {
     "slot_id": "sp-4",

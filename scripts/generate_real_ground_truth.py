@@ -203,6 +203,16 @@ def _process_slot(entry: dict, n_runs: int, force: bool, dry_run: bool) -> None:
         print(f"  {slot_id}: PDF missing — run download_real_fixtures.py first; skipping")
         return
 
+    with open(pdf_path, "rb") as _f:
+        _header = _f.read(5)
+    if not _header.startswith(b"%PDF"):
+        print(
+            f"  {slot_id}: {pdf_path.name} is not a valid PDF (header={_header!r}) — "
+            f"the server likely returned HTML; re-run: "
+            f"download_real_fixtures.py --slot {slot_id} --force; skipping"
+        )
+        return
+
     golden_path = _GOLDEN_DIR / f"{slot_id}.json"
     if golden_path.exists() and not force:
         existing = json.loads(golden_path.read_text())
