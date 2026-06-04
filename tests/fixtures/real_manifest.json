@@ -145,15 +145,15 @@
   {
     "slot_id": "bc-1",
     "doc_type": "baseline_core",
-    "label": "cbo_monthly_budget_review_2022.pdf",
-    "url": "https://www.cbo.gov/system/files/2022-11/58592-MBR.pdf",
+    "label": "nist_sp_1301.pdf",
+    "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.1301.pdf",
     "fallback_url": null,
     "pdf_sha256": null,
     "size_bytes": null,
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "CBO Monthly Budget Review: Summary for Fiscal Year 2022 (November 2022), ~8 pp; URL verified accessible"
+    "notes": "NIST SP 1301 — CSF 2.0 Quick-Start Guide for Organizational Profiles, ~11 pp, headings + prose + tables; replaces blocked cbo.gov"
   },
   {
     "slot_id": "bc-2",
