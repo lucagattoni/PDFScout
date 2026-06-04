@@ -2,6 +2,7 @@
 
 _Created: 2026-06-03 15:40_
 _Updated: 2026-06-03 15:50 · DA review v1 — gitignore path bug fixed (pdfs/real/ not real/pdfs/), Phase 2 baseline lifted to 3 runs, skip-on-missing-fixture requirement added, Phase 3 stability threshold corrected to ≥4/5, author-year reference caveat added, concrete candidate examples added, cost estimate clarified_
+_Updated: 2026-06-04 06:33 · Phase 1 candidate selection — replaced placeholder slots with specific named candidates, added source URLs, license, file-size data, and verification status for all 15 slots; INV-1–5 all sourced from strzibny/invoice_printer (MIT, all ≤200 KB); SP-2 deferred to manual selection; BC-3 requires PDF conversion; coverage gaps documented_
 
 ## Goal
 
@@ -228,31 +229,64 @@ This mirrors the D-group approach used for synthetic tests.
 
 ## Candidate examples (Phase 1 starting points)
 
-These are example candidates that fit the selection criteria. They are NOT commitments —
-they must pass Phase 1 verification before being added to the manifest.
+These are specific candidates identified during Phase 1 research. Status codes:
+**PASS** = verified, ready to add to manifest. **CONDITIONAL** = verified exists but one
+or more facts (file size, license) need manual confirmation. **NEEDS VERIFICATION** =
+candidate identified but page count or license not confirmed. PDFs marked ≤200 KB can
+be committed directly to the repo (removing the download requirement for those tests).
 
-| Slot | Candidate | Source | Coverage |
-|---|---|---|---|
-| SP-1 | "Attention Is All You Need" (Vaswani et al., 2017) | arXiv:1706.03762 | Two-column, 15 pages, many figures, numbered refs |
-| SP-2 | A short 1–4 page arXiv preprint (any field) | arXiv | Pioneer-only path; no burst |
-| SP-3 | A PMC open-access clinical paper | PubMed Central (CC BY) | Two-column, moderate figures, author-year refs |
-| SP-4 | A NIST technical report | nvlpubs.nist.gov | Single-column, 10–20 pages, table-heavy |
-| SP-5 | A scanned/mixed-quality paper from OSF | osf.io (CC BY) | Quality degradation; H-group complement |
-| SP-6 | A 15+ page two-column paper with many references | arXiv | Long burst, dense references |
-| INV-1 | Invoice sample from Invoice Ninja (MIT licence) | GitHub | 1-page, formal grid, single table |
-| INV-2 | Multi-table invoice (line items + tax breakdown) | open accounting sample data | 1-page, multiple tables |
-| INV-3 | 2-page invoice (totals on page 2) | open accounting sample data | Multi-page, cross-page split |
-| INV-4 | Informal invoice (mixed text+table) | public domain | Informal layout |
-| INV-5 | Non-English invoice (e.g. German or French) | public domain | Language robustness |
-| BC-1 | US Congressional Research Service report | congress.gov (public domain) | Technical report, multi-page, prose + lists |
-| BC-2 | A 1-page US government letter / memo | archives.gov (public domain) | Short baseline_core; classifier rejection |
-| BC-3 | Project Gutenberg formatted text (converted to PDF) | gutenberg.org (public domain) | Prose-only, heading + paragraph structure |
-| BC-4 | A white-paper style hybrid document | public domain | Ambiguous type; classifier must fall back to baseline_core |
+| Slot | Candidate | Source URL | License | Status |
+|---|---|---|---|---|
+| SP-1 | "Attention Is All You Need" (Vaswani et al., 2017) — 15 pp, two-column, figures, numbered refs | `https://arxiv.org/pdf/1706.03762` | CC BY-NC-SA | PASS — memorisation risk HIGH (see note) |
+| SP-2 | *(open — needs manual selection)* arXiv preprint with TOTAL PDF ≤4 pages including references. ACL 2022 short papers are 8–9 pp total; SemEval system papers are 6–8 pp — both too long. Best candidates: (a) an arXiv preprint of a Physical Review Letters paper (~4 pp, any physics topic); (b) a 2-page NeurIPS/ICML workshop extended abstract; (c) any arXiv paper where the full PDF is confirmed ≤4 pp. | arXiv | CC BY (verify) | NEEDS MANUAL SELECTION — verify total PDF ≤4 pp before adding |
+| SP-3 | eLife "Wnt3 signalling controls lateral inhibition of pigmentation" (or similar eLife brief paper, PMC7725503) — CC BY, author-year refs, ~28 pp | `https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7725503/pdf/` | CC BY 4.0 | CONDITIONAL — verify file size ≤5 MB before committing URL |
+| SP-4 | NIST IR 8170 "Approaches for Federal Agencies to Use the Cybersecurity Framework" (2020) — 33 pp, single-column, table-heavy | `https://nvlpubs.nist.gov/nistpubs/ir/2020/NIST.IR.8170.pdf` | Public domain | CONDITIONAL — verify file size ≤5 MB |
+| SP-5 | "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding" (Devlin et al., 2018) — 16 pp, two-column, numbered refs | `https://arxiv.org/pdf/1810.04805` | CC BY | PASS — memorisation risk HIGH (see note) |
+| SP-6 | NBS Technical Note 290 (1966, NIST Legacy Collection) — scanned typewritten, ~34 pp | `https://nvlpubs.nist.gov/nistpubs/Legacy/TN/nbstechnicalnote290.pdf` | Public domain | CONDITIONAL — verify file size ≤5 MB; this is the scanned-quality axis doc |
+| INV-1 | `simple_invoice.pdf` (strzibny/invoice_printer) — 1 pp, 1 table, English, formal grid, ~20 KB | `https://raw.githubusercontent.com/strzibny/invoice_printer/master/examples/simple_invoice.pdf` | MIT | PASS — commit directly (20 KB) |
+| INV-2 | `breakdown.pdf` (strzibny/invoice_printer) — 1 pp, 2 tables (info box + line items + VAT), English, ~24 KB | `https://raw.githubusercontent.com/strzibny/invoice_printer/master/examples/breakdown.pdf` | MIT | PASS — commit directly (24 KB) |
+| INV-3 | `long_invoice.pdf` (strzibny/invoice_printer) — 3 pp, running line items across pages, ~72 KB | `https://raw.githubusercontent.com/strzibny/invoice_printer/master/examples/long_invoice.pdf` | MIT | PASS — commit directly (72 KB) |
+| INV-4 | `complex_invoice.pdf` (strzibny/invoice_printer) — 1 pp, multi-section with embedded logo, ~175 KB | `https://raw.githubusercontent.com/strzibny/invoice_printer/master/examples/complex_invoice.pdf` | MIT | CONDITIONAL — commit directly (175 KB); layout is formal-complex, not truly informal mixed-text; informal-axis gap acknowledged (see note) |
+| INV-5 | `czech_invoice.pdf` (strzibny/invoice_printer) — 1 pp, Czech language, 2 tables, ~48 KB | `https://raw.githubusercontent.com/strzibny/invoice_printer/master/examples/czech_invoice.pdf` | MIT | PASS — commit directly (48 KB) |
+| BC-1 | CBO "Monthly Budget Review: Summary for Fiscal Year 2022" — multi-page policy summary with prose + tables | `https://www.cbo.gov/system/files/2022-11/58592-MBR.pdf` | Public domain | NEEDS VERIFICATION — confirm URL, expected page count 5–10 pp; alternative: any CRS "In Brief" report at crsreports.congress.gov |
+| BC-2 | GAO Science & Tech Spotlight "Wastewater Surveillance" (GAO-22-105841, April 2022) — 2 pp, headings + bullet points + brief prose | `https://www.gao.gov/assets/gao-22-105841.pdf` | Public domain | CONDITIONAL — URL confirmed via web search; verify direct PDF access and exact page count (expected 2 pp) |
+| BC-3 | "The Art of War" by Sun Tzu, Lionel Giles translation (Project Gutenberg #17405) — ~15 pp when converted, numbered chapter headings + prose paragraphs | `https://www.gutenberg.org/files/17405/17405.txt` (text file; PDF must be generated by fixture script) | Public domain | NEEDS PDF CONVERSION — add generation step to `download_real_fixtures.py`; no pre-existing PDF to commit |
+| BC-4 | GAO Science & Tech Spotlight "Brain-Computer Interfaces" (GAO-22-106118, Sept 2022) — 2 pp, headings + bullet points + sidebar elements | `https://www.gao.gov/assets/gao-22-106118.pdf` | Public domain | CONDITIONAL — URL confirmed via web search; verify direct PDF access (if blocked, use govinfo.gov mirror) |
 
-**Note on SP-1**: "Attention Is All You Need" is an obvious choice but is also very
-widely used in ML benchmarks. If the model has memorised its content, spot-check
-assertions may pass even without real extraction. Prefer a less famous paper of
-similar layout if memorisation is a concern.
+**Coverage notes:**
+
+- **SP-1 and SP-5 memorisation risk**: Both are famous ML papers. Spot-check assertions
+  (title, author name, section heading) may pass even on hallucinated output because
+  the model has memorised the content. This risk is acceptable — the extraction test
+  still validates the pipeline end-to-end. If memorisation is a concern, substitute
+  with a less famous paper of similar layout (same venue, same format, different topic).
+
+- **SP-2 manual selection needed**: ACL/EMNLP/NAACL short papers (4-page content limit)
+  are 8–9 pages total including references. No standard NLP venue produces PDFs ≤4 pages
+  total. Best alternatives: an arXiv preprint of a Physical Review Letters paper (PRL
+  papers are exactly 4 typeset pages and appear on arXiv), or a 2-page workshop extended
+  abstract. Confirm total PDF page count before adding to manifest.
+
+- **INV-4 informal-layout axis gap**: All five invoice candidates come from
+  `strzibny/invoice_printer`, a library that generates professional-grade formatted
+  invoices. None is truly "informal" in the sense of free-form mixed text + table.
+  `complex_invoice.pdf` is the most varied layout. If coverage of the informal axis is
+  important, replace INV-4 with a hand-typed or minimally-formatted invoice from a
+  different source (e.g., a public domain handwritten invoice scan, or a government
+  procurement order with informal layout).
+
+- **BC-3 PDF conversion**: The fixture download script must generate the PDF from the
+  Project Gutenberg plain-text file. A minimal implementation using `fpdf2` (already a
+  dev dependency) creates a single-column PDF with Roman headings for chapter titles and
+  body text for paragraphs. Target: ~15 pages. The resulting PDF path is
+  `tests/fixtures/pdfs/real/gutenberg_art_of_war.pdf`.
+
+- **BC-2 and BC-4 GAO access**: The GAO website (gao.gov) returns HTTP 403 to automated
+  clients. The PDF files are also mirrored on govinfo.gov under the path pattern
+  `https://govinfo.gov/content/pkg/GOVPUB-GA-PURL-gpoXXXXXX/pdf/GOVPUB-GA-PURL-gpoXXXXXX.pdf`.
+  If direct gao.gov access fails, use govinfo.gov mirror. The govinfo.gov URL for
+  GAO-22-105841 is `https://govinfo.gov/content/pkg/GOVPUB-GA-PURL-gpo177086/pdf/GOVPUB-GA-PURL-gpo177086.pdf`
+  (confirmed via web search).
 
 ---
 
