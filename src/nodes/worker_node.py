@@ -10,7 +10,23 @@ from src.config import CONCURRENCY_LIMIT, MODEL
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
 
-_semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+_semaphore: asyncio.Semaphore | None = None
+_semaphore_loop_id: int = -1
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Return a semaphore bound to the current running event loop.
+
+    asyncio.Semaphore is loop-bound in Python 3.10+. Calling asyncio.run()
+    multiple times (e.g. in generate_real_ground_truth.py, once per slot)
+    creates a fresh loop each time, so the module-level semaphore must be
+    recreated when the loop changes."""
+    global _semaphore, _semaphore_loop_id
+    loop = asyncio.get_running_loop()
+    if id(loop) != _semaphore_loop_id:
+        _semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+        _semaphore_loop_id = id(loop)
+    return _semaphore
 
 
 _SCIENTIFIC_PAPER_INSTRUCTIONS = (
@@ -41,7 +57,7 @@ async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dic
 
 
 async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
-    async with _semaphore:
+    async with _get_semaphore():
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
         _, tool_definition = SchemaRegistry().get_schema_and_tool(state["document_type"])
