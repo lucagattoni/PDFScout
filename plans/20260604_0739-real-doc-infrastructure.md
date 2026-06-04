@@ -3,6 +3,7 @@
 _Created: 2026-06-04 07:39_
 _Updated: 2026-06-04 · all PDFs download-only (no commit); SP-1 and BC-3 moved to NEEDS SELECTION; evaluator output changed to JSON with datetime-prefix filename_
 _Updated: 2026-06-04 · fix stale "conversion flags" / "convert" text; fix result key doc_type→document_type; add null-URL skip to C1; add schema_version+raw_block_counts to golden schema; add _assert_metadata_required/_assert_table_dimensions specs; introduce shared _golden.py; fix Phase 3 wording; replace redundant DA-3_
+_Updated: 2026-06-04 · fix requests→httpx; add pyproject.toml grp_r marker requirement; specify _golden.py API; specify _run_pipeline; add min_blocks_override to manifest schema_
 
 ## Goal
 
@@ -66,6 +67,7 @@ Extends the selection criteria in the corpus plan with runtime fields needed by 
   "size_bytes": null,             // filled by C1
   "license": "CC-BY-4.0",
   "memorisation_risk": null,      // null | "low" | "high"; informational only
+  "min_blocks_override": null,    // integer; overrides percentile_80 floor for flaky slots
   "notes": ""
 }
 ```
@@ -278,6 +280,36 @@ a field matching `key` with value equal to `expected`.  Fails if none found.
 Both helpers are private to `test_real_docs.py`.  They are NOT added to `_compare.py`
 (too real-doc-specific to be general).
 
+### Shared golden loader (`tests/fixtures/_golden.py`)
+
+```python
+import json
+from pathlib import Path
+
+_GOLDEN_DIR = Path(__file__).parent / "real_golden"
+
+def load_golden(slot_id: str) -> dict:
+    path = _GOLDEN_DIR / f"{slot_id}.json"
+    if not path.exists():
+        return {}          # caller treats empty dict as "no golden → SKIP"
+    return json.loads(path.read_text())
+```
+
+Imported by both `test_real_docs.py` (C3) and `evaluate_real_docs.py` (C4).
+
+### `_run_pipeline` helper in `test_real_docs.py`
+
+```python
+from src.graph import build_app
+
+async def _run_pipeline(pdf_path: Path) -> dict:
+    app = build_app(checkpointer=None)
+    return await app.ainvoke({"file_path": str(pdf_path)})
+```
+
+The classifier is **not mocked** — grp_r tests the full pipeline end-to-end (unlike
+grp_i which mocks only the classifier).  No `patch` context manager is used.
+
 ### Required changes to conftest.py
 
 Add `"grp_r"` to the `api_groups` list in `require_real_api_key`:
@@ -376,11 +408,10 @@ consumers use identical loading logic.
 
 ## Dependency additions
 
-| Package | Reason | Where used |
-|---------|--------|------------|
-| `requests` (already present?) | HTTP download | C1 |
+The project uses `pyproject.toml` (no `requirements.txt`).  The HTTP client in use is
+`httpx` (already a dependency).  C1 must use `httpx`, not `requests`.
 
-Verify `requests` is already a dependency before adding it.
+No new packages are required.
 
 ---
 
@@ -397,9 +428,12 @@ Verify `requests` is already a dependency before adding it.
 3. Run live for the 5 invoice entries (INV-1 to INV-5); verify checksums land in manifest.
    → verify: PDFs present on disk (gitignored); SHA-256 written to manifest.
 
-### Phase 2 — conftest.py + `_compare.py` additions
-1. Add `"grp_r"` to `require_real_api_key` in `conftest.py`.
-2. Add `_text_in_some` to `_compare.py`.
+### Phase 2 — conftest.py + `_compare.py` + `pyproject.toml` additions
+1. Add `"grp_r: Group R — real-document corpus"` to the `markers` list in `pyproject.toml`
+   (alongside `grp_a` through `grp_i`).
+2. Add `"grp_r"` to `require_real_api_key` in `conftest.py`.
+3. Add `_text_in_some` to `_compare.py`.
+4. Create `tests/fixtures/_golden.py` (see spec below).
    → verify: no existing tests broken (`pytest tests/integration/ -x --ignore=tests/integration/test_real_docs.py`).
 
 ### Phase 3 — Ground-truth generator (C2) + golden files
@@ -506,10 +540,10 @@ for that slot only.
 
 ---
 
-## Open questions (not blocking Phase 0–2)
+## Open questions (not blocking Phase 0–4)
 
-1. **`requests` already a dependency?** Check `requirements.txt` before adding it.
-2. **SP-1 candidate?** Awaiting manual selection (non-landmark, ≥13 pp, two-column).
-3. **SP-2 candidate?** Awaiting manual selection (total PDF ≤4 pp).
-4. **BC-3 candidate?** Awaiting manual selection (native public-domain PDF, literary axis).
-5. **CONDITIONAL SP-3/SP-4/SP-6 file sizes?** Need live fetches to confirm ≤5 MB.
+1. **SP-1 candidate?** Awaiting manual selection (non-landmark, ≥13 pp, two-column).
+2. **SP-2 candidate?** Awaiting manual selection (total PDF ≤4 pp).
+3. **BC-3 candidate?** Awaiting manual selection (native public-domain PDF, literary axis).
+4. **CONDITIONAL SP-3/SP-4/SP-6 file sizes?** Need live fetches to confirm ≤5 MB.
+5. **BC-1 access?** CBO PDF URL needs a live fetch to confirm it doesn't redirect or 403.
