@@ -116,6 +116,12 @@ The test: Could a developer act on this response and only discover it was wrong 
   _Created: 2026-05-31 14:30_
   _Updated: 2026-05-31 16:05 · <reason for update>_
   ```
+- **Plan and implementation live on the same branch.** Never create a separate
+  `plan/<topic>` branch when an implementation branch for the same feature exists.
+  Start on a `feat/<topic>` branch, write the plan file there, refine it, then
+  implement on the same branch. If a plan branch was already created before the
+  implementation branch, merge the plan branch into the implementation branch before
+  pushing.
 
 ## Reviews
 
