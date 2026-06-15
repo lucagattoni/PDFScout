@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.5.0] — 2026-06-15
+
+### Added
+
+- **A2 — Burst page validation retry** (`src/nodes/worker_node.py`, `src/graph.py`) — burst
+  pages (pages 2–N, dispatched via `Send`) now have inline validation parity with the pioneer
+  page. A new `burst_worker_node` replaces `window_parser_node` for the `parser_worker` graph
+  node. On schema validation failure it retries up to 3 times, injecting the error detail into
+  the next prompt (identical to `retry_incrementor_node`'s behaviour for the pioneer). After 3
+  failed attempts it degrades gracefully: returns whatever blocks were last produced and logs an
+  `extraction_warnings` entry. Blocks missing required fields at hierarchy are still filtered as a
+  second safety net. No graph topology changes — only the node function wired to `parser_worker`
+  changed.
+- **`TestBurstWorkerNode` unit tests** (`tests/unit/nodes/test_worker_node.py`) — five tests
+  covering: first-attempt pass, retry until valid, max-retry degradation with warning, error
+  injection into retry content, empty-block retry.
+
+### Changed
+
+- **C1 test updated** (`tests/integration/test_graph_pipeline.py`) — `test_c1_burst_malformed_block_filtered`
+  renamed to `test_c1_burst_malformed_block_retried_then_filtered`; mock side_effect extended
+  to provide 3 malformed burst responses (one per retry attempt) instead of 1.
+
 ## [1.4.1] — 2026-06-04
 
 ### Fixed

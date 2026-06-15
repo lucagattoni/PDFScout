@@ -3,6 +3,7 @@ import json
 import os
 from typing import Any
 
+import jsonschema
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -113,3 +114,87 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(blocks, list):
             blocks = []
         return {"extracted_flat_blocks": blocks}
+
+
+async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Like window_parser_node but with inline validation-retry (up to 3 attempts).
+
+    Burst pages have no graph-level retry loop, so validation failures are
+    retried inline. After 3 failed attempts the node degrades gracefully:
+    it returns whatever blocks were last produced with an extraction warning."""
+    async with _get_semaphore():
+        client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        current_page = state["current_page"]
+        doc_type = state["document_type"]
+        _, tool_definition = SchemaRegistry().get_schema_and_tool(doc_type)
+        pdf_base64 = await encode_pdf_async(state["file_path"])
+        extra_instructions = _doc_type_instructions(doc_type)
+
+        last_error: str | None = None
+
+        for attempt in range(1, 4):
+            content: list = [
+                {
+                    "type": "document",
+                    "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64},
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        f"CRITICAL TASK: Extract structure elements EXCLUSIVELY located on physical "
+                        f"Page {current_page}. Coordinates must follow [ymin, xmin, ymax, xmax] order. "
+                        f"If a block's text is cut off at the bottom of the page and continues at the "
+                        f"top of the next page, set is_continued=true. Leave is_continued=false (or "
+                        f"omit it) for all complete blocks. "
+                        f"Use the tool '{tool_definition['name']}' to return structured data matching "
+                        f"the schema parameters.{extra_instructions}"
+                    ),
+                },
+            ]
+            if last_error:
+                content.append({
+                    "type": "text",
+                    "text": f"PREVIOUS VALIDATION ERROR:\n{last_error}\nFix the schema alignment issue in your response.",
+                })
+
+            response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
+            tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+            if tool_block is None:
+                raise ValueError(
+                    f"API returned no tool_use block for page {current_page}. "
+                    f"Content types: {[b.type for b in response.content]}"
+                )
+
+            blocks = tool_block.input.get("blocks", [])
+            if isinstance(blocks, str):
+                try:
+                    blocks = json.loads(blocks)
+                except (json.JSONDecodeError, ValueError):
+                    blocks = []
+            if not isinstance(blocks, list):
+                blocks = []
+
+            if not blocks:
+                last_error = (
+                    f"No blocks were extracted for page {current_page}. "
+                    "Return at least one block covering this page's content."
+                )
+            else:
+                try:
+                    SchemaRegistry().validate(doc_type, {"document_type": doc_type, "blocks": blocks})
+                    return {"extracted_flat_blocks": blocks}
+                except jsonschema.ValidationError as e:
+                    path = " → ".join(str(p) for p in e.absolute_path) or "root"
+                    last_error = f"Field '{path}': {e.message}"
+
+            if attempt == 3:
+                return {
+                    "extracted_flat_blocks": blocks,
+                    "extraction_warnings": [
+                        f"Page {current_page}: schema validation failed after 3 attempts. "
+                        f"Last error: {last_error}"
+                    ],
+                }
+
+        return {"extracted_flat_blocks": []}  # unreachable; satisfies type checker

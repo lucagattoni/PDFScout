@@ -1,4 +1,4 @@
-# PDFScout · [Changelog](CHANGELOG.md)
+# PDFScout · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
 An agnostic, multi-agent PDF structure extractor that converts any PDF document into a validated, hierarchical JSON tree. Built on LangGraph with Claude's native PDF vision API, prompt caching for cost efficiency, and a self-healing validation loop. Works on text-based and scanned documents alike.
 
@@ -60,14 +60,14 @@ START
 | `pioneer_parser` | Sends page 1 as a `document` block to Claude via tool-calling; marks the document block with `cache_control: ephemeral` to establish the provider's prompt cache for all subsequent burst calls; appends doc-type-specific supplemental instructions (e.g. requests optional metadata subfields for `scientific_paper`) |
 | `retry_node` | Re-runs `jsonschema` validation to capture the specific error, increments `retry_count`, and writes the error detail to state for the model's next attempt |
 | `burst_dispatcher` | Emits one `Send("parser_worker", ...)` per remaining page using LangGraph's Send API; writes a degradation warning to state if pioneer validation exhausted its retries |
-| `parser_worker` | Same extraction logic as `pioneer_parser` (including doc-type-specific supplemental instructions), runs concurrently for pages 2–N under an `asyncio.Semaphore` to cap concurrent API calls |
+| `parser_worker` | Extracts pages 2–N concurrently under an `asyncio.Semaphore`; includes an inline validation-retry loop (up to 3 attempts) mirroring the pioneer's graph-level retry; degrades gracefully with a warning after 3 failed attempts |
 | `hierarchy_node` | Deduplicates blocks by `block_id`, sorts by geometric reading order, then uses Claude tool-calling to assign `parent_id` relationships across the full flat block list |
 
 ### Self-Healing Loop (Pioneer Page)
 
 Page 1 is special: it runs sequentially before the burst phase and its output is validated against the schema. If validation fails, the `retry_node` captures the exact `jsonschema.ValidationError` path and message and feeds it back to the model as a structured error prompt. This loop runs up to 3 times before the pipeline degrades gracefully — page 1's partial output is included as-is, a warning is appended to `extraction_warnings`, and the burst phase continues normally.
 
-Pages 2–N are not subject to graph-level retries. They rely on `tenacity`'s `@retry` decorator at the API call site to handle transient 429/529 errors.
+Pages 2–N use `burst_worker_node`, which retries inline up to 3 times on schema validation failure before degrading gracefully. Transient HTTP errors (429/529) are handled separately by `tenacity`'s `@retry` decorator at the API call site.
 
 ### Prompt Caching
 
@@ -416,7 +416,7 @@ PDFScout/
     └── nodes/                  # Graph node implementations
         ├── extractor_node.py   # PDF hashing + page count
         ├── classifier_node.py  # Document type classification with fallback
-        ├── worker_node.py      # Page extraction (pioneer + burst, shared function)
+        ├── worker_node.py      # window_parser_node (pioneer) + burst_worker_node (pages 2-N, inline retry)
         ├── retry_node.py       # Validation error capture + retry_count increment
         └── hierarchy_node.py   # Geometric pre-sorter + hierarchy assignment agent
 ```

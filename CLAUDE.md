@@ -92,11 +92,17 @@ The test: Could a developer act on this response and only discover it was wrong 
 
 ## Git workflow
 
-- **Always create a new branch** for any new development or planning work. Never
-  commit directly to `main` unless the user explicitly says so for a specific change.
-- Branch names **must always** be meaningful and describe the work — never use
-  auto-generated or placeholder names. Convention: short kebab-case with a type prefix
-  (e.g. `feat/add-contract-schema`, `fix/burst-semaphore`, `plan/websocket-streaming`).
+- **Always create a new branch** for any new development or planning work — features,
+  bug fixes, refactors, plans. **Never commit directly to `main`** unless the user
+  explicitly says so for a specific change in that message.
+- Branch names **must always** be meaningful and describe the work. Never use
+  auto-generated or placeholder names. Convention: short kebab-case with a type prefix:
+  - `feat/<what-it-adds>` — new capability (e.g. `feat/burst-validation-retry`)
+  - `fix/<what-it-fixes>` — bug fix (e.g. `fix/semaphore-event-loop`)
+  - `plan/<topic>` — plan documents only (e.g. `plan/websocket-streaming`)
+  - `chore/<what>` — non-functional changes (e.g. `chore/bump-dependencies`)
+- The branch name must be readable without context: someone reading the branch list
+  should understand what the branch is about without opening it.
 - Push the branch and let the user decide when to merge / open a PR.
 
 ## Plans
