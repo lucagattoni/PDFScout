@@ -1,6 +1,7 @@
 # B1 — New Document Schema: Contract
 
 _Created: 2026-06-15 20:20_
+_Updated: 2026-06-15 20:45 · Devil's advocate pass: fixed test placement bug, clarified test specs, added classifier unit test, added adversarial B4 fixture, documented schema design decisions_
 
 ## Overview
 
@@ -15,9 +16,10 @@ recitals, numbered clauses, schedule tables, and signature blocks.
 | `schemas/contract.json` | **New** — JSON schema for contract extraction |
 | `src/config.py` | Add `"contract"` to `SUPPORTED_DOC_TYPES` |
 | `src/nodes/worker_node.py` | Add `_CONTRACT_INSTRUCTIONS` constant and branch in `_doc_type_instructions()` |
-| `tests/fixtures/generators/grp_b_classifier.py` | Add B3 contract PDF fixture + golden file |
-| `tests/integration/test_synthetic_grp_b.py` | Add `test_b3_contract` |
-| `tests/unit/test_schema_registry.py` | Add `test_contract_loads` and `test_contract_validates` |
+| `tests/fixtures/generators/grp_b_classifier.py` | Add B3 contract PDF + golden; add B4 adversarial invoice PDF + golden |
+| `tests/integration/test_synthetic_grp_b.py` | Add `test_b3_contract` and `test_b4_invoice_not_reclassified` inside `TestGroupB` |
+| `tests/unit/nodes/test_classifier_node.py` | Add `test_contract_classified` |
+| `tests/unit/test_schema_registry.py` | Add contract schema unit tests |
 | `pyproject.toml` | Bump minor version |
 | `CHANGELOG.md` | Document the addition |
 
@@ -38,6 +40,14 @@ A ninth type `"signature_block"` is added, **contract-schema-only**. Signature b
 are visually and semantically distinct: they contain a combination of signature lines,
 name/title fields, and dates, and cannot be naturally represented as a paragraph or
 list_item without losing structural meaning.
+
+**Design decision — no conditional `required`**: The schema does not enforce
+`metadata.signature` when `type == "signature_block"` via `if/then` conditionals.
+This is intentional and consistent with how `invoice.json` handles `table_data`
+(not conditionally required on `table` blocks) and `scientific_paper.json`
+(bibliographic not required on `title` blocks). The extraction instructions
+(`_CONTRACT_INSTRUCTIONS`) carry the enforcement signal to the model; schema
+validation catches structural violations, not instructional compliance.
 
 ### Metadata subfields
 
@@ -195,10 +205,12 @@ def _doc_type_instructions(doc_type: str) -> str:
 
 ---
 
-## 4. Test Fixture: `tests/fixtures/generators/grp_b_classifier.py`
+## 4. Test Fixtures: `tests/fixtures/generators/grp_b_classifier.py`
+
+### B3 — Contract fixture (happy path)
 
 Add `_make_b3_contract()` — a one-page synthetic "SERVICE AGREEMENT" that is
-unambiguously a contract:
+unambiguously a contract with no invoice-like elements:
 
 - Title: "SERVICE AGREEMENT"
 - Parties block: "THIS AGREEMENT is entered into… by and between Alpha Corp ("Client") and Beta LLC ("Service Provider")"
@@ -209,33 +221,79 @@ unambiguously a contract:
 - Clause heading: "3. GOVERNING LAW" + "This Agreement shall be governed by the laws of the State of New York."
 - Signature block: Two columns (Client / Service Provider) with name/title/date lines
 
-Update `generate()` to call `_make_b3_contract()` and write golden file with
-`{"expected": {"document_type": "contract"}}`.
+Golden file: `_write_golden_b("grp_b_contract", "contract")` → `grp_b_contract.json`
+with `{"expected": {"document_type": "contract", "blocks": []}}`.
+
+### B4 — Adversarial invoice with legal boilerplate
+
+Add `_make_b4_invoice_legal()` — a vendor invoice that includes a "Terms and
+Conditions" section (the key stress case for alphabetical-first bias on "contract"):
+
+- Title: "INVOICE #099"
+- Bill-to / ship-to header
+- Line-items table (Qty, Unit Price, Amount)
+- Total + payment due date
+- Footer section: "TERMS AND CONDITIONS: Payment is due within 30 days.
+  This invoice is governed by the laws of California. No warranty is implied."
+
+The footer includes legal-sounding language but the document is structurally
+an invoice. The classifier must return `"invoice"`, not `"contract"`.
+
+Golden file: `_write_golden_b("grp_b_invoice_legal", "invoice")` → `grp_b_invoice_legal.json`.
+
+Update `generate()` to call both new helpers.
+
+**Note on `generate_all.py`**: No changes needed. The hash-based manifest mechanism
+in `generate_all.py` keys on the `grp_b_classifier.py` file hash. Modifying that file
+changes its hash, which triggers regeneration on the next `hash_check_all()` run. CI
+environments that cache the manifest from before the change will regenerate on first run
+after the file changes.
 
 ---
 
 ## 5. Tests
 
-### 5.1 Unit tests: `tests/unit/test_schema_registry.py`
+### 5.1 Unit tests: `tests/unit/nodes/test_classifier_node.py`
+
+Add inside `TestClassifierNode`:
+- `test_contract_classified` — mocked response `"contract"` → `result["document_type"] == "contract"` and `result["target_json_schema"]` is a dict with `"properties"` (verifies schema loaded, not just type set).
+
+### 5.2 Unit tests: `tests/unit/test_schema_registry.py`
 
 Extend `TestLoadSchema`:
 - `test_contract_loads` — `registry._load_schema("contract")` returns a dict with `"properties"`
+
+Extend `TestGetSchemaAndTool`:
 - `test_contract_tool_name` — `get_schema_and_tool("contract")` returns tool with `name == "extract_contract_structure"`
 
 Extend `TestValidate`:
-- `test_contract_valid_passes` — a minimal valid contract payload (one paragraph block, `signature_block` type) validates without error
-- `test_contract_signature_block_type_accepted` — block with `type == "signature_block"` validates
-- `test_contract_invalid_block_type_rejected` — block with `type == "invalid_type_xyz"` raises `ValidationError`
+- `test_contract_paragraph_block_passes` — payload with one `paragraph`-type block validates without error
+- `test_contract_signature_block_type_accepted` — payload with one `signature_block`-type block validates (these are two separate payloads, not one block with both types)
+- `test_contract_invalid_block_type_rejected` — payload with `type == "invalid_type_xyz"` raises `ValidationError`
 
-### 5.2 Classifier test: `tests/integration/test_synthetic_grp_b.py`
+### 5.3 Classifier e2e tests: `tests/integration/test_synthetic_grp_b.py`
 
-Add:
+Both new tests are **methods inside the existing `class TestGroupB`** so they inherit
+the `@pytest.mark.e2e` and `@pytest.mark.grp_b` class-level markers. A bare function
+outside the class would not carry these marks, causing it to run without API key
+protection and be excluded from `grp_b`-targeted runs.
+
 ```python
-async def test_b3_contract(self):
-    golden = _load_golden("grp_b_contract")
-    result = await _run_b_test(str(_PDFS / "grp_b_contract.pdf"))
-    doc_type = result["hierarchical_document_tree"]["document_type"]
-    assert doc_type == golden["expected"]["document_type"]
+class TestGroupB:
+    # ... existing test_b1_invoice, test_b2_scientific_paper ...
+
+    async def test_b3_contract(self):
+        golden = _load_golden("grp_b_contract")
+        result = await _run_b_test(str(_PDFS / "grp_b_contract.pdf"))
+        doc_type = result["hierarchical_document_tree"]["document_type"]
+        assert doc_type == golden["expected"]["document_type"]
+
+    async def test_b4_invoice_not_reclassified(self):
+        """Invoice with legal boilerplate footer must not be misclassified as contract."""
+        golden = _load_golden("grp_b_invoice_legal")
+        result = await _run_b_test(str(_PDFS / "grp_b_invoice_legal.pdf"))
+        doc_type = result["hierarchical_document_tree"]["document_type"]
+        assert doc_type == golden["expected"]["document_type"]
 ```
 
 ---
@@ -245,22 +303,26 @@ async def test_b3_contract(self):
 **Risk**: Adding "contract" adds a third valid token. Documents with legal boilerplate
 (e.g. vendor invoices with "Terms and Conditions" sections) might shift toward "contract".
 
-**Mitigation 1 — fixture design**: The B3 synthetic PDF must contain exclusively
+**Mitigation 1 — fixture design**: The B3 synthetic PDF contains exclusively
 contract-specific signals. No tables resembling invoice line items.
 
-**Mitigation 2 — adversarial assertion**: The existing B1/B2 tests continue running.
-If `grp_b_invoice.pdf` starts returning "contract" post-change, B1 will catch it.
-No new adversarial tests are strictly needed because B1 already asserts the invoice
-PDF produces "invoice". However, a pass of B1+B2+B3 together is the adversarial gate.
+**Mitigation 2 — adversarial fixture (B4)**: A vendor invoice with legal-sounding
+footer text is explicitly tested (Section 5.3). This is the stress case for
+position-bias and for the "Terms and Conditions" boundary. It must return `"invoice"`.
 
-**Mitigation 3 — classifier fallback**: If the model returns something other than
-{"contract", "invoice", "scientific_paper"}, `FALLBACK_DOC_TYPE` ("baseline_core") kicks in.
-No data loss — degraded schema, not a crash.
+**Mitigation 3 — existing B1/B2 act as regression guards**: If `grp_b_invoice.pdf`
+or `grp_b_scientific_paper.pdf` starts returning "contract" post-change, B1/B2 catch it.
 
-**Risk: "contract" is alphabetically first** in the sorted list. The classifier
-prompt is positional — if Claude has token-order bias, "contract" might be over-chosen.
-This is worth watching in B-group tests but is speculative and low-probability given
-Claude's instruction-following capability.
+**Mitigation 4 — classifier fallback**: If the model returns something other than
+`{"contract", "invoice", "scientific_paper"}`, `FALLBACK_DOC_TYPE` ("baseline_core")
+kicks in. No data loss — degraded schema, not a crash.
+
+**Risk: "contract" is alphabetically first** — `sorted(SUPPORTED_DOC_TYPES)` produces
+`['contract', 'invoice', 'scientific_paper']`. The classifier prompt is
+`"Return ONLY one token from ['contract', 'invoice', 'scientific_paper']."`.
+If Claude has any first-item bias, "contract" is over-exposed. B4 is the direct
+regression guard for this risk. The risk is speculative given Claude's strong
+instruction following, but B4 removes the need to merely hope.
 
 ---
 
@@ -271,9 +333,13 @@ Claude's instruction-following capability.
 - [ ] `src/config.py` `SUPPORTED_DOC_TYPES` contains `"contract"`
 - [ ] All existing unit tests pass unchanged
 - [ ] All existing integration tests pass unchanged (B1, B2)
-- [ ] New unit tests pass: `test_contract_loads`, `test_contract_tool_name`, `test_contract_valid_passes`, `test_contract_signature_block_type_accepted`, `test_contract_invalid_block_type_rejected`
-- [ ] Fixture generator produces `grp_b_contract.pdf` and golden file `grp_b_contract.json`
+- [ ] New unit tests pass:
+  - `test_contract_classified` in `test_classifier_node.py`
+  - `test_contract_loads`, `test_contract_tool_name` in `test_schema_registry.py`
+  - `test_contract_paragraph_block_passes`, `test_contract_signature_block_type_accepted`, `test_contract_invalid_block_type_rejected` in `test_schema_registry.py`
+- [ ] Fixture generator produces `grp_b_contract.pdf`, `grp_b_invoice_legal.pdf` and their golden files
 - [ ] B3 e2e test classifies the synthetic contract PDF as `"contract"` (requires `ANTHROPIC_API_KEY`)
+- [ ] B4 adversarial e2e test classifies the invoice-with-legal-footer PDF as `"invoice"` (requires `ANTHROPIC_API_KEY`)
 - [ ] `make test` (non-e2e suite) passes with no regressions
 
 ---
