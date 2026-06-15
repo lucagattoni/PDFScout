@@ -16,6 +16,23 @@
 - **`TestBurstWorkerNode` unit tests** (`tests/unit/nodes/test_worker_node.py`) — five tests
   covering: first-attempt pass, retry until valid, max-retry degradation with warning, error
   injection into retry content, empty-block retry.
+- **`contract` document type** (`schemas/contract.json`, `src/config.py`,
+  `src/nodes/worker_node.py`) — new first-class schema for legal contracts.
+  Adds a `signature_block` block type (contract-only) and four metadata subfields:
+  `contract_meta` (contract_type, effective_date, governing_law), `party`
+  (party_name, party_role, address), `clause` (clause_number, clause_title),
+  and `signature` (signatory_name, party_role, date_label). The classifier
+  automatically receives `"contract"` as a valid output token via `SUPPORTED_DOC_TYPES`.
+- **B3 classifier fixture** (`tests/fixtures/generators/grp_b_classifier.py`) —
+  synthetic one-page "SERVICE AGREEMENT" PDF with parties, recitals, three clauses,
+  and a signature block; used by the B3 e2e classifier accuracy test.
+- **B4 adversarial classifier fixture** — vendor invoice with a "Terms and Conditions"
+  footer (legal-sounding language); asserts the classifier returns `"invoice"` not
+  `"contract"`, guarding against alphabetical-first position bias.
+- **Unit tests** (`tests/unit/nodes/test_classifier_node.py`,
+  `tests/unit/test_schema_registry.py`) — `test_contract_classified`,
+  `test_contract_loads`, `test_contract_tool_name`, `test_contract_paragraph_block_passes`,
+  `test_contract_signature_block_type_accepted`, `test_contract_invalid_block_type_rejected`.
 
 ### Changed
 

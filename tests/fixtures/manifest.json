@@ -8,10 +8,12 @@
     ]
   },
   "grp_b": {
-    "hash": "f9702ab1dd14d92a2f6ea11ffcec32c0aa4be3ebcec2bb84efcdb7518792bd15",
+    "hash": "3cdf84c18e20aa762ae7a19771875a906f1b6e5f6547183d0e4666fc588d4c7c",
     "fixtures": [
       "grp_b_invoice.pdf",
-      "grp_b_scientific_paper.pdf"
+      "grp_b_scientific_paper.pdf",
+      "grp_b_contract.pdf",
+      "grp_b_invoice_legal.pdf"
     ]
   },
   "grp_c": {

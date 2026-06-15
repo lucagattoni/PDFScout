@@ -60,3 +60,20 @@ class TestGroupB:
         assert doc_type == golden["expected"]["document_type"], (
             f"Expected document_type={golden['expected']['document_type']!r}, got {doc_type!r}"
         )
+
+    async def test_b3_contract(self):
+        golden = _load_golden("grp_b_contract")
+        result = await _run_b_test(str(_PDFS / "grp_b_contract.pdf"))
+        doc_type = result["hierarchical_document_tree"]["document_type"]
+        assert doc_type == golden["expected"]["document_type"], (
+            f"Expected document_type={golden['expected']['document_type']!r}, got {doc_type!r}"
+        )
+
+    async def test_b4_invoice_not_reclassified(self):
+        """Invoice with legal-boilerplate footer must not be misclassified as contract."""
+        golden = _load_golden("grp_b_invoice_legal")
+        result = await _run_b_test(str(_PDFS / "grp_b_invoice_legal.pdf"))
+        doc_type = result["hierarchical_document_tree"]["document_type"]
+        assert doc_type == golden["expected"]["document_type"], (
+            f"Expected document_type={golden['expected']['document_type']!r}, got {doc_type!r}"
+        )

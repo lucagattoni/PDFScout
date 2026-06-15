@@ -38,10 +38,21 @@ _SCIENTIFIC_PAPER_INSTRUCTIONS = (
     "\n- figure or table blocks → figure_table (label, caption, referenced_block_id)"
 )
 
+_CONTRACT_INSTRUCTIONS = (
+    "\nFor contract documents, populate metadata subfields where present on the page:"
+    "\n- title block for the document title → contract_meta (contract_type, effective_date, governing_law)"
+    "\n- paragraph or heading blocks identifying a party → party (party_name, party_role, address)"
+    "\n- heading blocks introducing a clause → clause (clause_number, clause_title)"
+    "\n- signature area blocks → use type='signature_block' and metadata.signature (signatory_name, party_role, date_label)"
+    "\n- schedule or exhibit tables → table_data (total_rows, total_cols, cells)"
+)
+
 
 def _doc_type_instructions(doc_type: str) -> str:
     if doc_type == "scientific_paper":
         return _SCIENTIFIC_PAPER_INSTRUCTIONS
+    if doc_type == "contract":
+        return _CONTRACT_INSTRUCTIONS
     return ""
 
 
