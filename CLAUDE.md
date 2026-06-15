@@ -127,3 +127,7 @@ The test: Could a developer act on this response and only discover it was wrong 
 
 - Always use the **devil's advocate** approach: actively try to find what can go
   wrong before accepting a design or implementation as sound.
+- After every plan implementation, **check all documentation for consistency**:
+  README.md, schemas/README.md, and any other doc files that reference the changed
+  system. Update test counts, config constants, feature lists, and step-by-step guides
+  to reflect the new state before committing.

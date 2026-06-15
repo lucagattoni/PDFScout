@@ -19,8 +19,7 @@ class TestLoadSchema:
     def test_contract_loads(self):
         registry = SchemaRegistry()
         schema = registry._load_schema("contract")
-        assert isinstance(schema, dict)
-        assert "properties" in schema
+        assert schema.get("title") == "AgnosticContractStructure"
 
     def test_unknown_falls_back_to_baseline(self):
         registry = SchemaRegistry()

@@ -44,8 +44,7 @@ class TestClassifierNode:
         _setup_mocks(mocker, "contract")
         result = await classifier_node(sample_state)
         assert result["document_type"] == "contract"
-        assert isinstance(result["target_json_schema"], dict)
-        assert "properties" in result["target_json_schema"]
+        assert result["target_json_schema"].get("title") == "AgnosticContractStructure"
 
     async def test_whitespace_stripped(self, sample_state, mocker):
         _setup_mocks(mocker, "  invoice  ")
