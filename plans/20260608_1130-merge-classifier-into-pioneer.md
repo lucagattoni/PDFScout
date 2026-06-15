@@ -2,6 +2,7 @@
 
 _Created: 2026-06-08 11:30_
 _Updated: 2026-06-08 12:15 · devil's advocate pass — three real bugs fixed in test update plan_
+_Updated: 2026-06-15 20:10 · deep evaluation chapter added — final verdict: do not implement_
 
 ---
 
@@ -460,3 +461,178 @@ needs it, extract then. (Rule: three uses before abstraction.)
 - [ ] Manual spot-check: `uv run scripts/generate_real_ground_truth.py --slot inv-1 --runs 2 --dry-run` prints expected output with no import errors
 - [ ] No reference to `classifier_node` anywhere in `src/`
 - [ ] Cache proof: pioneer call and burst worker call both use `extract_document_structure` tool
+
+---
+
+## Deep Evaluation — Pros, Cons, and Final Verdict
+
+_Added 2026-06-15 after a full cost-benefit review against the real codebase and corpus._
+
+### What the plan actually saves
+
+The framing "1 cache miss instead of 2" is accurate but the magnitude needs
+grounding. The 5-minute ephemeral TTL means both caches are already warm for
+runs 2 onward. The saving is therefore **one cache miss on the first pipeline
+run per document, per TTL window**.
+
+For the ground-truth generator running 5 sequential runs on a single slot:
+the first run always pays 2 misses regardless of architecture. Runs 2-5 hit
+both existing caches (classifier + pioneer) today, because 5 runs of a
+typical document take well under 5 minutes. Option B changes run 1 from
+2 misses to 1 miss and leaves runs 2-5 unchanged.
+
+Monetary estimate at claude-sonnet-4-6 pricing ($3.00/M standard input):
+a medium PDF is ~50K tokens.
+
+| Scope | Saved tokens | Saved cost |
+|-------|-------------|-----------|
+| 1 document, 1 first run | ~50K input tokens (classifier miss avoided) | ~$0.15 |
+| Full 15-slot corpus, 5 runs each | ~750K input tokens (1 miss × 15 documents) | ~$2.25 |
+| Production: 1000 unique docs/day | ~50M input tokens | ~$150/day |
+
+The saving is real but small for the current use case (generator + manual
+use). It becomes meaningful only at high throughput of first-time documents.
+
+---
+
+### Pros
+
+**P1 — One fewer API call on document first run.** At high volume this
+compounds. For a batch pipeline processing thousands of unique documents per
+hour, the saving per document is consistent and bounded.
+
+**P2 — Cache key guaranteed identical between pioneer and all burst workers.**
+Today this is true per doc type (all calls within one pipeline run use the
+same per-type tool). Option B extends this guarantee across doc types and
+future doc types: a new schema addition cannot accidentally break the cache
+contract, because there is only one universal tool.
+
+**P3 — Simpler graph topology.** One fewer node and edge. The pipeline
+becomes `extractor → pioneer → [retry] → burst → hierarchy` instead of
+`extractor → classifier → pioneer → [retry] → burst → hierarchy`. Fewer
+moving parts to explain, trace, and maintain.
+
+**P4 — Classification has more extraction context.** The dedicated classifier
+sees the full document but produces one token. The merged call sees the same
+document AND processes page-1 content, which could improve classification
+accuracy on documents where the first page is the most distinctive signal
+(invoices with logos and header rows, papers with title blocks).
+
+---
+
+### Cons and risks
+
+**C1 — Silent misclassification (most serious, structural)**
+
+The current architecture has two independent checkpoints. The classifier
+returns a type string. The pioneer then validates extracted blocks against
+the per-type schema. If the two disagree, validation fails and retry fires.
+
+With Option B, classification and extraction are one entangled decision. A
+wrong classification that produces syntactically valid blocks — e.g. model
+returns `document_type: "scientific_paper"` for an invoice and extracts
+plausible-looking `heading` and `paragraph` blocks — passes
+`pioneer_validation_route` silently, because `scientific_paper.json` only
+requires `block_id`, `type`, `bbox`, `text` on each block. No validation
+error fires. No retry. The wrong type propagates to the output.
+
+This failure mode cannot be caught by the retry loop. It can only be caught
+by downstream consumers who notice that a document classified as
+`scientific_paper` has no `bibliographic` metadata despite having an invoice
+header. This is a **regression in error detectability** relative to the
+current architecture.
+
+**C2 — Dual-task prompt quality is untested on edge-case real documents**
+
+The 15 real-document slots include NIST reports, a 1966 scanned typewritten
+document (`nbs_technicalnote290.pdf`), and a public-domain novel
+(`jekyll_hyde_stevenson.pdf`) — all currently expected to classify as
+`baseline_core`. These are exactly the cases where a dual-task prompt might
+drift: the model starts extracting blocks and mid-stream reasons itself into
+`scientific_paper` because the document has section headings.
+
+The dedicated classifier has `max_tokens=10` and a single, atomic task.
+There is no empirical evidence that the merged call produces equivalent
+classification accuracy on edge cases. Running grp_b and grp_r tests on
+a prototype would be required before claiming parity.
+
+**C3 — Retry error messages mislead on classification failures**
+
+`retry_incrementor_node` produces:
+```
+Schema violation on pioneer page extraction (attempt N/3).
+Error: Field '...': ...
+Fix the block structure to match the target schema.
+```
+
+When the underlying cause is a wrong classification, this message tells the
+model to fix blocks, not to reconsider its document type. The model may burn
+all 3 retries attempting to reformat blocks for the wrong schema, succeeding
+just enough to pass validation (syntactically valid blocks of the wrong type)
+and never correcting the classification. The retry loop was designed assuming
+block-level errors, not type-level errors. Option B exposes it to a class of
+failure it was not designed for.
+
+**C4 — Universal schema is a new maintenance surface**
+
+`schemas/universal.json` must remain a strict superset of all per-type
+schemas. Every time a per-type schema evolves — new metadata field, tightened
+constraint, new block type added for a future doc schema — the universal
+schema must be updated in the same commit. This is a two-file change where it
+is currently a one-file change. Failing to keep them in sync silently changes
+the cache key (if the universal schema is modified) or produces a universal
+schema that no longer accepts valid per-type output.
+
+**C5 — Implementation cost is disproportionate to the current-use-case benefit**
+
+The plan requires: a new JSON schema, a new source file, a full rewrite of
+`test_graph_pipeline.py` (3 test classes with complex side-effect mocks), a
+new unit test file, and updates to 3 other test files. This is 200-300 lines
+of new and rewritten test code for a $2.25 saving on the current corpus.
+
+**C6 — Separation of concerns and debuggability lost**
+
+Classification and extraction are currently separate graph nodes with
+separate traces in Langfuse. When extraction quality is poor, logs show
+whether the classifier produced the correct type before the extraction
+attempt. With Option B, a single merged node produces both; diagnosing
+whether a bad extraction result was caused by wrong type, wrong extraction
+prompt, or wrong schema becomes harder.
+
+---
+
+### Verdict: Do not implement
+
+The risk-to-reward ratio is unfavorable at the current scale of use.
+
+The monetary saving is real but small (~$0.15/document on first run, ~$2.25
+for the full corpus). The most serious risk — silent misclassification of
+documents where the wrong type passes schema validation — is structural and
+cannot be mitigated without adding detection logic that the plan does not
+include. The retry loop quality degrades for the class of errors that Option
+B newly introduces. The implementation cost is disproportionate.
+
+The current architecture is already well-optimised for repeat runs (both
+caches warm after run 1 within the TTL window). The `cache_control` addition
+to the classifier (v1.4.x) already eliminated the repeat-run cost.
+
+**Conditions under which this plan would become worth revisiting:**
+
+1. **High-throughput first-time processing**: If the pipeline processes
+   thousands of unique documents per hour (where first-run costs dominate
+   and the $0.15/document saving accumulates to >$100/day), the benefit
+   materially changes the calculus.
+
+2. **Empirical classification parity**: Running the grp_b e2e tests and the
+   full grp_r corpus against a prototype merged call and confirming no
+   classification accuracy regression removes the biggest unknown.
+
+3. **Misclassification detection**: Adding a post-call check that catches the
+   "wrong type but syntactically valid" case — e.g. asserting that invoice
+   documents have at least one block with `table_data`, or that scientific
+   papers have at least one `bibliographic` block — and routing detected
+   mismatches to retry with an explicit "reconsider document_type" error
+   message, would close the silent-failure gap.
+
+Until at least conditions 1 and 2 are met, the current two-node architecture
+is correct, simpler, and safer.
