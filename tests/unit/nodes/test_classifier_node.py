@@ -40,6 +40,12 @@ class TestClassifierNode:
         result = await classifier_node(sample_state)
         assert result["document_type"] == FALLBACK_DOC_TYPE
 
+    async def test_contract_classified(self, sample_state, mocker):
+        _setup_mocks(mocker, "contract")
+        result = await classifier_node(sample_state)
+        assert result["document_type"] == "contract"
+        assert result["target_json_schema"].get("title") == "AgnosticContractStructure"
+
     async def test_whitespace_stripped(self, sample_state, mocker):
         _setup_mocks(mocker, "  invoice  ")
         result = await classifier_node(sample_state)

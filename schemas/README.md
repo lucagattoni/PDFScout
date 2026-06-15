@@ -2,8 +2,8 @@
 
 PDFScout uses JSON Schema Draft-07 files to drive three things at once: Claude's
 tool-calling contract, runtime output validation, and the self-healing retry
-feedback loop. Adding a new document type means writing one JSON file and
-updating one constant. Nothing else in the pipeline changes.
+feedback loop. Adding a new document type requires writing one JSON schema file, updating one
+constant, and optionally adding domain-specific extraction instructions.
 
 ---
 
@@ -28,7 +28,7 @@ pre-sorter in `hierarchy_node.py` to silently receive wrong coordinates.
 
 ---
 
-## The two-step process
+## The three-step process
 
 ### Step 1 — Add `schemas/<your_type>.json`
 
@@ -41,8 +41,35 @@ string with no spaces (use underscores). The classifier returns this exact strin
 SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "your_type"}
 ```
 
-That's it. The classifier, schema registry, validation loop, and Langfuse
-metadata enrichment all pick it up automatically.
+The classifier prompt is built at runtime from `sorted(SUPPORTED_DOC_TYPES)`, so no
+prompt edit is needed. The schema registry, validation loop, and Langfuse metadata
+enrichment all pick up the new type automatically.
+
+### Step 3 — Add extraction instructions in `src/nodes/worker_node.py` *(recommended)*
+
+Add a constant and a new branch in `_doc_type_instructions()`:
+
+```python
+_YOUR_TYPE_INSTRUCTIONS = (
+    "\nFor your_type documents, populate metadata subfields where present on the page:"
+    "\n- heading blocks introducing a section → your_domain (field_a, field_b)"
+    # ...
+)
+
+def _doc_type_instructions(doc_type: str) -> str:
+    if doc_type == "scientific_paper":
+        return _SCIENTIFIC_PAPER_INSTRUCTIONS
+    if doc_type == "contract":
+        return _CONTRACT_INSTRUCTIONS
+    if doc_type == "your_type":
+        return _YOUR_TYPE_INSTRUCTIONS
+    return ""
+```
+
+These instructions are appended to the extraction prompt for every page, guiding the
+model to populate domain metadata subfields on the relevant block types. Without this
+step the pipeline still functions — the model receives only the JSON schema as a tool
+definition — but metadata fields will be sparsely populated.
 
 ---
 
@@ -132,76 +159,41 @@ validation on blocks where they don't apply.
 
 ## Worked example — `contract`
 
-**`schemas/contract.json`**
+The contract schema is already implemented. It demonstrates two features beyond the
+baseline: a domain-specific block type (`signature_block`) and multiple metadata
+subfields per block.
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "AgnosticContractStructure",
-  "type": "object",
-  "properties": {
-    "document_type": { "type": "string", "enum": ["contract"] },
-    "blocks": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "block_id": { "type": "string" },
-          "type": {
-            "type": "string",
-            "enum": ["title", "heading", "paragraph", "list_item", "table", "figure", "footnote", "margin_element"]
-          },
-          "bbox": {
-            "type": "object",
-            "properties": {
-              "page_number": { "type": "integer" },
-              "coordinates": {
-                "type": "array",
-                "description": "Bounding box as [ymin, xmin, ymax, xmax] integers in page coordinate space.",
-                "items": { "type": "integer" },
-                "minItems": 4,
-                "maxItems": 4
-              }
-            },
-            "required": ["page_number", "coordinates"]
-          },
-          "text": { "type": "string" },
-          "is_continued": { "type": "boolean", "default": false },
-          "metadata": {
-            "type": "object",
-            "properties": {
-              "parties": {
-                "type": "object",
-                "properties": {
-                  "role":  { "type": "string" },
-                  "name":  { "type": "string" },
-                  "address": { "type": "string" }
-                }
-              },
-              "clause": {
-                "type": "object",
-                "properties": {
-                  "clause_number": { "type": "string" },
-                  "clause_title":  { "type": "string" }
-                }
-              },
-              "effective_date": { "type": "string" },
-              "jurisdiction":   { "type": "string" }
-            }
-          }
-        },
-        "required": ["block_id", "type", "bbox", "text"]
-      }
-    }
-  },
-  "required": ["document_type", "blocks"]
-}
-```
+**Key additions in `schemas/contract.json`:**
+
+- Block type enum extended with `"signature_block"` — for areas containing signature
+  lines, signatory names, and date fields
+- `metadata.contract_meta` — document-level fields (`contract_type`, `effective_date`,
+  `governing_law`); populate on `title` or `heading` blocks
+- `metadata.party` — party identification (`party_name`, `party_role`, `address`);
+  populate on `paragraph` or `heading` blocks
+- `metadata.clause` — clause numbering (`clause_number`, `clause_title`); populate
+  on `heading` blocks
+- `metadata.signature` — signatory details (`signatory_name`, `party_role`,
+  `date_label`); populate on `signature_block` blocks
+- `metadata.table_data` — reused from invoice/scientific_paper for schedule tables
 
 **`src/config.py`** — one line added:
 
 ```python
 SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
+```
+
+**`src/nodes/worker_node.py`** — extraction instructions added:
+
+```python
+_CONTRACT_INSTRUCTIONS = (
+    "\nFor contract documents, populate metadata subfields where present on the page:"
+    "\n- title block for the document title → contract_meta (contract_type, effective_date, governing_law)"
+    "\n- paragraph or heading blocks identifying a party → party (party_name, party_role, address)"
+    "\n- heading blocks introducing a clause → clause (clause_number, clause_title)"
+    "\n- signature area blocks → use type='signature_block' and metadata.signature (signatory_name, party_role, date_label)"
+    "\n- schedule or exhibit tables → table_data (total_rows, total_cols, cells)"
+)
 ```
 
 ---
@@ -210,7 +202,7 @@ SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 
 | Rule | Why |
 |---|---|
-| The 8-type block enum must not change | The pipeline, hierarchy agent, and all downstream consumers depend on exactly these 8 types |
+| The 8-type block enum is the baseline | The hierarchy agent and downstream consumers expect these 8 types. You may extend the enum with domain-specific types (e.g. `signature_block` in the contract schema), but only in that schema's own file — never remove the 8 base types |
 | `document_type` enum must match the filename | `SchemaRegistry` loads `schemas/<doc_type>.json`; a mismatch causes Claude to extract with the wrong type token |
 | `coordinates` must include the `[ymin, xmin, ymax, xmax]` description | `hierarchy_node.py`'s `geometric_pre_sorter` unpacks `ymin, xmin, _, _` at index 0,1 — wrong order silently breaks reading-order sorting |
 | Do not add `"required"` to `metadata` properties | Claude populates metadata only on relevant blocks; required fields would cause validation failures on every other block |
@@ -221,8 +213,9 @@ SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 
 ## Existing schemas
 
-| File | Document type | Domain metadata fields |
-|---|---|---|
-| `baseline_core.json` | Generic fallback | None — bare `metadata: {}` |
-| `invoice.json` | `invoice` | `metadata.table_data` (normalized cell matrix) |
-| `scientific_paper.json` | `scientific_paper` | `metadata.bibliographic`, `metadata.section`, `metadata.reference`, `metadata.figure_table`, `metadata.table_data` |
+| File | Document type | Block types | Domain metadata fields |
+|---|---|---|---|
+| `baseline_core.json` | Generic fallback | 8 base types | None — bare `metadata: {}` |
+| `invoice.json` | `invoice` | 8 base types | `metadata.table_data` (normalized cell matrix) |
+| `scientific_paper.json` | `scientific_paper` | 8 base types | `metadata.bibliographic`, `metadata.section`, `metadata.reference`, `metadata.figure_table`, `metadata.table_data` |
+| `contract.json` | `contract` | 8 base + `signature_block` | `metadata.contract_meta`, `metadata.party`, `metadata.clause`, `metadata.signature`, `metadata.table_data` |

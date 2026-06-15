@@ -17,7 +17,7 @@ PDFScout shifts the parsing burden to a language model. It treats every document
 Given a PDF file, PDFScout:
 
 1. Counts pages and validates the file is not encrypted using `pypdf` (lightweight, zero-dependency)
-2. Classifies the document type (invoice, scientific paper, or a generic fallback) by sending the full PDF to Claude via the native PDF Chat API
+2. Classifies the document type (invoice, scientific paper, contract, or a generic fallback) by sending the full PDF to Claude via the native PDF Chat API
 3. Extracts structured content from every page in parallel via Claude tool-calling, with the PDF document block cached at the provider to minimize token costs — this works on scanned PDFs, complex multi-column layouts, and any document pdfplumber-style text extraction would fail on
 4. Validates page 1's output against a JSON Schema blueprint and retries up to 3 times if the model produces malformed data
 5. Assigns parent-child relationships across all extracted blocks using a geometry-informed hierarchy agent
@@ -126,20 +126,21 @@ The final `hierarchical_document_tree` has this shape:
 
 ### Block Types
 
-Every document normalizes to exactly 8 block types:
+Every document normalizes to 8 base block types. Domain-specific schemas may extend this with additional types.
 
-| Type | Description |
-|---|---|
-| `title` | Document or section title |
-| `heading` | Sub-section heading |
-| `paragraph` | Body text |
-| `list_item` | Bulleted or numbered list entry |
-| `table` | Tabular data (with normalized cell matrix in `metadata.table_data`) |
-| `figure` | Image, chart, or diagram reference |
-| `footnote` | Footer annotation |
-| `margin_element` | Sidebar, callout, or margin note |
+| Type | Description | Schemas |
+|---|---|---|
+| `title` | Document or section title | all |
+| `heading` | Sub-section heading | all |
+| `paragraph` | Body text | all |
+| `list_item` | Bulleted or numbered list entry | all |
+| `table` | Tabular data (with normalized cell matrix in `metadata.table_data`) | all |
+| `figure` | Image, chart, or diagram reference | all |
+| `footnote` | Footer annotation | all |
+| `margin_element` | Sidebar, callout, or margin note | all |
+| `signature_block` | Signature area with signatory name, role, and date lines | `contract` only |
 
-Domain-specific data (invoice line items, bibliographic authors, reference entries) lives inside the `metadata` field and does not break the 8-type contract.
+Domain-specific data (invoice line items, bibliographic authors, contract parties) lives inside the `metadata` field.
 
 ### Table Cell Matrix
 
@@ -164,6 +165,7 @@ Schemas live in `schemas/` as JSON Schema Draft-07 files. The `SchemaRegistry` l
 |---|---|
 | `schemas/invoice.json` | Invoice documents — extends baseline with `metadata.table_data` |
 | `schemas/scientific_paper.json` | Academic papers — adds `bibliographic`, `section`, `reference`, and `figure_table` metadata fields; the extraction prompt explicitly requests these subfields so they are actively populated on relevant blocks |
+| `schemas/contract.json` | Legal contracts — adds `signature_block` block type and metadata subfields `contract_meta`, `party`, `clause`, and `signature`; the extraction prompt instructs the model to populate each subfield on the relevant block types |
 | `schemas/baseline_core.json` | Generic fallback for any unrecognized document type |
 
 When the classifier returns an unknown document type, the registry silently falls back to `baseline_core.json`. The tool definition passed to Claude strips `$schema` and `title` fields, which are rejected by Anthropic's `input_schema` spec.
@@ -208,7 +210,7 @@ Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (con
 
 ## Testing
 
-The suite has 113 tests across two layers (run with `make test`, coverage with `make coverage`):
+The suite has 120 tests across two layers (run with `make test`, coverage with `make coverage`):
 
 | Layer | Location | What it covers |
 |---|---|---|
@@ -373,6 +375,7 @@ PDFScout/
 │
 ├── schemas/                    # JSON Schema Draft-07 blueprints
 │   ├── baseline_core.json      # Generic fallback: 8-type enum, no domain metadata
+│   ├── contract.json           # Contract-specific: signature_block type + party/clause/signature metadata
 │   ├── invoice.json            # Invoice-specific metadata extensions
 │   └── scientific_paper.json   # Academic paper metadata additions
 │
@@ -430,7 +433,7 @@ All tunable constants live in `src/config.py`:
 ```python
 MODEL = "claude-sonnet-4-6"
 CONCURRENCY_LIMIT = 3       # Max concurrent Anthropic API calls during burst phase
-SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper"}
+SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 FALLBACK_DOC_TYPE = "baseline_core"
 COLUMN_BUCKET_PX = 50       # Column grouping width (px) for geometric pre-sorter
 ```
@@ -441,10 +444,13 @@ COLUMN_BUCKET_PX = 50       # Column grouping width (px) for geometric pre-sorte
 
 ## Extending with New Document Types
 
-1. Add a new JSON Schema file to `schemas/` (e.g., `schemas/contract.json`) following the Draft-07 structure with the 8-type block enum and any domain-specific `metadata` extensions.
-2. Add the new type string to `SUPPORTED_DOC_TYPES` in `src/config.py`.
+1. Add a new JSON Schema file to `schemas/<type>.json` following the Draft-07 structure with the 8-type block enum and any domain-specific `metadata` extensions. The filename without `.json` is the exact token the classifier will return.
+2. Add the new type string to `SUPPORTED_DOC_TYPES` in `src/config.py` — the classifier prompt updates automatically via `sorted(SUPPORTED_DOC_TYPES)`.
+3. *(Optional but recommended)* Add a branch in `_doc_type_instructions()` in `src/nodes/worker_node.py` with domain-specific extraction instructions. These are appended to the prompt for every page, guiding the model to populate domain metadata subfields on the relevant block types.
 
-The classifier, schema registry, and validation loop pick it up automatically — no other code changes required.
+The classifier, schema registry, and validation loop pick it up after steps 1–2. Step 3 improves metadata extraction quality but is not required for the pipeline to function.
+
+See **[schemas/README.md](schemas/README.md)** for the full guide.
 
 ---
 

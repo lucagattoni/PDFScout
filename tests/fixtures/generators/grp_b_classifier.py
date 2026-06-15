@@ -120,13 +120,159 @@ def _write_golden_b(name: str, doc_type: str) -> None:
     (_GOLDEN_DIR / f"{name}.json").write_text(json.dumps(golden, indent=2))
 
 
+def _make_b3_contract() -> object:
+    """Contract PDF: SERVICE AGREEMENT with parties, recitals, clauses, signature block."""
+    pdf = make_pdf()
+    pdf.add_page()
+
+    draw_text(pdf, "SERVICE AGREEMENT", 20, 25, size=18, style="B", align="C", w=170)
+    draw_text(pdf, "Effective Date: January 1, 2026", 20, 38, size=10, align="C", w=170)
+
+    draw_text(
+        pdf,
+        (
+            "THIS AGREEMENT is entered into as of the date above by and between "
+            'Alpha Corp, a Delaware corporation ("Client"), and Beta LLC, a New York '
+            'limited liability company ("Service Provider").'
+        ),
+        20,
+        52,
+        size=10,
+        w=170,
+    )
+
+    draw_text(pdf, "RECITALS", 20, 78, size=12, style="B")
+    draw_text(
+        pdf,
+        "WHEREAS, Client wishes to obtain professional services from Service Provider;",
+        20,
+        88,
+        size=10,
+        w=170,
+    )
+    draw_text(
+        pdf,
+        (
+            "NOW, THEREFORE, in consideration of the mutual covenants herein, "
+            "the parties agree as follows:"
+        ),
+        20,
+        98,
+        size=10,
+        w=170,
+    )
+
+    draw_text(pdf, "1. SERVICES", 20, 114, size=11, style="B")
+    draw_text(
+        pdf,
+        (
+            "Service Provider shall perform software development and consulting services "
+            "as specified in Exhibit A attached hereto and incorporated by reference."
+        ),
+        20,
+        124,
+        size=10,
+        w=170,
+    )
+
+    draw_text(pdf, "2. PAYMENT TERMS", 20, 140, size=11, style="B")
+    draw_text(
+        pdf,
+        (
+            "Client shall pay Service Provider a monthly retainer of $10,000 due within "
+            "30 days of invoice. Late payments accrue interest at 1.5% per month."
+        ),
+        20,
+        150,
+        size=10,
+        w=170,
+    )
+
+    draw_text(pdf, "3. GOVERNING LAW", 20, 166, size=11, style="B")
+    draw_text(
+        pdf,
+        "This Agreement shall be governed by the laws of the State of New York.",
+        20,
+        176,
+        size=10,
+        w=170,
+    )
+
+    draw_text(pdf, "IN WITNESS WHEREOF, the parties have executed this Agreement.", 20, 196, size=10)
+
+    draw_text(pdf, "CLIENT:", 20, 210, size=10, style="B")
+    draw_text(pdf, "Alpha Corp", 20, 218, size=10)
+    draw_text(pdf, "Signature: _______________________", 20, 226, size=10)
+    draw_text(pdf, "Name: ___________________________", 20, 234, size=10)
+    draw_text(pdf, "Date: ___________________________", 20, 242, size=10)
+
+    draw_text(pdf, "SERVICE PROVIDER:", 110, 210, size=10, style="B")
+    draw_text(pdf, "Beta LLC", 110, 218, size=10)
+    draw_text(pdf, "Signature: _______________________", 110, 226, size=10)
+    draw_text(pdf, "Name: ___________________________", 110, 234, size=10)
+    draw_text(pdf, "Date: ___________________________", 110, 242, size=10)
+
+    return pdf
+
+
+def _make_b4_invoice_legal() -> object:
+    """Vendor invoice with a 'Terms and Conditions' footer (adversarial: legal language but is an invoice)."""
+    pdf = make_pdf()
+    pdf.add_page()
+
+    draw_text(pdf, "INVOICE #099", 20, 25, size=20, style="B")
+    draw_text(pdf, "Date: 2026-06-01", 20, 38, size=11)
+    draw_text(pdf, "From: Globex Supplies Inc, 789 Vendor Road, Austin, TX 78701", 20, 46, size=10)
+    draw_text(pdf, "Bill To: Initech Ltd, 321 Client Blvd, Seattle, WA 98101", 20, 54, size=10)
+
+    draw_table(
+        pdf,
+        x_mm=20,
+        y_mm=68,
+        headers=["Description", "Qty", "Unit Price", "Amount"],
+        rows=[
+            ["Office Supplies", "50", "$4.00", "$200.00"],
+            ["Printer Cartridges", "10", "$22.00", "$220.00"],
+            ["Shipping & Handling", "1", "$15.00", "$15.00"],
+        ],
+        col_width=42.5,
+        row_height=9,
+    )
+
+    draw_text(pdf, "Subtotal: $435.00", 120, 118, size=11)
+    draw_text(pdf, "Tax (9%): $39.15", 120, 128, size=11)
+    draw_text(pdf, "Total Due: $474.15", 120, 138, size=12, style="B")
+    draw_text(pdf, "Payment Due: 2026-07-01", 120, 148, size=10)
+
+    draw_text(pdf, "TERMS AND CONDITIONS", 20, 170, size=10, style="B")
+    draw_text(
+        pdf,
+        (
+            "Payment is due within 30 days of invoice date. This invoice is governed by "
+            "the laws of the State of Texas. Disputes shall be resolved by binding "
+            "arbitration. No warranty is implied. Seller retains title to goods until "
+            "payment is received in full."
+        ),
+        20,
+        180,
+        size=9,
+        w=170,
+    )
+
+    return pdf
+
+
 def generate(out_dir: Path) -> list[Path]:
     paths = []
     paths.append(save_pdf(_make_b1_invoice(), out_dir, "grp_b_invoice.pdf"))
     paths.append(save_pdf(_make_b2_scientific_paper(), out_dir, "grp_b_scientific_paper.pdf"))
+    paths.append(save_pdf(_make_b3_contract(), out_dir, "grp_b_contract.pdf"))
+    paths.append(save_pdf(_make_b4_invoice_legal(), out_dir, "grp_b_invoice_legal.pdf"))
 
     _write_golden_b("grp_b_invoice", "invoice")
     _write_golden_b("grp_b_scientific_paper", "scientific_paper")
+    _write_golden_b("grp_b_contract", "contract")
+    _write_golden_b("grp_b_invoice_legal", "invoice")
 
     return paths
 
