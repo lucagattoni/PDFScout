@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.config import VALIDATION_MAX_RETRIES
 from src.nodes.worker_node import burst_worker_node, window_parser_node
 
 
@@ -140,10 +141,10 @@ class TestBurstWorkerNode:
         mock_client = _setup_mocks(mocker, _make_tool_use_response([invalid_block]))
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [invalid_block]
-        assert mock_client.messages.create.call_count == 3
+        assert mock_client.messages.create.call_count == VALIDATION_MAX_RETRIES
         warnings = result.get("extraction_warnings", [])
         assert len(warnings) == 1
-        assert "schema validation failed after 3 attempts" in warnings[0]
+        assert f"schema validation failed after {VALIDATION_MAX_RETRIES} attempts" in warnings[0]
 
     async def test_error_injected_into_retry_content(
         self, sample_state, sample_block, mocker

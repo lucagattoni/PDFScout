@@ -1,3 +1,4 @@
+from src.config import VALIDATION_MAX_RETRIES
 from src.nodes.retry_node import retry_incrementor_node
 
 
@@ -25,7 +26,7 @@ class TestRetryIncrementorNode:
     async def test_error_contains_attempt_count(self, sample_state):
         state = {**sample_state, "extracted_flat_blocks": [], "retry_count": 0}
         result = await retry_incrementor_node(state)
-        assert "(attempt 1/3)" in result["last_validation_error"]
+        assert f"(attempt 1/{VALIDATION_MAX_RETRIES})" in result["last_validation_error"]
 
     async def test_schema_failing_blocks_error_detail(self, sample_state):
         bad_block = {

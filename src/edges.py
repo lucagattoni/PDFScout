@@ -2,6 +2,7 @@ from typing import Any, Literal
 
 import jsonschema
 
+from src.config import VALIDATION_MAX_RETRIES
 from src.schema_registry import SchemaRegistry
 
 
@@ -11,7 +12,7 @@ def pioneer_validation_route(state: dict[str, Any]) -> Literal["retry_node", "bu
 
     # Empty list means the model returned no blocks for page 1 or used the wrong page number
     if not active_blocks:
-        return "retry_node" if state["retry_count"] < 3 else "burst_dispatcher"
+        return "retry_node" if state["retry_count"] < VALIDATION_MAX_RETRIES else "burst_dispatcher"
 
     payload = {"document_type": state["document_type"], "blocks": active_blocks}
 
@@ -19,6 +20,6 @@ def pioneer_validation_route(state: dict[str, Any]) -> Literal["retry_node", "bu
         SchemaRegistry().validate(state["document_type"], payload)
         return "burst_dispatcher"
     except jsonschema.ValidationError:
-        if state["retry_count"] < 3:
+        if state["retry_count"] < VALIDATION_MAX_RETRIES:
             return "retry_node"
-        return "burst_dispatcher"  # degrade gracefully after 3 failed retries
+        return "burst_dispatcher"  # degrade gracefully after max retries

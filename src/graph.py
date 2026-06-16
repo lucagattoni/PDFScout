@@ -3,6 +3,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
+from src.config import VALIDATION_MAX_RETRIES
 from src.edges import pioneer_validation_route
 from src.nodes.classifier_node import classifier_node
 from src.nodes.extractor_node import native_extractor_node
@@ -14,10 +15,10 @@ from src.state import PDFParserState
 
 def burst_dispatcher_node(state: PDFParserState) -> dict[str, Any]:
     """Passthrough node. Writes a warning if pioneer validation degraded after max retries."""
-    if state["retry_count"] >= 3:
+    if state["retry_count"] >= VALIDATION_MAX_RETRIES:
         return {
             "extraction_warnings": [
-                "Pioneer page (page 1) failed schema validation after 3 retries. "
+                f"Pioneer page (page 1) failed schema validation after {VALIDATION_MAX_RETRIES} retries. "
                 "Page 1 data may be incomplete or structurally invalid."
             ]
         }

@@ -5,7 +5,7 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.config import COLUMN_BUCKET_PX, MODEL
+from src.config import COLUMN_BUCKET_PX, HTTP_MAX_RETRIES, MODEL
 
 RELATION_TOOL = {
     "name": "set_block_relations",
@@ -42,7 +42,7 @@ def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(blocks, key=sort_key)
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=1, min=1, max=10))
 async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = 4000) -> Any:
     return await client.messages.create(
         model=MODEL,

@@ -2,6 +2,7 @@ from typing import Any
 
 import jsonschema
 
+from src.config import VALIDATION_MAX_RETRIES
 from src.schema_registry import SchemaRegistry
 
 
@@ -29,7 +30,7 @@ async def retry_incrementor_node(state: dict[str, Any]) -> dict[str, Any]:
     return {
         "retry_count": attempt,
         "last_validation_error": (
-            f"Schema violation on pioneer page extraction (attempt {attempt}/3).\n"
+            f"Schema violation on pioneer page extraction (attempt {attempt}/{VALIDATION_MAX_RETRIES}).\n"
             f"Error: {error_detail}\n"
             f"Fix the block structure to match the target schema."
         ),

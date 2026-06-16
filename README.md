@@ -458,13 +458,15 @@ All tunable constants live in `src/config.py`:
 
 ```python
 MODEL = "claude-sonnet-4-6"
-CONCURRENCY_LIMIT = 3       # Max concurrent Anthropic API calls during burst phase
+CONCURRENCY_LIMIT = 3           # Max concurrent Anthropic API calls during burst phase
 SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 FALLBACK_DOC_TYPE = "baseline_core"
-COLUMN_BUCKET_PX = 50       # Column grouping width (px) for geometric pre-sorter
+COLUMN_BUCKET_PX = 50           # Column grouping width (px) for geometric pre-sorter
+VALIDATION_MAX_RETRIES = 3      # Max schema-validation retries (pioneer graph-level + burst inline)
+HTTP_MAX_RETRIES = 3            # Max tenacity retries on transient HTTP errors (429/529)
 ```
 
-`CONCURRENCY_LIMIT` controls the `asyncio.Semaphore` cap on parallel `parser_worker` calls. Increase it for faster processing on large documents; decrease it if hitting TPM rate limits. `COLUMN_BUCKET_PX` controls how the geometric pre-sorter groups blocks into columns before sorting by vertical position — increase it to merge narrow columns, decrease it to preserve fine-grained column boundaries.
+`CONCURRENCY_LIMIT` controls the `asyncio.Semaphore` cap on parallel `parser_worker` calls. Increase it for faster processing on large documents; decrease it if hitting TPM rate limits. `COLUMN_BUCKET_PX` controls how the geometric pre-sorter groups blocks into columns before sorting by vertical position — increase it to merge narrow columns, decrease it to preserve fine-grained column boundaries. `VALIDATION_MAX_RETRIES` controls how many times the pipeline re-prompts the model after a schema validation failure, for both the pioneer page (graph-level loop) and burst pages (inline loop). `HTTP_MAX_RETRIES` controls how many times tenacity retries a failed API call on transient errors.
 
 ---
 

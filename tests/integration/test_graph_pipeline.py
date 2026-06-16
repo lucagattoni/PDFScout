@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
+from src.config import VALIDATION_MAX_RETRIES
 from src.graph import build_app
 
 
@@ -239,7 +240,7 @@ class TestGraphPipelineMaxRetryDegradation:
         node_sequence, final_state = await _stream_graph(minimal_pdf_path)
 
         retry_count = node_sequence.count("retry_node")
-        assert retry_count == 3
+        assert retry_count == VALIDATION_MAX_RETRIES
 
         assert "burst_dispatcher" in node_sequence
         burst_idx = node_sequence.index("burst_dispatcher")

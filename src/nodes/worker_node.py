@@ -7,7 +7,7 @@ import jsonschema
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.config import CONCURRENCY_LIMIT, MODEL
+from src.config import CONCURRENCY_LIMIT, HTTP_MAX_RETRIES, MODEL, VALIDATION_MAX_RETRIES
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
 
@@ -71,7 +71,7 @@ def _doc_type_instructions(doc_type: str) -> str:
     return ""
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=1, min=1, max=10))
 async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dict) -> Any:
     return await client.messages.create(
         model=MODEL,
@@ -143,11 +143,11 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
 
 
 async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Like window_parser_node but with inline validation-retry (up to 3 attempts).
+    """Like window_parser_node but with inline validation-retry (up to VALIDATION_MAX_RETRIES attempts).
 
     Burst pages have no graph-level retry loop, so validation failures are
-    retried inline. After 3 failed attempts the node degrades gracefully:
-    it returns whatever blocks were last produced with an extraction warning."""
+    retried inline. After VALIDATION_MAX_RETRIES failed attempts the node degrades
+    gracefully: it returns whatever blocks were last produced with an extraction warning."""
     async with _get_semaphore():
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
@@ -158,7 +158,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
 
         last_error: str | None = None
 
-        for attempt in range(1, 4):
+        for attempt in range(1, VALIDATION_MAX_RETRIES + 1):
             content: list = [
                 {
                     "type": "document",
@@ -214,11 +214,11 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                     path = " → ".join(str(p) for p in e.absolute_path) or "root"
                     last_error = f"Field '{path}': {e.message}"
 
-            if attempt == 3:
+            if attempt == VALIDATION_MAX_RETRIES:
                 return {
                     "extracted_flat_blocks": blocks,
                     "extraction_warnings": [
-                        f"Page {current_page}: schema validation failed after 3 attempts. "
+                        f"Page {current_page}: schema validation failed after {VALIDATION_MAX_RETRIES} attempts. "
                         f"Last error: {last_error}"
                     ],
                 }
