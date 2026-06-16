@@ -6,6 +6,7 @@ _Updated: 2026-06-16 05:45 · Fixed 4 bugs found in devil's advocate review: uni
 _Updated: 2026-06-16 05:50 · Added extraction_note string field to feed a future remediation agent_
 _Updated: 2026-06-16 05:58 · Fixed prompt (over-anchoring example removed, counter-pressure added), maxLength moved to config constant, extraction_note passthrough test added, plan fully synced with implementation_
 _Updated: 2026-06-16 06:00 · DA pass 3: prompt separator \n\n, maxLength test uses config constant, burst passthrough tests added_
+_Updated: 2026-06-16 06:02 · DA pass 4: no new code changes; two risks added (enum centralization, schema reload overhead)_
 
 ## Overview
 
@@ -244,6 +245,8 @@ that flags must be present (too flaky) and no assertion on specific values.
 | `extraction_note` exceeds one sentence / 200 chars | `maxLength: 200` enforced by `SchemaRegistry` at load time; violation triggers retry loop |
 | Flags add tokens on clean docs | Model omits both fields when absent; typical overhead near zero |
 | `EXTRACTION_NOTE_MAX_LENGTH` changed to a very small value | Lowering below ~50 breaks meaningful notes. No validation guards the config constant itself |
+| `extraction_flags` enum values are duplicated (4 JSON files + prompt constant) | Adding a new flag requires updating all four schemas and the prompt. No single source of truth. Future mitigation: inject enum from config via SchemaRegistry, same pattern as `maxLength` |
+| `_load_schema()` called twice per validation attempt (tool def + validate) | Each call is a disk read + JSON parse + mutation. At 100+ pages with 3 retry attempts each this is O(hundreds) redundant reads. Correct but wasteful at scale. Future mitigation: simple per-instance schema cache |
 
 ---
 
