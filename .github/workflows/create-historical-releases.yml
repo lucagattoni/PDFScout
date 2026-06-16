@@ -50,16 +50,21 @@ jobs:
               git push origin "$TAG"
             fi
 
-            # Delete existing release so we can recreate with correct published_at.
-            # GitHub ignores published_at in PATCH for already-published releases;
-            # it is only honoured when a draft transitions to published.
-            # NOTE: gh api writes 404 JSON to stdout (not stderr), so capture+check
-            # exit status via &&-chaining — never test [ -n "$EXISTING_ID" ].
-            local EXISTING_ID
-            EXISTING_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.id' 2>/dev/null) \
-              && gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_ID" -X DELETE > /dev/null \
-              && echo "Deleted existing release $TAG (id=$EXISTING_ID)" \
-              || true
+            # Delete ALL existing releases (published + drafts) with this tag_name
+            # so we can recreate with the correct published_at.
+            # Use python3 to filter the full releases list (avoids jq quoting issues
+            # and catches draft releases that releases/tags/{tag} doesn't return).
+            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate 2>/dev/null | \
+              python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for r in data:
+    if r.get('tag_name') == '$TAG':
+        print(r['id'])
+" | while read -r EXISTING_ID; do
+              gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_ID" -X DELETE > /dev/null 2>&1 \
+                && echo "Deleted release id=$EXISTING_ID for $TAG" || true
+            done
 
             # Create the release with published_at set in the POST body.
             # GitHub honours published_at (including past dates) when set at
