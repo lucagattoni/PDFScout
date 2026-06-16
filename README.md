@@ -161,6 +161,12 @@ high_quality = [b for b in blocks if not b.get("extraction_flags")]
 uncertain    = [b for b in blocks if b.get("extraction_flags")]
 ```
 
+When `extraction_flags` is non-empty, `extraction_note` is also set — a one-sentence
+description of the specific issue on that block (e.g. `"Left margin is flush at x=0,
+text appears truncated"`). This field is intended for a downstream remediation agent
+that can inspect flagged blocks and attempt targeted re-extraction or correction.
+Absent when no flags are set.
+
 ### Table Cell Matrix
 
 Tables are stored as a compressed coordinate matrix that handles row/column spans:
@@ -214,7 +220,7 @@ cp .env.example .env  # then fill in your API key
 | `make lint` | Check Python for linting violations and formatting drift (read-only) |
 | `make lint-md` | Check Markdown files with markdownlint-cli2 (read-only) |
 | `make fix` | Auto-fix Python violations and reformat all files |
-| `make test` | Run the full test suite (144 tests, no API key required) |
+| `make test` | Run the full test suite (152 tests, no API key required) |
 | `make test-e2e` | Run all synthetic e2e tests (requires `ANTHROPIC_API_KEY`) |
 | `make test-e2e GRP=c` | Run one group of e2e tests (a–h) |
 | `make fixtures` | Regenerate all synthetic PDF fixtures and golden files |
@@ -229,7 +235,7 @@ Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (con
 
 ## Testing
 
-The suite has 144 tests across two layers (run with `make test`, coverage with `make coverage`):
+The suite has 152 tests across two layers (run with `make test`, coverage with `make coverage`):
 
 | Layer | Location | What it covers |
 |---|---|---|

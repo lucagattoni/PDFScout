@@ -141,6 +141,8 @@ the rest of the pipeline.
 
 Valid enum values: `"partial_visibility"`, `"low_legibility"`, `"ambiguous_type"`, `"possible_encoding_error"`. See the main README's "Extraction Flags" section for RAG filter patterns. Do not add a new schema without including `extraction_flags` — it is part of the shared baseline block structure.
 
+`extraction_note` is a companion string field, present only when `extraction_flags` is non-empty. It holds one sentence describing the specific issue on that block (e.g. `"Left margin is flush at x=0, text appears truncated"`). Intended for a downstream remediation agent that inspects flagged blocks and attempts targeted correction.
+
 ### Adding domain-specific metadata
 
 All domain-specific data goes inside the `metadata` object on each block. This

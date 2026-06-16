@@ -143,3 +143,14 @@ class TestExtractionFlags:
         block = {**_base_block(), "extraction_flags": ["ambiguous_type", "ambiguous_type"]}
         with pytest.raises(jsonschema.ValidationError):
             registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_note_with_flags_accepted(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint due to low scan contrast."}
+        registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_note_absent_passes(self, doc_type):
+        registry = SchemaRegistry()
+        registry.validate(doc_type, {"document_type": doc_type, "blocks": [_base_block()]})

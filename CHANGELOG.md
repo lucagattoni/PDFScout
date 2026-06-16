@@ -4,20 +4,22 @@
 
 ### Added
 
-- **B2 — Extraction quality flags** (`schemas/baseline_core.json`, `schemas/invoice.json`,
-  `schemas/scientific_paper.json`, `schemas/contract.json`, `src/nodes/worker_node.py`) —
-  all four schemas now include an optional `extraction_flags` array on every block.
-  Four named flags: `partial_visibility` (block cut off at page edge), `low_legibility`
-  (scan quality / contrast / overlap), `ambiguous_type` (uncertain block type), and
-  `possible_encoding_error` (OCR / encoding artifacts). The array is `uniqueItems: true`
-  — duplicate flags are rejected by schema validation. A single `_EXTRACTION_FLAGS_INSTRUCTION`
-  constant is appended to the extraction prompt in both `window_parser_node` and
-  `burst_worker_node`. Empty array or absent field = high confidence. Designed for RAG
-  pipeline filtering; downstream consumers can route uncertain blocks to human review.
+- **B2 — Extraction quality flags and notes** (`schemas/baseline_core.json`,
+  `schemas/invoice.json`, `schemas/scientific_paper.json`, `schemas/contract.json`,
+  `src/nodes/worker_node.py`) — all four schemas now include two companion optional fields
+  on every block. `extraction_flags` is an array of named quality signals (`partial_visibility`,
+  `low_legibility`, `ambiguous_type`, `possible_encoding_error`) with `uniqueItems: true` —
+  invalid or duplicate flags are rejected by schema validation. `extraction_note` is a
+  free-text string set alongside flags to describe the specific issue on that block in one
+  sentence; designed to feed a downstream remediation agent that can inspect flagged blocks
+  and attempt targeted correction. A single `_EXTRACTION_FLAGS_INSTRUCTION` constant is
+  appended to the extraction prompt in both `window_parser_node` and `burst_worker_node`.
+  Empty/absent = high confidence.
 
-- **17 new unit tests** — 16 parametrized across all 4 schemas × 4 test functions
+- **25 new unit tests** — 24 parametrized across all 4 schemas × 6 test functions
   (`test_extraction_flags_valid_flag_accepted`, `test_extraction_flags_invalid_flag_rejected`,
-  `test_extraction_flags_absent_passes`, `test_extraction_flags_duplicate_flag_rejected`) plus
+  `test_extraction_flags_absent_passes`, `test_extraction_flags_duplicate_flag_rejected`,
+  `test_extraction_note_with_flags_accepted`, `test_extraction_note_absent_passes`) plus
   1 passthrough test (`test_extraction_flags_passed_through`) asserting flags are not stripped
   in `window_parser_node`.
 

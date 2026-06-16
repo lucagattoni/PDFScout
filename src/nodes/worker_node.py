@@ -53,7 +53,10 @@ _EXTRACTION_FLAGS_INSTRUCTION = (
     "'low_legibility' if text is hard to read (scan, low contrast, overlapping content); "
     "'ambiguous_type' if you are uncertain which block type is most appropriate; "
     "'possible_encoding_error' if the text contains likely OCR or encoding artifacts. "
-    "Omit extraction_flags (or use []) for clearly readable, unambiguous blocks."
+    "Omit extraction_flags (or use []) for clearly readable, unambiguous blocks. "
+    "When you set extraction_flags, also set extraction_note to one sentence describing "
+    "the specific issue on this block (e.g. 'Left margin is flush at x=0, text appears "
+    "truncated'). Omit extraction_note when extraction_flags is absent or empty."
 )
 
 
