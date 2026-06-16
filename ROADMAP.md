@@ -34,18 +34,13 @@ e2e tests added. Full detail in `plans/20260615_2020-contract-schema-b1.md`.
 
 ---
 
-### B2 · Confidence scores on blocks (Medium effort)
+### B2 · Extraction quality flags on blocks ✅ Done in v1.6.0
 
-**What:** All blocks are returned with equal weight. A `confidence` field (0.0–1.0)
-would help downstream consumers (RAG pipelines, review UIs) identify uncertain
-extractions — e.g. low-resolution scans, obscured text, merged-cell tables.
-
-**Fix:** Add `confidence` (number, 0–1, optional) to `baseline_core.json`.
-Add a prompt instruction for when to set it below 1.0. Gate with an H-group test
-(degraded text fixture, at least one block has `confidence < 1.0`).
-
-**Risk:** Model may set confidence arbitrarily rather than meaningfully.
-Needs a stability gate before asserting specific values in tests.
+`extraction_flags` (optional array of enum strings) added to all 4 schemas and
+both extraction prompts. Four flags: `partial_visibility`, `low_legibility`,
+`ambiguous_type`, `possible_encoding_error`. Empty array = high confidence.
+Designed for RAG pipeline filtering. Full detail in
+`plans/20260616_0515-confidence-scores-b2.md`.
 
 ---
 

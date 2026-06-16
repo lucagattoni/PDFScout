@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.6.0] — 2026-06-16
+
+### Added
+
+- **B2 — Extraction quality flags** (`schemas/baseline_core.json`, `schemas/invoice.json`,
+  `schemas/scientific_paper.json`, `schemas/contract.json`, `src/nodes/worker_node.py`) —
+  all four schemas now include an optional `extraction_flags` array on every block.
+  Four named flags: `partial_visibility` (block cut off at page edge), `low_legibility`
+  (scan quality / contrast / overlap), `ambiguous_type` (uncertain block type), and
+  `possible_encoding_error` (OCR / encoding artifacts). The array is `uniqueItems: true`
+  — duplicate flags are rejected by schema validation. A single `_EXTRACTION_FLAGS_INSTRUCTION`
+  constant is appended to the extraction prompt in both `window_parser_node` and
+  `burst_worker_node`. Empty array or absent field = high confidence. Designed for RAG
+  pipeline filtering; downstream consumers can route uncertain blocks to human review.
+
+- **17 new unit tests** — 16 parametrized across all 4 schemas × 4 test functions
+  (`test_extraction_flags_valid_flag_accepted`, `test_extraction_flags_invalid_flag_rejected`,
+  `test_extraction_flags_absent_passes`, `test_extraction_flags_duplicate_flag_rejected`) plus
+  1 passthrough test (`test_extraction_flags_passed_through`) asserting flags are not stripped
+  in `window_parser_node`.
+
+## [1.5.1] — 2026-06-16
+
+### Added
+
+- **C3 — API job-loss regression tests** (`tests/integration/test_api_jobs.py`) — two tests
+  in `TestJobStorePersistence`: `test_job_survives_reinit` (completed job written to SQLite
+  is reloaded after re-init, simulating a server restart) and
+  `test_running_job_marked_failed_on_reinit` (jobs still in `running` state at restart are
+  automatically marked `failed` on `init()`). Both tests use `tmp_path` for isolation and
+  reset module-level state in `finally` blocks.
+
 ## [1.5.0] — 2026-06-15
 
 ### Added

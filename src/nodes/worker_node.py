@@ -47,6 +47,15 @@ _CONTRACT_INSTRUCTIONS = (
     "\n- schedule or exhibit tables → table_data (total_rows, total_cols, cells)"
 )
 
+_EXTRACTION_FLAGS_INSTRUCTION = (
+    " Set extraction_flags on a block only when quality is uncertain: "
+    "'partial_visibility' if the block is cut off at the page edge; "
+    "'low_legibility' if text is hard to read (scan, low contrast, overlapping content); "
+    "'ambiguous_type' if you are uncertain which block type is most appropriate; "
+    "'possible_encoding_error' if the text contains likely OCR or encoding artifacts. "
+    "Omit extraction_flags (or use []) for clearly readable, unambiguous blocks."
+)
+
 
 def _doc_type_instructions(doc_type: str) -> str:
     if doc_type == "scientific_paper":
@@ -92,7 +101,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                     f"top of the next page, set is_continued=true. Leave is_continued=false (or "
                     f"omit it) for all complete blocks. "
                     f"Use the tool '{tool_definition['name']}' to return structured data matching "
-                    f"the schema parameters.{extra_instructions}"
+                    f"the schema parameters.{extra_instructions}{_EXTRACTION_FLAGS_INSTRUCTION}"
                 ),
             },
         ]
@@ -159,7 +168,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                         f"top of the next page, set is_continued=true. Leave is_continued=false (or "
                         f"omit it) for all complete blocks. "
                         f"Use the tool '{tool_definition['name']}' to return structured data matching "
-                        f"the schema parameters.{extra_instructions}"
+                        f"the schema parameters.{extra_instructions}{_EXTRACTION_FLAGS_INSTRUCTION}"
                     ),
                 },
             ]

@@ -74,6 +74,13 @@ class TestWindowParserNode:
         content = call_args.kwargs["messages"][0]["content"]
         assert len(content) == 2
 
+    async def test_extraction_flags_passed_through(self, sample_state, sample_block, mocker):
+        block_with_flags = {**sample_block, "extraction_flags": ["low_legibility"]}
+        response = _make_tool_use_response([block_with_flags])
+        _setup_mocks(mocker, response)
+        result = await window_parser_node(sample_state)
+        assert result["extracted_flat_blocks"][0].get("extraction_flags") == ["low_legibility"]
+
 
 class TestBurstWorkerNode:
     async def test_valid_blocks_pass_on_first_attempt(self, sample_state, sample_block, mocker):

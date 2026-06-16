@@ -117,6 +117,14 @@ the rest of the pipeline.
           },
           "text": { "type": "string" },
           "is_continued": { "type": "boolean", "default": false },
+          "extraction_flags": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": ["partial_visibility", "low_legibility", "ambiguous_type", "possible_encoding_error"]
+            }
+          },
           "metadata": { "type": "object" }
         },
         "required": ["block_id", "type", "bbox", "text"]
@@ -126,6 +134,12 @@ the rest of the pipeline.
   "required": ["document_type", "blocks"]
 }
 ```
+
+### extraction_flags
+
+`extraction_flags` is present in all four schemas as an optional array of named quality signals. The model sets it when extraction is uncertain; it omits the field (or uses `[]`) for clearly readable, unambiguous blocks.
+
+Valid enum values: `"partial_visibility"`, `"low_legibility"`, `"ambiguous_type"`, `"possible_encoding_error"`. See the main README's "Extraction Flags" section for RAG filter patterns. Do not add a new schema without including `extraction_flags` — it is part of the shared baseline block structure.
 
 ### Adding domain-specific metadata
 
