@@ -9,15 +9,11 @@ Current version: see [CHANGELOG.md](CHANGELOG.md)
 
 ## Category A — Infrastructure / Correctness
 
-### C3 · API job-loss regression test (Low effort)
+### C3 · API job-loss regression test ✅ Done in v1.5.1
 
-**What:** No test verifies that job records survive a server restart. `A1` (SQLite
-persistence) is already shipped; this test is its missing regression gate.
-
-**Fix:** Integration test — create a job, re-initialise the `JobStore` (simulate
-restart), assert the job is still retrievable via `GET /jobs/{id}`.
-
-**Scope:** ~30 lines in `tests/integration/test_api_jobs.py`.
+Two tests in `TestJobStorePersistence` (`tests/integration/test_api_jobs.py`):
+`test_job_survives_reinit` (completed job reloaded after re-init) and
+`test_running_job_marked_failed_on_reinit` (interrupted jobs auto-failed on restart).
 
 ---
 
@@ -30,24 +26,11 @@ mirroring the pioneer's graph-level retry loop.
 
 ## Category B — Features
 
-### B1 · New document schema — `contract` ⭐ High priority
+### B1 · New document schema — `contract` ✅ Done in v1.5.0
 
-**What:** Only 3 doc types exist. `contract` is the highest-value next target:
-well-defined structure (parties, recitals, clauses, signatures, effective date),
-clearly distinct from `invoice` and `scientific_paper`, high real-world demand.
-
-**Scope per new schema:**
-1. `schemas/contract.json` — 8-type block enum + metadata fields (`parties`,
-   `clause`, `signature`, `effective_date`)
-2. `src/config.py` — add `"contract"` to `SUPPORTED_DOC_TYPES`
-3. `src/nodes/worker_node.py` — add contract-specific extraction instructions to
-   `_doc_type_instructions()`
-4. Synthetic PDF fixtures + golden files (D-group style: 3–5 tests)
-5. B-group adversarial test: near-miss document correctly rejected to the right type
-
-**Risk:** Classifier prompt dilution — adding a new type may slightly degrade
-classification confidence on existing types. Run the full B-group stability check
-after adding the schema and confirm no regression before shipping.
+`schemas/contract.json` shipped with `signature_block` block type and metadata
+subfields `contract_meta`, `party`, `clause`, `signature`. B3/B4 classifier
+e2e tests added. Full detail in `plans/20260615_2020-contract-schema-b1.md`.
 
 ---
 
