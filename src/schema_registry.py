@@ -4,7 +4,7 @@ from typing import Any
 
 import jsonschema
 
-from src.config import FALLBACK_DOC_TYPE
+from src.config import EXTRACTION_NOTE_MAX_LENGTH, FALLBACK_DOC_TYPE
 
 _SCHEMA_DIR = Path(__file__).parent.parent / "schemas"
 
@@ -18,7 +18,17 @@ class SchemaRegistry:
         if not path.exists():
             path = self.schema_dir / f"{FALLBACK_DOC_TYPE}.json"
         with open(path) as f:
-            return json.load(f)
+            schema = json.load(f)
+        note_props = (
+            schema.get("properties", {})
+            .get("blocks", {})
+            .get("items", {})
+            .get("properties", {})
+            .get("extraction_note")
+        )
+        if note_props is not None:
+            note_props["maxLength"] = EXTRACTION_NOTE_MAX_LENGTH
+        return schema
 
     def get_schema_and_tool(self, doc_type: str) -> tuple[dict[str, Any], dict[str, Any]]:
         schema = self._load_schema(doc_type)

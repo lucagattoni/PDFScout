@@ -113,15 +113,24 @@ The test: Could a developer act on this response and only discover it was wrong 
 - When **updating** a plan, write the update datetime on the line immediately
   after the creation date line, e.g.:
   ```
-  _Created: 2026-05-31 14:30_
+  _Created: 2026-05-31 14:30_\
   _Updated: 2026-05-31 16:05 · <reason for update>_
   ```
+  Each line must end with a backslash `\` (except the last) so Markdown renders them
+  on separate lines. Without it, consecutive italic lines merge into one long line.
 - **Plan and implementation live on the same branch.** Never create a separate
   `plan/<topic>` branch when an implementation branch for the same feature exists.
   Start on a `feat/<topic>` branch, write the plan file there, refine it, then
   implement on the same branch. If a plan branch was already created before the
   implementation branch, merge the plan branch into the implementation branch before
   pushing.
+
+## Iterative loops
+
+- **Commit and push every commit immediately when it is ready** — do not accumulate
+  commits and push them in a batch at the end. As soon as a commit is made, push it.
+  This applies in all contexts: iterative loops, multi-step implementations, and
+  single-change fixes.
 
 ## Reviews
 
@@ -130,6 +139,9 @@ The test: Could a developer act on this response and only discover it was wrong 
 - After every plan implementation:
   1. **Run the full non-e2e test suite** (`make test` or `uv run pytest -m "not e2e"`) — must pass before committing.
   2. **Run lint** (`make lint` or `uv run ruff check`) — must be clean before committing.
-  3. **Check all documentation for consistency**: README.md, schemas/README.md, and any
-     other doc files that reference the changed system. Update test counts, config
-     constants, feature lists, and step-by-step guides to reflect the new state.
+  3. **Check all documentation for consistency** — do this proactively, never wait to be told:
+     README.md, schemas/README.md, CHANGELOG.md, ROADMAP.md, plan files, and any other doc
+     that references the changed system. Update test counts, config constants, feature lists,
+     scope tables, acceptance criteria, and step-by-step guides to reflect the new state.
+     **This includes plan files** — when implementation changes alter what the plan describes
+     (a new field, a renamed constant, a different test count), update the plan immediately.

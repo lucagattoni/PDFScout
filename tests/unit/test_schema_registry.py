@@ -1,6 +1,7 @@
 import jsonschema
 import pytest
 
+from src.config import EXTRACTION_NOTE_MAX_LENGTH
 from src.schema_registry import SchemaRegistry
 
 
@@ -62,6 +63,15 @@ def _contract_block(block_type: str = "paragraph") -> dict:
     }
 
 
+def _base_block() -> dict:
+    return {
+        "block_id": "b1",
+        "type": "paragraph",
+        "text": "Sample text.",
+        "bbox": {"page_number": 1, "coordinates": [50, 50, 100, 80]},
+    }
+
+
 class TestValidate:
     def test_valid_baseline_core_passes(self, sample_block):
         registry = SchemaRegistry()
@@ -104,3 +114,51 @@ class TestValidate:
         payload = {"document_type": "contract", "blocks": [_contract_block("invalid_type_xyz")]}
         with pytest.raises(jsonschema.ValidationError):
             registry.validate("contract", payload)
+
+
+_ALL_DOC_TYPES = ["baseline_core", "invoice", "scientific_paper", "contract"]
+
+
+class TestExtractionFlags:
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_flags_valid_flag_accepted(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["ambiguous_type"]}
+        registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_flags_invalid_flag_rejected(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["made_up_flag"]}
+        with pytest.raises(jsonschema.ValidationError):
+            registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_flags_absent_passes(self, doc_type):
+        registry = SchemaRegistry()
+        registry.validate(doc_type, {"document_type": doc_type, "blocks": [_base_block()]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_flags_duplicate_flag_rejected(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["ambiguous_type", "ambiguous_type"]}
+        with pytest.raises(jsonschema.ValidationError):
+            registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_note_with_flags_accepted(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint due to low scan contrast."}
+        registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_note_absent_passes(self, doc_type):
+        registry = SchemaRegistry()
+        registry.validate(doc_type, {"document_type": doc_type, "blocks": [_base_block()]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_note_too_long_rejected(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "x" * (EXTRACTION_NOTE_MAX_LENGTH + 1)}
+        with pytest.raises(jsonschema.ValidationError):
+            registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})

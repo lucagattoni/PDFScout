@@ -96,6 +96,7 @@ The final `hierarchical_document_tree` has this shape:
       },
       "text": "INVOICE #1042",
       "is_continued": false,
+      "extraction_flags": [],
       "metadata": {},
       "parent_id": null
     },
@@ -141,6 +142,31 @@ Every document normalizes to 8 base block types. Domain-specific schemas may ext
 | `signature_block` | Signature area with signatory name, role, and date lines | `contract` only |
 
 Domain-specific data (invoice line items, bibliographic authors, contract parties) lives inside the `metadata` field.
+
+### Extraction Flags
+
+Every block may carry an optional `extraction_flags` array naming specific reasons why the extraction may be uncertain. Absent or empty means high confidence.
+
+| Flag | Meaning | Suggested RAG action |
+|---|---|---|
+| `partial_visibility` | Block is cut off at a page edge — text appears to continue beyond the visible area | Exclude or mark incomplete |
+| `low_legibility` | Text is hard to read due to scan quality, low contrast, overlapping content, or background interference | Exclude or lower weight |
+| `ambiguous_type` | Block type assignment is uncertain — content could reasonably be classified as two different types | Flag for review; rely on text content, not type |
+| `possible_encoding_error` | Extracted text contains likely OCR or encoding artifacts — garbled characters, unusual punctuation, mixed scripts | Exclude or flag for re-extraction |
+
+RAG pipelines can filter on flags:
+
+```python
+high_quality = [b for b in blocks if not b.get("extraction_flags")]
+uncertain    = [b for b in blocks if b.get("extraction_flags")]
+```
+
+When `extraction_flags` is non-empty, `extraction_note` is also set — a one-sentence
+description of the specific observable symptom on that block (e.g. `"Top third of text
+is obscured by a watermark"` or `"Characters alternate between Cyrillic and Latin with
+no language boundary"`). Intended for a downstream remediation agent that can inspect
+flagged blocks and attempt targeted correction. Absent when no flags are set. Maximum
+length is controlled by `EXTRACTION_NOTE_MAX_LENGTH` in `src/config.py` (default 200).
 
 ### Table Cell Matrix
 
@@ -195,7 +221,7 @@ cp .env.example .env  # then fill in your API key
 | `make lint` | Check Python for linting violations and formatting drift (read-only) |
 | `make lint-md` | Check Markdown files with markdownlint-cli2 (read-only) |
 | `make fix` | Auto-fix Python violations and reformat all files |
-| `make test` | Run the full test suite (125 tests, no API key required) |
+| `make test` | Run the full test suite (159 tests, no API key required) |
 | `make test-e2e` | Run all synthetic e2e tests (requires `ANTHROPIC_API_KEY`) |
 | `make test-e2e GRP=c` | Run one group of e2e tests (a–h) |
 | `make fixtures` | Regenerate all synthetic PDF fixtures and golden files |
@@ -210,7 +236,7 @@ Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (con
 
 ## Testing
 
-The suite has 125 tests across two layers (run with `make test`, coverage with `make coverage`):
+The suite has 159 tests across two layers (run with `make test`, coverage with `make coverage`):
 
 | Layer | Location | What it covers |
 |---|---|---|
