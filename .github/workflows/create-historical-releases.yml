@@ -61,30 +61,25 @@ jobs:
               && echo "Deleted existing release $TAG (id=$EXISTING_ID)" \
               || true
 
-            # Create a draft release via the API and capture the ID from the response.
-            # Using the raw API (not gh release create) so we get the ID immediately
-            # without needing a separate lookup that fails on untagged drafts.
-            local NOTES PRERELEASE_BOOL RELEASE_ID
+            # Create the release with published_at set in the POST body.
+            # GitHub honours published_at (including past dates) when set at
+            # creation time. PATCH ignores past dates (it only schedules future
+            # publication), and the draft→publish transition has the same limit.
+            local NOTES PRERELEASE_BOOL ACTUAL_DATE
             NOTES=$(extract_notes "$VERSION")
             PRERELEASE_BOOL="false"
             if [ -n "$PRERELEASE" ]; then PRERELEASE_BOOL="true"; fi
 
-            RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            ACTUAL_DATE=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
               -X POST \
               -f "tag_name=$TAG" \
               -f "name=$TAG" \
-              -F "draft=true" \
-              -F "prerelease=$PRERELEASE_BOOL" \
-              -f "body=$NOTES" \
-              -q '.id')
-            echo "Created draft release $TAG (id=$RELEASE_ID)"
-
-            # Publish with the correct historical date in a single PATCH
-            gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
-              -X PATCH \
               -F "draft=false" \
-              -f "published_at=${RELEASE_DATE}T00:00:00Z"
-            echo "Published $TAG → $RELEASE_DATE"
+              -F "prerelease=$PRERELEASE_BOOL" \
+              -f "published_at=${RELEASE_DATE}T00:00:00Z" \
+              -f "body=$NOTES" \
+              -q '.published_at')
+            echo "Created $TAG → published_at=$ACTUAL_DATE (wanted $RELEASE_DATE)"
           }
 
           create_release "v0.1.0" "3b0e56d" "true"
