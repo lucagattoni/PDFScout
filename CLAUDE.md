@@ -125,9 +125,10 @@ The test: Could a developer act on this response and only discover it was wrong 
 
 ## Iterative loops
 
-- In any iterative loop (devil's advocate → fix → repeat), **commit completed work at
-  the end of each iteration** — do not accumulate uncommitted changes across multiple
-  iterations. Commit what is done before starting the next review or fix cycle.
+- **Commit and push every commit immediately when it is ready** — do not accumulate
+  commits and push them in a batch at the end. As soon as a commit is made, push it.
+  This applies in all contexts: iterative loops, multi-step implementations, and
+  single-change fixes.
 
 ## Reviews
 
