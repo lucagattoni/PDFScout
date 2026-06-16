@@ -20,7 +20,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create git tags and GitHub Releases
+      - name: Create git tags and GitHub Releases with correct dates
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -31,30 +31,42 @@ jobs:
             awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md
           }
 
+          extract_date() {
+            local VERSION="$1"
+            awk "/^## \[$VERSION\]/{match(\$0, /[0-9]{4}-[0-9]{2}-[0-9]{2}/); print substr(\$0, RSTART, RLENGTH); exit}" CHANGELOG.md
+          }
+
           create_release() {
             local TAG="$1"
             local SHA="$2"
             local PRERELEASE="$3"
             local VERSION="${TAG#v}"
-
-            if gh release view "$TAG" &>/dev/null; then
-              echo "Release $TAG already exists, skipping."
-              return 0
-            fi
+            local RELEASE_DATE
+            RELEASE_DATE=$(extract_date "$VERSION")
 
             # Create and push the tag if it doesn't exist
-            if ! git rev-parse "$TAG" &>/dev/null; then
+            if ! git rev-parse "$TAG" &>/dev/null 2>&1; then
               git tag -a "$TAG" "$SHA" -m "Release $TAG"
               git push origin "$TAG"
             fi
 
-            NOTES=$(extract_notes "$VERSION")
-            echo "$NOTES" | gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file - \
-              ${PRERELEASE:+--prerelease}
+            if gh release view "$TAG" &>/dev/null 2>&1; then
+              echo "Release $TAG already exists — patching published_at to $RELEASE_DATE."
+            else
+              NOTES=$(extract_notes "$VERSION")
+              echo "$NOTES" | gh release create "$TAG" \
+                --title "$TAG" \
+                --notes-file - \
+                ${PRERELEASE:+--prerelease}
+              echo "Created release $TAG"
+            fi
 
-            echo "Created release $TAG"
+            # Patch published_at to the CHANGELOG date
+            RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.id')
+            gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              -X PATCH \
+              -f "published_at=${RELEASE_DATE}T00:00:00Z"
+            echo "Set published_at for $TAG → $RELEASE_DATE"
           }
 
           create_release "v0.1.0" "3b0e56d" "true"
