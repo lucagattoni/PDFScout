@@ -15,7 +15,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create all historical releases
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create git tags and GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -30,17 +35,21 @@ jobs:
             local TAG="$1"
             local SHA="$2"
             local PRERELEASE="$3"
-
-            VERSION="${TAG#v}"
-            NOTES=$(extract_notes "$VERSION")
+            local VERSION="${TAG#v}"
 
             if gh release view "$TAG" &>/dev/null; then
               echo "Release $TAG already exists, skipping."
               return 0
             fi
 
+            # Create and push the tag if it doesn't exist
+            if ! git rev-parse "$TAG" &>/dev/null; then
+              git tag -a "$TAG" "$SHA" -m "Release $TAG"
+              git push origin "$TAG"
+            fi
+
+            NOTES=$(extract_notes "$VERSION")
             echo "$NOTES" | gh release create "$TAG" \
-              --target "$SHA" \
               --title "$TAG" \
               --notes-file - \
               ${PRERELEASE:+--prerelease}
