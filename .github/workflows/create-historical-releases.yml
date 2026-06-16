@@ -50,23 +50,35 @@ jobs:
               git push origin "$TAG"
             fi
 
-            if gh release view "$TAG" &>/dev/null 2>&1; then
-              echo "Release $TAG already exists — patching published_at to $RELEASE_DATE."
-            else
-              NOTES=$(extract_notes "$VERSION")
-              echo "$NOTES" | gh release create "$TAG" \
-                --title "$TAG" \
-                --notes-file - \
-                ${PRERELEASE:+--prerelease}
-              echo "Created release $TAG"
+            # Delete existing release so we can recreate with correct published_at.
+            # GitHub ignores published_at in PATCH for already-published releases;
+            # it is only honoured when a draft transitions to published.
+            local EXISTING_ID
+            EXISTING_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.id' 2>/dev/null || true)
+            if [ -n "$EXISTING_ID" ]; then
+              gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_ID" -X DELETE
+              echo "Deleted existing release $TAG (id=$EXISTING_ID)"
             fi
 
-            # Patch published_at to the CHANGELOG date
-            RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.id')
+            # Create as draft (published_at is settable on the draft→publish transition)
+            NOTES=$(extract_notes "$VERSION")
+            echo "$NOTES" | gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file - \
+              --draft \
+              ${PRERELEASE:+--prerelease}
+
+            # Locate the draft release ID (list all releases, drafts included)
+            local RELEASE_ID
+            RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq ".[] | select(.tag_name == \"$TAG\") | .id")
+
+            # Publish with the correct historical date in a single PATCH
             gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
               -X PATCH \
+              -F "draft=false" \
               -f "published_at=${RELEASE_DATE}T00:00:00Z"
-            echo "Set published_at for $TAG → $RELEASE_DATE"
+            echo "Published $TAG → $RELEASE_DATE"
           }
 
           create_release "v0.1.0" "3b0e56d" "true"
