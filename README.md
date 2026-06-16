@@ -195,7 +195,7 @@ cp .env.example .env  # then fill in your API key
 | `make lint` | Check Python for linting violations and formatting drift (read-only) |
 | `make lint-md` | Check Markdown files with markdownlint-cli2 (read-only) |
 | `make fix` | Auto-fix Python violations and reformat all files |
-| `make test` | Run the full test suite (113 tests, no API key required) |
+| `make test` | Run the full test suite (125 tests, no API key required) |
 | `make test-e2e` | Run all synthetic e2e tests (requires `ANTHROPIC_API_KEY`) |
 | `make test-e2e GRP=c` | Run one group of e2e tests (a–h) |
 | `make fixtures` | Regenerate all synthetic PDF fixtures and golden files |
@@ -210,7 +210,7 @@ Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (con
 
 ## Testing
 
-The suite has 120 tests across two layers (run with `make test`, coverage with `make coverage`):
+The suite has 125 tests across two layers (run with `make test`, coverage with `make coverage`):
 
 | Layer | Location | What it covers |
 |---|---|---|
