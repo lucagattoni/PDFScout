@@ -1,6 +1,7 @@
 import jsonschema
 import pytest
 
+from src.config import EXTRACTION_NOTE_MAX_LENGTH
 from src.schema_registry import SchemaRegistry
 
 
@@ -158,6 +159,6 @@ class TestExtractionFlags:
     @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
     def test_extraction_note_too_long_rejected(self, doc_type):
         registry = SchemaRegistry()
-        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "x" * 201}
+        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "x" * (EXTRACTION_NOTE_MAX_LENGTH + 1)}
         with pytest.raises(jsonschema.ValidationError):
             registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})

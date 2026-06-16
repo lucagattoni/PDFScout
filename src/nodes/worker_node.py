@@ -48,7 +48,7 @@ _CONTRACT_INSTRUCTIONS = (
 )
 
 _EXTRACTION_FLAGS_INSTRUCTION = (
-    " Flags should be rare — omit extraction_flags (or use []) for clearly readable, "
+    "\n\nFlags should be rare — omit extraction_flags (or use []) for clearly readable, "
     "unambiguous blocks. Set extraction_flags only when quality is genuinely uncertain: "
     "'partial_visibility' if the block is cut off at the page edge and text is missing; "
     "'low_legibility' if text is hard to read due to scan quality, low contrast, or overlap; "

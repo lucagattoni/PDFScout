@@ -16,12 +16,14 @@
   appended to the extraction prompt in both `window_parser_node` and `burst_worker_node`.
   Empty/absent = high confidence.
 
-- **25 new unit tests** — 24 parametrized across all 4 schemas × 6 test functions
+- **32 new unit tests** — 28 parametrized across all 4 schemas × 7 test functions
   (`test_extraction_flags_valid_flag_accepted`, `test_extraction_flags_invalid_flag_rejected`,
   `test_extraction_flags_absent_passes`, `test_extraction_flags_duplicate_flag_rejected`,
-  `test_extraction_note_with_flags_accepted`, `test_extraction_note_absent_passes`) plus
-  1 passthrough test (`test_extraction_flags_passed_through`) asserting flags are not stripped
-  in `window_parser_node`.
+  `test_extraction_note_with_flags_accepted`, `test_extraction_note_absent_passes`,
+  `test_extraction_note_too_long_rejected`) plus 4 passthrough tests asserting that both
+  flags and note survive the `window_parser_node` and `burst_worker_node` paths unchanged.
+  The `maxLength` boundary test uses `EXTRACTION_NOTE_MAX_LENGTH + 1` from config so it
+  stays valid if the constant is changed.
 
 ## [1.5.1] — 2026-06-16
 

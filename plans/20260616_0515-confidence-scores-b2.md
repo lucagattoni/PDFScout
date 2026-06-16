@@ -5,6 +5,7 @@ _Updated: 2026-06-16 05:25 · Replaced scalar confidence with structured flags a
 _Updated: 2026-06-16 05:45 · Fixed 4 bugs found in devil's advocate review: uniqueItems, _base_block helper, sample_block fixture arg, invocation count_
 _Updated: 2026-06-16 05:50 · Added extraction_note string field to feed a future remediation agent_
 _Updated: 2026-06-16 05:58 · Fixed prompt (over-anchoring example removed, counter-pressure added), maxLength moved to config constant, extraction_note passthrough test added, plan fully synced with implementation_
+_Updated: 2026-06-16 06:00 · DA pass 3: prompt separator \n\n, maxLength test uses config constant, burst passthrough tests added_
 
 ## Overview
 
@@ -180,7 +181,7 @@ def _base_block() -> dict:
 
 ### 6.2 Pipeline passthrough tests (`tests/unit/nodes/test_worker_node.py`)
 
-Two tests in `TestWindowParserNode`:
+Two tests in `TestWindowParserNode` and two mirrored tests in `TestBurstWorkerNode`:
 
 ```python
 async def test_extraction_flags_passed_through(self, sample_state, sample_block, mocker):
@@ -194,8 +195,10 @@ async def test_extraction_note_passed_through(self, sample_state, sample_block, 
     assert result["extracted_flat_blocks"][0].get("extraction_note") == "Text is faint."
 ```
 
-`window_parser_node` returns `tool_block.input["blocks"]` unchanged — these tests confirm
-neither field is stripped in transit.
+Both node paths (`window_parser_node` and `burst_worker_node`) are tested to confirm
+neither field is stripped in transit. The `maxLength` boundary test uses
+`EXTRACTION_NOTE_MAX_LENGTH + 1` (not a hardcoded `201`) so the test stays valid if
+the constant is changed.
 
 ### 6.3 H-group e2e test (optional, `@pytest.mark.e2e`)
 
@@ -253,6 +256,6 @@ that flags must be present (too flaky) and no assertion on specific values.
 - [ ] `EXTRACTION_NOTE_MAX_LENGTH` in `src/config.py` is the single source for the limit
 - [ ] `SchemaRegistry._load_schema()` injects `maxLength` from config — no hardcoded value in JSON files
 - [ ] `_EXTRACTION_FLAGS_INSTRUCTION` constant defined once; appended after `{extra_instructions}` in both node functions
-- [ ] 30 new non-e2e tests pass (28 parametrized schema + 2 passthrough unit tests)
+- [ ] 32 new non-e2e tests pass (28 parametrized schema + 4 passthrough unit tests: 2 window + 2 burst)
 - [ ] `make test` passes with no regressions
 - [ ] `schemas/README.md` and `README.md` updated to document both fields

@@ -98,6 +98,20 @@ class TestBurstWorkerNode:
         assert mock_client.messages.create.call_count == 1
         assert "extraction_warnings" not in result
 
+    async def test_extraction_flags_passed_through(self, sample_state, sample_block, mocker):
+        block_with_flags = {**sample_block, "extraction_flags": ["low_legibility"]}
+        response = _make_tool_use_response([block_with_flags])
+        _setup_mocks(mocker, response)
+        result = await burst_worker_node(sample_state)
+        assert result["extracted_flat_blocks"][0].get("extraction_flags") == ["low_legibility"]
+
+    async def test_extraction_note_passed_through(self, sample_state, sample_block, mocker):
+        block_with_note = {**sample_block, "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint."}
+        response = _make_tool_use_response([block_with_note])
+        _setup_mocks(mocker, response)
+        result = await burst_worker_node(sample_state)
+        assert result["extracted_flat_blocks"][0].get("extraction_note") == "Text is faint."
+
     async def test_invalid_blocks_trigger_retry_until_valid(
         self, sample_state, sample_block, mocker
     ):
