@@ -113,9 +113,11 @@ The test: Could a developer act on this response and only discover it was wrong 
 - When **updating** a plan, write the update datetime on the line immediately
   after the creation date line, e.g.:
   ```
-  _Created: 2026-05-31 14:30_
+  _Created: 2026-05-31 14:30_\
   _Updated: 2026-05-31 16:05 · <reason for update>_
   ```
+  Each line must end with a backslash `\` (except the last) so Markdown renders them
+  on separate lines. Without it, consecutive italic lines merge into one long line.
 - **Plan and implementation live on the same branch.** Never create a separate
   `plan/<topic>` branch when an implementation branch for the same feature exists.
   Start on a `feat/<topic>` branch, write the plan file there, refine it, then

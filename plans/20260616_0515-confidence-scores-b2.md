@@ -1,11 +1,11 @@
 # B2 — Extraction Quality Flags on Blocks
 
-_Created: 2026-06-16 05:15_
-_Updated: 2026-06-16 05:25 · Replaced scalar confidence with structured flags after design review_
-_Updated: 2026-06-16 05:45 · Fixed 4 bugs found in devil's advocate review: uniqueItems, _base_block helper, sample_block fixture arg, invocation count_
-_Updated: 2026-06-16 05:50 · Added extraction_note string field to feed a future remediation agent_
-_Updated: 2026-06-16 05:58 · Fixed prompt (over-anchoring example removed, counter-pressure added), maxLength moved to config constant, extraction_note passthrough test added, plan fully synced with implementation_
-_Updated: 2026-06-16 06:00 · DA pass 3: prompt separator \n\n, maxLength test uses config constant, burst passthrough tests added_
+_Created: 2026-06-16 05:15_\
+_Updated: 2026-06-16 05:25 · Replaced scalar confidence with structured flags after design review_\
+_Updated: 2026-06-16 05:45 · Fixed 4 bugs found in devil's advocate review: uniqueItems, _base_block helper, sample_block fixture arg, invocation count_\
+_Updated: 2026-06-16 05:50 · Added extraction_note string field to feed a future remediation agent_\
+_Updated: 2026-06-16 05:58 · Fixed prompt (over-anchoring example removed, counter-pressure added), maxLength moved to config constant, extraction_note passthrough test added, plan fully synced with implementation_\
+_Updated: 2026-06-16 06:00 · DA pass 3: prompt separator \n\n, maxLength test uses config constant, burst passthrough tests added_\
 _Updated: 2026-06-16 06:02 · DA pass 4: no new code changes; two risks added (enum centralization, schema reload overhead)_
 
 ## Overview
