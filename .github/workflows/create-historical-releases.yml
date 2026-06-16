@@ -60,18 +60,23 @@ jobs:
               echo "Deleted existing release $TAG (id=$EXISTING_ID)"
             fi
 
-            # Create as draft (published_at is settable on the draft→publish transition)
+            # Create a draft release via the API and capture the ID from the response.
+            # Using the raw API (not gh release create) so we get the ID immediately
+            # without needing a separate lookup that fails on untagged drafts.
+            local NOTES PRERELEASE_BOOL RELEASE_ID
             NOTES=$(extract_notes "$VERSION")
-            echo "$NOTES" | gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file - \
-              --draft \
-              ${PRERELEASE:+--prerelease}
+            PRERELEASE_BOOL="false"
+            if [ -n "$PRERELEASE" ]; then PRERELEASE_BOOL="true"; fi
 
-            # Locate the draft release ID (list all releases, drafts included)
-            local RELEASE_ID
-            RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-              --jq ".[] | select(.tag_name == \"$TAG\") | .id")
+            RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+              -X POST \
+              -f "tag_name=$TAG" \
+              -f "name=$TAG" \
+              -F "draft=true" \
+              -F "prerelease=$PRERELEASE_BOOL" \
+              -f "body=$NOTES" \
+              -q '.id')
+            echo "Created draft release $TAG (id=$RELEASE_ID)"
 
             # Publish with the correct historical date in a single PATCH
             gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
