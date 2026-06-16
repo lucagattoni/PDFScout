@@ -141,7 +141,9 @@ the rest of the pipeline.
 
 Valid enum values: `"partial_visibility"`, `"low_legibility"`, `"ambiguous_type"`, `"possible_encoding_error"`. See the main README's "Extraction Flags" section for RAG filter patterns. Do not add a new schema without including `extraction_flags` — it is part of the shared baseline block structure.
 
-`extraction_note` is a companion string field, present only when `extraction_flags` is non-empty. It holds one sentence describing the specific issue on that block (e.g. `"Left margin is flush at x=0, text appears truncated"`). Intended for a downstream remediation agent that inspects flagged blocks and attempts targeted correction.
+`extraction_note` is a companion string field, present only when `extraction_flags` is non-empty. It holds one sentence describing the specific issue on that block (e.g. `"Top third of text is obscured by a watermark"`). Intended for a downstream remediation agent that inspects flagged blocks and attempts targeted correction.
+
+The maximum length of `extraction_note` is controlled by `EXTRACTION_NOTE_MAX_LENGTH` in `src/config.py` (default 200). `SchemaRegistry._load_schema()` injects this value as `maxLength` at load time — no hardcoded limit exists in the JSON files. Adjust the constant to change the limit across all schemas at once.
 
 ### Adding domain-specific metadata
 

@@ -48,15 +48,18 @@ _CONTRACT_INSTRUCTIONS = (
 )
 
 _EXTRACTION_FLAGS_INSTRUCTION = (
-    " Set extraction_flags on a block only when quality is uncertain: "
-    "'partial_visibility' if the block is cut off at the page edge; "
-    "'low_legibility' if text is hard to read (scan, low contrast, overlapping content); "
+    " Flags should be rare — omit extraction_flags (or use []) for clearly readable, "
+    "unambiguous blocks. Set extraction_flags only when quality is genuinely uncertain: "
+    "'partial_visibility' if the block is cut off at the page edge and text is missing; "
+    "'low_legibility' if text is hard to read due to scan quality, low contrast, or overlap; "
     "'ambiguous_type' if you are uncertain which block type is most appropriate; "
-    "'possible_encoding_error' if the text contains likely OCR or encoding artifacts. "
-    "Omit extraction_flags (or use []) for clearly readable, unambiguous blocks. "
-    "When you set extraction_flags, also set extraction_note to one sentence describing "
-    "the specific issue on this block (e.g. 'Left margin is flush at x=0, text appears "
-    "truncated'). Omit extraction_note when extraction_flags is absent or empty."
+    "'possible_encoding_error' if the text contains likely OCR or encoding artifacts "
+    "(garbled characters, unexpected symbols, mixed scripts). "
+    "When you set extraction_flags, also set extraction_note to one sentence naming what "
+    "is specifically wrong — describe the observable symptom, not a generic label "
+    "(e.g. 'Top third of text is obscured by a watermark' or "
+    "'Characters alternate between Cyrillic and Latin with no language boundary'). "
+    "Omit extraction_note when extraction_flags is absent or empty."
 )
 
 

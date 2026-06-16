@@ -162,10 +162,11 @@ uncertain    = [b for b in blocks if b.get("extraction_flags")]
 ```
 
 When `extraction_flags` is non-empty, `extraction_note` is also set — a one-sentence
-description of the specific issue on that block (e.g. `"Left margin is flush at x=0,
-text appears truncated"`). This field is intended for a downstream remediation agent
-that can inspect flagged blocks and attempt targeted re-extraction or correction.
-Absent when no flags are set.
+description of the specific observable symptom on that block (e.g. `"Top third of text
+is obscured by a watermark"` or `"Characters alternate between Cyrillic and Latin with
+no language boundary"`). Intended for a downstream remediation agent that can inspect
+flagged blocks and attempt targeted correction. Absent when no flags are set. Maximum
+length is controlled by `EXTRACTION_NOTE_MAX_LENGTH` in `src/config.py` (default 200).
 
 ### Table Cell Matrix
 

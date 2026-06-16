@@ -154,3 +154,10 @@ class TestExtractionFlags:
     def test_extraction_note_absent_passes(self, doc_type):
         registry = SchemaRegistry()
         registry.validate(doc_type, {"document_type": doc_type, "blocks": [_base_block()]})
+
+    @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
+    def test_extraction_note_too_long_rejected(self, doc_type):
+        registry = SchemaRegistry()
+        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "x" * 201}
+        with pytest.raises(jsonschema.ValidationError):
+            registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})

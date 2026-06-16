@@ -123,6 +123,12 @@ The test: Could a developer act on this response and only discover it was wrong 
   implementation branch, merge the plan branch into the implementation branch before
   pushing.
 
+## Iterative loops
+
+- In any iterative loop (devil's advocate → fix → repeat), **commit completed work at
+  the end of each iteration** — do not accumulate uncommitted changes across multiple
+  iterations. Commit what is done before starting the next review or fix cycle.
+
 ## Reviews
 
 - Always use the **devil's advocate** approach: actively try to find what can go
@@ -130,6 +136,9 @@ The test: Could a developer act on this response and only discover it was wrong 
 - After every plan implementation:
   1. **Run the full non-e2e test suite** (`make test` or `uv run pytest -m "not e2e"`) — must pass before committing.
   2. **Run lint** (`make lint` or `uv run ruff check`) — must be clean before committing.
-  3. **Check all documentation for consistency**: README.md, schemas/README.md, and any
-     other doc files that reference the changed system. Update test counts, config
-     constants, feature lists, and step-by-step guides to reflect the new state.
+  3. **Check all documentation for consistency** — do this proactively, never wait to be told:
+     README.md, schemas/README.md, CHANGELOG.md, ROADMAP.md, plan files, and any other doc
+     that references the changed system. Update test counts, config constants, feature lists,
+     scope tables, acceptance criteria, and step-by-step guides to reflect the new state.
+     **This includes plan files** — when implementation changes alter what the plan describes
+     (a new field, a renamed constant, a different test count), update the plan immediately.

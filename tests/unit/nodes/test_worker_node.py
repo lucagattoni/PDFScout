@@ -81,6 +81,13 @@ class TestWindowParserNode:
         result = await window_parser_node(sample_state)
         assert result["extracted_flat_blocks"][0].get("extraction_flags") == ["low_legibility"]
 
+    async def test_extraction_note_passed_through(self, sample_state, sample_block, mocker):
+        block_with_note = {**sample_block, "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint."}
+        response = _make_tool_use_response([block_with_note])
+        _setup_mocks(mocker, response)
+        result = await window_parser_node(sample_state)
+        assert result["extracted_flat_blocks"][0].get("extraction_note") == "Text is faint."
+
 
 class TestBurstWorkerNode:
     async def test_valid_blocks_pass_on_first_attempt(self, sample_state, sample_block, mocker):
