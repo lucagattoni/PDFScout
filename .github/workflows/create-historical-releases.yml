@@ -53,12 +53,13 @@ jobs:
             # Delete existing release so we can recreate with correct published_at.
             # GitHub ignores published_at in PATCH for already-published releases;
             # it is only honoured when a draft transitions to published.
+            # NOTE: gh api writes 404 JSON to stdout (not stderr), so capture+check
+            # exit status via &&-chaining — never test [ -n "$EXISTING_ID" ].
             local EXISTING_ID
-            EXISTING_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.id' 2>/dev/null || true)
-            if [ -n "$EXISTING_ID" ]; then
-              gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_ID" -X DELETE
-              echo "Deleted existing release $TAG (id=$EXISTING_ID)"
-            fi
+            EXISTING_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" -q '.id' 2>/dev/null) \
+              && gh api "repos/$GITHUB_REPOSITORY/releases/$EXISTING_ID" -X DELETE > /dev/null \
+              && echo "Deleted existing release $TAG (id=$EXISTING_ID)" \
+              || true
 
             # Create a draft release via the API and capture the ID from the response.
             # Using the raw API (not gh release create) so we get the ID immediately
