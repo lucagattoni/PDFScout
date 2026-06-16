@@ -458,15 +458,25 @@ All tunable constants live in `src/config.py`:
 
 ```python
 MODEL = "claude-sonnet-4-6"
-CONCURRENCY_LIMIT = 3           # Max concurrent Anthropic API calls during burst phase
+CONCURRENCY_LIMIT = 3               # Max concurrent Anthropic API calls during burst phase
 SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 FALLBACK_DOC_TYPE = "baseline_core"
-COLUMN_BUCKET_PX = 50           # Column grouping width (px) for geometric pre-sorter
-VALIDATION_MAX_RETRIES = 3      # Max schema-validation retries (pioneer graph-level + burst inline)
-HTTP_MAX_RETRIES = 3            # Max tenacity retries on transient HTTP errors (429/529)
+COLUMN_BUCKET_PX = 50               # Column grouping width (px) for geometric pre-sorter
+EXTRACTION_NOTE_MAX_LENGTH = 200    # Max chars for extraction_note field (injected into schemas)
+VALIDATION_MAX_RETRIES = 3          # Max schema-validation retries (pioneer graph-level + burst inline)
+HTTP_MAX_RETRIES = 3                # Max tenacity retries on transient HTTP errors (429/529)
+EXTRACTION_TEMPERATURE = 0.0        # Temperature for all extraction/classification/hierarchy calls
+CLASSIFIER_MAX_TOKENS = 10          # Token budget for single-token classification response
+WORKER_MAX_TOKENS = 4000            # Token budget for page extraction worker
+HIERARCHY_MAX_TOKENS_BASE = 4000    # Minimum token budget for hierarchy agent
+HIERARCHY_MAX_TOKENS_CEIL = 16000   # Maximum token budget for hierarchy agent (scales with block count)
+HIERARCHY_TOKENS_PER_BLOCK = 40     # Estimated tokens per block used for dynamic budget scaling
+RETRY_BACKOFF_MULTIPLIER = 1        # Tenacity exponential backoff multiplier (seconds)
+RETRY_BACKOFF_MIN_SECONDS = 1       # Minimum wait between HTTP retries (seconds)
+RETRY_BACKOFF_MAX_SECONDS = 10      # Maximum wait between HTTP retries (seconds)
 ```
 
-`CONCURRENCY_LIMIT` controls the `asyncio.Semaphore` cap on parallel `parser_worker` calls. Increase it for faster processing on large documents; decrease it if hitting TPM rate limits. `COLUMN_BUCKET_PX` controls how the geometric pre-sorter groups blocks into columns before sorting by vertical position — increase it to merge narrow columns, decrease it to preserve fine-grained column boundaries. `VALIDATION_MAX_RETRIES` controls how many times the pipeline re-prompts the model after a schema validation failure, for both the pioneer page (graph-level loop) and burst pages (inline loop). `HTTP_MAX_RETRIES` controls how many times tenacity retries a failed API call on transient errors.
+`CONCURRENCY_LIMIT` controls the `asyncio.Semaphore` cap on parallel `parser_worker` calls. Increase it for faster processing on large documents; decrease it if hitting TPM rate limits. `COLUMN_BUCKET_PX` controls how the geometric pre-sorter groups blocks into columns before sorting by vertical position — increase it to merge narrow columns, decrease it to preserve fine-grained column boundaries. `VALIDATION_MAX_RETRIES` controls how many times the pipeline re-prompts the model after a schema validation failure, for both the pioneer page (graph-level loop) and burst pages (inline loop). `HTTP_MAX_RETRIES` controls how many times tenacity retries a failed API call on transient errors. `HIERARCHY_TOKENS_PER_BLOCK` × block count is clamped between `HIERARCHY_MAX_TOKENS_BASE` and `HIERARCHY_MAX_TOKENS_CEIL` to dynamically size the hierarchy agent's token budget.
 
 ---
 

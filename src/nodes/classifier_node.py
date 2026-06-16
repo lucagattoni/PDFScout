@@ -3,17 +3,27 @@ import os
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.config import FALLBACK_DOC_TYPE, HTTP_MAX_RETRIES, MODEL, SUPPORTED_DOC_TYPES
+from src.config import (
+    CLASSIFIER_MAX_TOKENS,
+    EXTRACTION_TEMPERATURE,
+    FALLBACK_DOC_TYPE,
+    HTTP_MAX_RETRIES,
+    MODEL,
+    RETRY_BACKOFF_MAX_SECONDS,
+    RETRY_BACKOFF_MIN_SECONDS,
+    RETRY_BACKOFF_MULTIPLIER,
+    SUPPORTED_DOC_TYPES,
+)
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
 
 
-@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=1, min=1, max=10))
+@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
 async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
     response = await client.messages.create(
         model=MODEL,
-        max_tokens=10,
-        temperature=0.0,
+        max_tokens=CLASSIFIER_MAX_TOKENS,
+        temperature=EXTRACTION_TEMPERATURE,
         messages=[
             {
                 "role": "user",

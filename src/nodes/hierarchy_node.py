@@ -5,7 +5,18 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.config import COLUMN_BUCKET_PX, HTTP_MAX_RETRIES, MODEL
+from src.config import (
+    COLUMN_BUCKET_PX,
+    EXTRACTION_TEMPERATURE,
+    HIERARCHY_MAX_TOKENS_BASE,
+    HIERARCHY_MAX_TOKENS_CEIL,
+    HIERARCHY_TOKENS_PER_BLOCK,
+    HTTP_MAX_RETRIES,
+    MODEL,
+    RETRY_BACKOFF_MAX_SECONDS,
+    RETRY_BACKOFF_MIN_SECONDS,
+    RETRY_BACKOFF_MULTIPLIER,
+)
 
 RELATION_TOOL = {
     "name": "set_block_relations",
@@ -42,12 +53,12 @@ def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(blocks, key=sort_key)
 
 
-@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=1, min=1, max=10))
-async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = 4000) -> Any:
+@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
+async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = HIERARCHY_MAX_TOKENS_BASE) -> Any:
     return await client.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
-        temperature=0.0,
+        temperature=EXTRACTION_TEMPERATURE,
         tools=[RELATION_TOOL],
         tool_choice={"type": "tool", "name": "set_block_relations"},
         messages=[
@@ -107,7 +118,7 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             }
             for b in sorted_blocks
         ]
-        max_tokens = min(16000, max(4000, len(sorted_blocks) * 40))
+        max_tokens = min(HIERARCHY_MAX_TOKENS_CEIL, max(HIERARCHY_MAX_TOKENS_BASE, len(sorted_blocks) * HIERARCHY_TOKENS_PER_BLOCK))
         response = await _call_api(client, manifest, max_tokens)
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_block is None:
