@@ -44,16 +44,8 @@ jobs:
             local RELEASE_DATE
             RELEASE_DATE=$(extract_date "$VERSION")
 
-            # Create and push the tag if it doesn't exist
-            if ! git rev-parse "$TAG" &>/dev/null 2>&1; then
-              git tag -a "$TAG" "$SHA" -m "Release $TAG"
-              git push origin "$TAG"
-            fi
-
-            # Delete ALL existing releases (published + drafts) with this tag_name
-            # so we can recreate with the correct published_at.
-            # --arg passes the shell var to jq safely, avoiding quoting issues.
-            # Draft releases share the same tag_name but aren't in releases/tags/{tag}.
+            # Delete ALL existing releases (published + drafts) for this tag.
+            # --paginate + jq --arg avoids shell quoting issues in jq filter.
             gh api "repos/$GITHUB_REPOSITORY/releases" --paginate 2>/dev/null \
               | jq -r --arg t "$TAG" '.[] | select(.tag_name == $t) | .id' \
               | while read -r EXISTING_ID; do
@@ -61,25 +53,31 @@ jobs:
                     && echo "Deleted release id=$EXISTING_ID for $TAG" || true
                 done
 
-            # Create the release with published_at set in the POST body.
-            # GitHub honours published_at (including past dates) when set at
-            # creation time. PATCH ignores past dates (it only schedules future
-            # publication), and the draft→publish transition has the same limit.
-            local NOTES PRERELEASE_BOOL ACTUAL_DATE
+            # Backdate the annotated tag so GitHub orders releases chronologically.
+            # GIT_COMMITTER_DATE sets the tagger date on the tag object.
+            # Delete remote first (|| true in case it doesn't exist), then recreate.
+            git push origin ":refs/tags/$TAG" 2>/dev/null || true
+            git tag -d "$TAG" 2>/dev/null || true
+            GIT_COMMITTER_DATE="${RELEASE_DATE}T12:00:00Z" \
+              git tag -a "$TAG" "$SHA" -m "Release $TAG"
+            git push origin "$TAG"
+
+            # Build release body: prepend original date header, then CHANGELOG content.
+            local NOTES PRERELEASE_BOOL BODY PUBLISHED_AT
             NOTES=$(extract_notes "$VERSION")
             PRERELEASE_BOOL="false"
             if [ -n "$PRERELEASE" ]; then PRERELEASE_BOOL="true"; fi
+            BODY=$(printf "> **Originally released:** %s\n\n%s" "$RELEASE_DATE" "$NOTES")
 
-            ACTUAL_DATE=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            PUBLISHED_AT=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
               -X POST \
               -f "tag_name=$TAG" \
               -f "name=$TAG" \
               -F "draft=false" \
               -F "prerelease=$PRERELEASE_BOOL" \
-              -f "published_at=${RELEASE_DATE}T00:00:00Z" \
-              -f "body=$NOTES" \
+              -f "body=$BODY" \
               -q '.published_at')
-            echo "Created $TAG → published_at=$ACTUAL_DATE (wanted $RELEASE_DATE)"
+            echo "Created $TAG (originally: $RELEASE_DATE, published_at: $PUBLISHED_AT)"
           }
 
           create_release "v0.1.0" "3b0e56d" "true"
