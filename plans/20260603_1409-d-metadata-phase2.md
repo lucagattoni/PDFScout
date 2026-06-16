@@ -1,6 +1,6 @@
 # D-Metadata Phase 2 — Reliable scientific_paper subfield population
 
-_Created: 2026-06-03 14:09_
+_Created: 2026-06-03 14:09_\
 _Updated: 2026-06-03 14:15 · DA review v1 — Phase 0 made concrete, D4 ref-block assumption fixed, prompt ordering risk addressed, 0/3 exit condition added_
 
 ## Goal

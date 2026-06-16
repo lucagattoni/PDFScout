@@ -1,8 +1,8 @@
 # Real-Document Test Corpus — Selection Guidelines and Plan
 
-_Created: 2026-06-03 15:40_
-_Updated: 2026-06-03 15:50 · DA review v1 — gitignore path bug fixed (pdfs/real/ not real/pdfs/), Phase 2 baseline lifted to 3 runs, skip-on-missing-fixture requirement added, Phase 3 stability threshold corrected to ≥4/5, author-year reference caveat added, concrete candidate examples added, cost estimate clarified_
-_Updated: 2026-06-04 06:33 · Phase 1 candidate selection — replaced placeholder slots with specific named candidates, added source URLs, license, file-size data, and verification status for all 15 slots; INV-1–5 all sourced from strzibny/invoice_printer (MIT, all ≤200 KB); SP-2 deferred to manual selection; BC-3 requires PDF conversion; coverage gaps documented_
+_Created: 2026-06-03 15:40_\
+_Updated: 2026-06-03 15:50 · DA review v1 — gitignore path bug fixed (pdfs/real/ not real/pdfs/), Phase 2 baseline lifted to 3 runs, skip-on-missing-fixture requirement added, Phase 3 stability threshold corrected to ≥4/5, author-year reference caveat added, concrete candidate examples added, cost estimate clarified_\
+_Updated: 2026-06-04 06:33 · Phase 1 candidate selection — replaced placeholder slots with specific named candidates, added source URLs, license, file-size data, and verification status for all 15 slots; INV-1–5 all sourced from strzibny/invoice_printer (MIT, all ≤200 KB); SP-2 deferred to manual selection; BC-3 requires PDF conversion; coverage gaps documented_\
 _Updated: 2026-06-04 · SP-1 moved to NEEDS SELECTION (memorisation risk too high); all PDFs download-only (no commit even for small files); BC-3 moved to NEEDS SELECTION (native PDF required, conversion dropped)_
 
 ## Goal

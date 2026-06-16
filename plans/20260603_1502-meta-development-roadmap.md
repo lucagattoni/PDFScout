@@ -1,8 +1,8 @@
 # PDFScout — Meta Development Roadmap
 
-_Created: 2026-06-03 15:02_
-_Updated: 2026-06-03 15:05 · DA review v1 — A2 placement corrected (hierarchy entry not new node), A4 fallback risk added, B1 classifier dilution risk added_
-_Updated: 2026-06-03 15:12 · A3, A4, A6, A7 implemented and shipped in v1.2.0_
+_Created: 2026-06-03 15:02_\
+_Updated: 2026-06-03 15:05 · DA review v1 — A2 placement corrected (hierarchy entry not new node), A4 fallback risk added, B1 classifier dilution risk added_\
+_Updated: 2026-06-03 15:12 · A3, A4, A6, A7 implemented and shipped in v1.2.0_\
 _Updated: 2026-06-03 15:37 · A1, C1 implemented and A2 partial (block-field guard) shipped in v1.3.0_
 
 ## Purpose

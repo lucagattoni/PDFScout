@@ -1,6 +1,6 @@
 # Test Corpus Expansion — Plan
 
-_Created: 2026-06-03 18:00_
+_Created: 2026-06-03 18:00_\
 _Updated: 2026-06-03 19:00 · v2 — DA review: fix goal count (38→37), coordinate-check risk clarified, D7 spec'd inline (not _run_d_test), C12 _normalize import added, G2 >3-bucket risk tightened, pyproject.toml row removed from files table, _C10_TEXT variable resolved_
 
 ---

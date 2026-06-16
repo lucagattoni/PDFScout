@@ -1,5 +1,5 @@
 # FastAPI Interface Plan
-_Created: 2026-05-30 21:12_
+_Created: 2026-05-30 21:12_\
 _Updated: 2026-05-30 22:05 · Implementation feasibility pass — tracing interface redesign, StateSnapshot guards, CWD-relative path_
 
 ## Goal

@@ -1,6 +1,6 @@
 # B1 — New Document Schema: Contract
 
-_Created: 2026-06-15 20:20_
+_Created: 2026-06-15 20:20_\
 _Updated: 2026-06-15 20:45 · Devil's advocate pass: fixed test placement bug, clarified test specs, added classifier unit test, added adversarial B4 fixture, documented schema design decisions_
 
 ## Overview

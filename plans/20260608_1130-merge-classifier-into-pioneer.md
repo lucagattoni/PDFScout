@@ -1,7 +1,7 @@
 # Plan: Merge Classifier into Pioneer (Option B — Single Cache Miss)
 
-_Created: 2026-06-08 11:30_
-_Updated: 2026-06-08 12:15 · devil's advocate pass — three real bugs fixed in test update plan_
+_Created: 2026-06-08 11:30_\
+_Updated: 2026-06-08 12:15 · devil's advocate pass — three real bugs fixed in test update plan_\
 _Updated: 2026-06-15 20:10 · deep evaluation chapter added — final verdict: do not implement_
 
 ---

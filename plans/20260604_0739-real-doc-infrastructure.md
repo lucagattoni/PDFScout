@@ -1,11 +1,11 @@
 # Real-Document Infrastructure — Downloader, Ground Truth, and Test Runner
 
-_Created: 2026-06-04 07:39_
-_Updated: 2026-06-04 · all PDFs download-only (no commit); SP-1 and BC-3 moved to NEEDS SELECTION; evaluator output changed to JSON with datetime-prefix filename_
-_Updated: 2026-06-04 · fix stale "conversion flags" / "convert" text; fix result key doc_type→document_type; add null-URL skip to C1; add schema_version+raw_block_counts to golden schema; add _assert_metadata_required/_assert_table_dimensions specs; introduce shared _golden.py; fix Phase 3 wording; replace redundant DA-3_
-_Updated: 2026-06-04 · fix requests→httpx; add pyproject.toml grp_r marker requirement; specify _golden.py API; specify _run_pipeline; add min_blocks_override to manifest schema_
-_Updated: 2026-06-04 · fix C2 metadata fields (year/journal_or_venue not in schema); specify manifest as JSON array; fix C1 null-sha logic; specify C1 write-back timing; clarify C2-C1 coupling; add --all/--dry-run to C2 CLI; specify spot_check_fragments selection; fill parametrize list; remove dead _load_manifest fixture; fix _load_golden naming; add empty-golden skip guard; add schema_version check; define _log_metadata_deferred; fix _assert_metadata_required spec; fix C4 assertion wrapping; fix Phase 4 verify condition_
-_Updated: 2026-06-04 · implementation findings added for Phases 0–4 and 6_
+_Created: 2026-06-04 07:39_\
+_Updated: 2026-06-04 · all PDFs download-only (no commit); SP-1 and BC-3 moved to NEEDS SELECTION; evaluator output changed to JSON with datetime-prefix filename_\
+_Updated: 2026-06-04 · fix stale "conversion flags" / "convert" text; fix result key doc_type→document_type; add null-URL skip to C1; add schema_version+raw_block_counts to golden schema; add _assert_metadata_required/_assert_table_dimensions specs; introduce shared _golden.py; fix Phase 3 wording; replace redundant DA-3_\
+_Updated: 2026-06-04 · fix requests→httpx; add pyproject.toml grp_r marker requirement; specify _golden.py API; specify _run_pipeline; add min_blocks_override to manifest schema_\
+_Updated: 2026-06-04 · fix C2 metadata fields (year/journal_or_venue not in schema); specify manifest as JSON array; fix C1 null-sha logic; specify C1 write-back timing; clarify C2-C1 coupling; add --all/--dry-run to C2 CLI; specify spot_check_fragments selection; fill parametrize list; remove dead _load_manifest fixture; fix _load_golden naming; add empty-golden skip guard; add schema_version check; define _log_metadata_deferred; fix _assert_metadata_required spec; fix C4 assertion wrapping; fix Phase 4 verify condition_\
+_Updated: 2026-06-04 · implementation findings added for Phases 0–4 and 6_\
 _Updated: 2026-06-04 · plan review fixes: correct min_blocks formula, table-dims algo, threshold formulas, classification_unstable semantics, CURRENT_SCHEMA_VERSION single source of truth, Phase 6 verify note, DA-5, golden format example_
 
 ## Goal
