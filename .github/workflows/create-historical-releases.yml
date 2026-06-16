@@ -1,0 +1,65 @@
+name: Create Historical GitHub Releases
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create all historical releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+
+          extract_notes() {
+            local VERSION="$1"
+            awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md
+          }
+
+          create_release() {
+            local TAG="$1"
+            local SHA="$2"
+            local PRERELEASE="$3"
+
+            VERSION="${TAG#v}"
+            NOTES=$(extract_notes "$VERSION")
+
+            if gh release view "$TAG" &>/dev/null; then
+              echo "Release $TAG already exists, skipping."
+              return 0
+            fi
+
+            echo "$NOTES" | gh release create "$TAG" \
+              --target "$SHA" \
+              --title "$TAG" \
+              --notes-file - \
+              ${PRERELEASE:+--prerelease}
+
+            echo "Created release $TAG"
+          }
+
+          create_release "v0.1.0" "3b0e56d" "true"
+          create_release "v0.2.0" "c6af2f9" "true"
+          create_release "v0.3.0" "9f336de" "true"
+          create_release "v1.0.0" "c7eef66" ""
+          create_release "v1.1.0" "9659895" ""
+          create_release "v1.1.1" "6924bd4" ""
+          create_release "v1.2.0" "c5493c5" ""
+          create_release "v1.3.0" "3ef1adc" ""
+          create_release "v1.4.0" "4c9204a" ""
+          create_release "v1.4.1" "b9d6fdf" ""
+          create_release "v1.5.0" "8e1fa61" ""
+          create_release "v1.5.1" "bef1db8" ""
+          create_release "v1.6.0" "ef25098" ""
+
+          echo "Done."
