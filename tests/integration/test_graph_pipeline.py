@@ -84,6 +84,45 @@ class TestGraphPipelineHappyPath:
         assert tree["structured_payload"][0]["parent_id"] is None
 
 
+class TestClassifierFallback:
+    async def test_c2_unknown_doc_type_falls_back_to_baseline_core(
+        self, minimal_pdf_path, mocker
+    ):
+        mocker.patch("src.nodes.extractor_node.get_page_count", return_value=1)
+        mocker.patch("src.nodes.extractor_node.hash_file", return_value="a" * 64)
+        mocker.patch(
+            "src.nodes.classifier_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZQ=="),
+        )
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZQ=="),
+        )
+
+        classifier_mock = mocker.patch("src.nodes.classifier_node.AsyncAnthropic")
+        classifier_client = classifier_mock.return_value
+        classify_response = MagicMock()
+        classify_response.content = [MagicMock(text="garbage_type")]
+        classifier_client.messages.create = AsyncMock(return_value=classify_response)
+
+        worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
+        worker_client = worker_mock.return_value
+        worker_client.messages.create = AsyncMock(
+            return_value=_make_tool_use_response([_valid_block(1)])
+        )
+
+        mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
+        # single block → hierarchy skips API call
+
+        _, final_state = await _stream_graph(minimal_pdf_path)
+
+        assert final_state["document_type"] == "baseline_core"
+        tree = final_state.get("hierarchical_document_tree")
+        assert tree is not None
+        assert tree["document_type"] == "baseline_core"
+        assert len(tree["structured_payload"]) == 1
+
+
 class TestGraphPipelineRetry:
     async def test_pioneer_retry_then_success(self, minimal_pdf_path, mocker):
         mocker.patch("src.nodes.extractor_node.get_page_count", return_value=2)

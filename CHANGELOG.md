@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.1] — 2026-07-07
+
+### Added
+
+- **C2 — Classifier fallback integration test** (`tests/integration/test_graph_pipeline.py`) —
+  `TestClassifierFallback::test_c2_unknown_doc_type_falls_back_to_baseline_core` verifies that
+  when the classifier returns an unsupported token (`"garbage_type"`), the full pipeline
+  completes end-to-end with `document_type == "baseline_core"` in both the final state and the
+  output tree. Closes the C2 roadmap item; unit-level fallback coverage already existed in
+  `test_classifier_node.py`.
+
 ## [1.6.0] — 2026-06-16
 
 ### Added
