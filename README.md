@@ -499,3 +499,9 @@ See **[schemas/README.md](schemas/README.md)** for the full guide.
 - **Max pages:** 600 pages per request (100 for 200k-context models). Very large documents should be split before processing.
 - **Cache TTL:** Anthropic's prompt cache TTL is 5 minutes. Burst pages dispatched after this window pay full input token cost.
 - **Hierarchy accuracy:** The hierarchy agent uses spatial heuristics and model judgment. Cross-page `is_continued` linkages and complex multi-column layouts may produce imperfect parent-child assignments.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
