@@ -10,6 +10,8 @@ Traditional PDF parsers break on structurally complex documents — multi-column
 
 PDFScout shifts the parsing burden to a language model. It treats every document as a collection of generic spatial structures, lets Claude extract and classify them, and enforces schema correctness through a closed-loop validation protocol.
 
+For a feature-by-feature comparison with traditional parsers and the rationale behind each design choice, see **[docs/design_innovations.md](docs/design_innovations.md)**.
+
 ---
 
 ## What It Does
@@ -211,6 +213,14 @@ uv sync --group dev   # installs production deps + ruff, pytest, and other dev t
 cp .env.example .env  # then fill in your API key
 ```
 
+Edit `.env` and set your Anthropic API key:
+
+```text
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+`.env` is gitignored and never committed. `.env.example` documents the required variables.
+
 ---
 
 ## Development
@@ -306,14 +316,6 @@ records URLs, checksums, and licenses for all 15 slots.
 | `src/graph.py`, `src/nodes/*.py` | 100% |
 | `src/api/runner.py` | ≥ 90% |
 | `api.py` | ≥ 75% (lifespan I/O not exercised) |
-
-Edit `.env` and set your Anthropic API key:
-
-```text
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-`.env` is gitignored and never committed. `.env.example` documents the required variables.
 
 ---
 

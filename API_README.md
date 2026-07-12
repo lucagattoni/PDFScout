@@ -66,7 +66,7 @@ Returns server status and configuration.
 {
   "status": "ok",
   "model": "claude-sonnet-4-6",
-  "supported_doc_types": ["invoice", "scientific_paper"],
+  "supported_doc_types": ["contract", "invoice", "scientific_paper"],
   "fallback_doc_type": "baseline_core",
   "langfuse_enabled": false
 }
