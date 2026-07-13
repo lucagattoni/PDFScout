@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.3] — 20260713 01:56
+
+### Changed
+
+- **Dependency lockfile refresh** (`uv.lock`) — ~30 transitive/direct packages bumped
+  (fastapi 0.105→0.116, anthropic 0.105→0.116, langgraph 1.2.4→1.2.9, ruff, opentelemetry,
+  and others); `pyproject.toml` declared constraints unchanged. Validated by the full
+  non-e2e suite (160 passed) and a real-invoice end-to-end run on Sonnet 5.
+
+### Added
+
+- **Scientific-paper golden fixtures** (`tests/fixtures/real_golden/sp-1.json`…`sp-5.json`) —
+  ground-truth for the `@pytest.mark.e2e` `test_real_doc` slots `sp-1`…`sp-5`, which
+  previously skipped for lack of a golden file. Structural metrics plus public paper
+  title/abstract and spot-check fragments. Slot `sp-6` remains ungenerated and still skips.
+
 ## [1.6.2] — 20260713 01:52
 
 ### Fixed
