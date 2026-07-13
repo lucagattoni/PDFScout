@@ -5,7 +5,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import (
     CLASSIFIER_MAX_TOKENS,
-    EXTRACTION_TEMPERATURE,
     FALLBACK_DOC_TYPE,
     HTTP_MAX_RETRIES,
     MODEL,
@@ -23,7 +22,6 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
     response = await client.messages.create(
         model=MODEL,
         max_tokens=CLASSIFIER_MAX_TOKENS,
-        temperature=EXTRACTION_TEMPERATURE,
         messages=[
             {
                 "role": "user",

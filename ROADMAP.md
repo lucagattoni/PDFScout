@@ -39,20 +39,6 @@ flags these as needing selection review). Full detail in
 `plans/20260603_1540-real-doc-test-corpus.md` and
 `plans/20260604_0739-real-doc-infrastructure.md`.
 
-### 2 · Reading-order banding (in progress — `feat/reading-order-banding`)
-
-**What:** `geometric_pre_sorter` now bands each page at full-width blocks and
-orders column-major within each band, fixing unnatural order on invoices/forms
-(full-width tables/headers/footers previously sorted after or between side-by-side
-field groups). Implemented + unit-tested on the branch.
-
-**Remaining:** user e2e validation before merge — `pytest -m e2e -k "grp_g or grp_r"`
-(confirm two/three-column and paper goldens still pass) and a real invoice run
-(confirm natural order end-to-end). On green: merge, bump to v1.7.0 (MINOR), move
-here to Recently Shipped. Full detail in `plans/20260713_0214-reading-order-banding.md`.
-
-**Scope:** Small — one pure function + a config constant; deterministic, no API cost.
-
 ---
 
 ## Deferred
@@ -100,3 +86,4 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 | B1 · `contract` document schema | v1.5.0 | `plans/20260615_2020-contract-schema-b1.md` |
 | B2 · Extraction quality flags on blocks | v1.6.0 | `plans/20260616_0515-confidence-scores-b2.md` |
 | C2 · Classifier fallback integration test | v1.6.1 | `TestClassifierFallback` in `test_graph_pipeline.py` |
+| Reading-order banding | v1.7.0 | `plans/20260713_0214-reading-order-banding.md` — band pages at full-width blocks, column-major within band |

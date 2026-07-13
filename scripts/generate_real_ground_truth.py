@@ -15,7 +15,7 @@ import os
 import sys
 import tempfile
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -160,7 +160,7 @@ def _derive_golden(slot_id: str, doc_type: str, runs_results: list[dict], pdf_sh
         "schema_version": CURRENT_SCHEMA_VERSION,
         "slot_id": slot_id,
         "doc_type": doc_type,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pdf_sha256": pdf_sha256,
         "n_runs": n_runs,
         "raw_block_counts": raw_block_counts,

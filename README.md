@@ -468,7 +468,6 @@ BAND_FULL_WIDTH_FRAC = 0.6          # Min width (fraction of page x-span) for a 
 EXTRACTION_NOTE_MAX_LENGTH = 200    # Max chars for extraction_note field (injected into schemas)
 VALIDATION_MAX_RETRIES = 3          # Max schema-validation retries (pioneer graph-level + burst inline)
 HTTP_MAX_RETRIES = 3                # Max tenacity retries on transient HTTP errors (429/529)
-EXTRACTION_TEMPERATURE = 0.0        # Temperature for all extraction/classification/hierarchy calls
 CLASSIFIER_MAX_TOKENS = 10          # Token budget for single-token classification response
 WORKER_MAX_TOKENS = 4000            # Token budget for page extraction worker
 HIERARCHY_MAX_TOKENS_BASE = 4000    # Minimum token budget for hierarchy agent

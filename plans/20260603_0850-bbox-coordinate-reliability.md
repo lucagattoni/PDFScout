@@ -2,7 +2,8 @@
 
 _Created: 2026-06-03 08:50_\
 _Updated: 2026-06-03 15:30 · v2: linear-fit decision criteria, Phase 1 calibration snippet, generator placement, G1 adds-to not replaces, check_xmax signature, COORD_OFFSET_X, concrete Risk-6 threshold, Risk-7 y-axis single-point_\
-_Updated: 2026-06-03 16:00 · Phase 1 executed and failed — plan closed; see calibration_notes.md §Phase 1_
+_Updated: 2026-06-03 16:00 · Phase 1 executed and failed — plan closed; see calibration_notes.md §Phase 1_\
+_Updated: 2026-07-13 02:22 · Historical note: the `temperature=0` determinism referenced below no longer applies — `temperature` was removed from all API call sites in v1.6.4 (Sonnet 5 rejects it with a 400)_
 
 **Plan status: CLOSED** — Phase 1 failed. No further phases executed. `BBOX_ASSERTIONS_VIABLE = False` unchanged.
 
