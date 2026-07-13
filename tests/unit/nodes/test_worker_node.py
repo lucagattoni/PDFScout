@@ -1,9 +1,18 @@
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from anthropic import BadRequestError
 
+import src.nodes.worker_node as wn
 from src.config import VALIDATION_MAX_RETRIES
 from src.nodes.worker_node import burst_worker_node, window_parser_node
+
+
+def _bad_request(message: str) -> BadRequestError:
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    resp = httpx.Response(400, request=req)
+    return BadRequestError(message, response=resp, body={"error": {"message": message}})
 
 
 def _make_tool_use_response(blocks: list):
@@ -335,3 +344,65 @@ class TestBurstWorkerNode:
         await burst_worker_node(sample_state)
         text = mock_client.messages.create.call_args.kwargs["messages"][0]["content"][1]["text"]
         assert "anchors from the PDF text layer" not in text
+
+
+class TestStrictSchemaFallback:
+    """When the API rejects a doc type's strict tool schema as too complex
+    (scientific_paper, contract exceed strict's grammar-complexity ceiling),
+    the worker retries with a non-strict tool and memoizes the doc type so
+    later pages skip strict. Local jsonschema validation still applies."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_memo(self):
+        wn._STRICT_INCOMPATIBLE.discard("scientific_paper")
+        yield
+        wn._STRICT_INCOMPATIBLE.discard("scientific_paper")
+
+    async def test_too_complex_falls_back_to_non_strict(self, sample_state, sample_block, mocker):
+        state = {**sample_state, "document_type": "scientific_paper"}
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async", new=AsyncMock(return_value="ZmFrZQ==")
+        )
+        mock_client = mocker.patch("src.nodes.worker_node.AsyncAnthropic").return_value
+        ok = _make_tool_use_response([sample_block])
+
+        async def side_effect(*_, **kwargs):
+            if kwargs["tools"][0].get("strict"):
+                raise _bad_request("Schema is too complex.")
+            return ok
+
+        mock_client.messages.create = AsyncMock(side_effect=side_effect)
+        result = await window_parser_node(state)
+        assert result["extracted_flat_blocks"] == [sample_block]
+        # doc type memoized so later pages skip the strict probe
+        assert "scientific_paper" in wn._STRICT_INCOMPATIBLE
+
+    async def test_memoized_doc_type_never_sends_strict(self, sample_state, sample_block, mocker):
+        wn._STRICT_INCOMPATIBLE.add("scientific_paper")
+        state = {**sample_state, "document_type": "scientific_paper"}
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async", new=AsyncMock(return_value="ZmFrZQ==")
+        )
+        mock_client = mocker.patch("src.nodes.worker_node.AsyncAnthropic").return_value
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_tool_use_response([sample_block])
+        )
+        await window_parser_node(state)
+        # the only call used a non-strict tool — no wasted strict probe
+        assert "strict" not in mock_client.messages.create.call_args.kwargs["tools"][0]
+
+    async def test_non_too_complex_bad_request_propagates(self, sample_state, mocker):
+        state = {**sample_state, "document_type": "scientific_paper"}
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async", new=AsyncMock(return_value="ZmFrZQ==")
+        )
+        mock_client = mocker.patch("src.nodes.worker_node.AsyncAnthropic").return_value
+        mock_client.messages.create = AsyncMock(
+            side_effect=_bad_request("messages.0: at least one message is required")
+        )
+        mocker.patch("tenacity.nap.sleep")
+        with pytest.raises(BadRequestError):
+            await window_parser_node(state)
+        # a deterministic 400 is not retried and not turned into a strict fallback
+        assert mock_client.messages.create.call_count == 1
+        assert "scientific_paper" not in wn._STRICT_INCOMPATIBLE

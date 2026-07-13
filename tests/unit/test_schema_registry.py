@@ -231,3 +231,34 @@ class TestStrictToolSchema:
         _, tool = SchemaRegistry().get_schema_and_tool("invoice")
         items = tool["input_schema"]["properties"]["blocks"]["items"]
         assert items["required"] == ["block_id", "type", "bbox", "text"]
+
+
+class TestNonStrictToolSchema:
+    """strict=False is the fallback used when the API rejects a doc type's
+    strict schema as too complex (scientific_paper, contract)."""
+
+    def test_non_strict_tool_has_no_strict_key(self):
+        _, tool = SchemaRegistry().get_schema_and_tool("scientific_paper", strict=False)
+        assert "strict" not in tool
+
+    def test_non_strict_tool_keeps_full_schema_without_injection(self):
+        # the non-strict schema is the raw doc schema (minus $schema/title) — no
+        # additionalProperties:false injected and no constraint keywords stripped,
+        # so the API's grammar-complexity ceiling never applies
+        schema, tool = SchemaRegistry().get_schema_and_tool("scientific_paper", strict=False)
+        dumped = str(tool["input_schema"])
+        assert "additionalProperties" not in dumped
+        coords = tool["input_schema"]["properties"]["blocks"]["items"]["properties"]["bbox"][
+            "properties"
+        ]["coordinates"]
+        assert coords["minItems"] == 4 and coords["maxItems"] == 4
+
+    def test_non_strict_tool_name_and_meta_fields_still_stripped(self):
+        _, tool = SchemaRegistry().get_schema_and_tool("scientific_paper", strict=False)
+        assert tool["name"] == "extract_scientific_paper_structure"
+        assert "$schema" not in tool["input_schema"]
+        assert "title" not in tool["input_schema"]
+
+    def test_default_is_strict(self):
+        _, tool = SchemaRegistry().get_schema_and_tool("scientific_paper")
+        assert tool["strict"] is True

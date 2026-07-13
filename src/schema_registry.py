@@ -61,20 +61,33 @@ class SchemaRegistry:
             note_props["maxLength"] = EXTRACTION_NOTE_MAX_LENGTH
         return schema
 
-    def get_schema_and_tool(self, doc_type: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    def get_schema_and_tool(
+        self, doc_type: str, strict: bool = True
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         schema = self._load_schema(doc_type)
         # Strip JSON Schema meta-fields rejected by Anthropic's tool input_schema spec
         tool_schema = {k: v for k, v in schema.items() if k not in ("$schema", "title")}
         tool = {
             "name": f"extract_{doc_type}_structure",
             "description": f"Outputs structured semantic and layout blocks for a {doc_type} document.",
+        }
+        if strict:
             # strict: the API guarantees tool inputs validate against the
             # (sanitized) schema exactly — structural variance and invalid
             # shapes are rejected at generation time instead of surfacing as
             # jsonschema retries. Full constraints still enforced locally.
-            "strict": True,
-            "input_schema": _strictify(tool_schema),
-        }
+            #
+            # Caveat: strict compiles input_schema into a constrained-decoding
+            # grammar with a complexity ceiling. Rich per-doc-type schemas
+            # (scientific_paper, contract) exceed it and the API returns
+            # 400 "Schema is too complex" — callers must fall back to
+            # strict=False for those types (see worker_node). The non-strict
+            # tool has no complexity ceiling; local jsonschema validation still
+            # enforces the full schema either way.
+            tool["strict"] = True
+            tool["input_schema"] = _strictify(tool_schema)
+        else:
+            tool["input_schema"] = tool_schema
         return schema, tool
 
     def validate(self, doc_type: str, payload: dict[str, Any]) -> None:

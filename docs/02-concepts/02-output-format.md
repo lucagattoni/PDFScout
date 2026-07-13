@@ -148,5 +148,15 @@ copy — while the **full** schema, constraints included, still validates every
 response locally via `jsonschema`. The API enforces structure; local
 validation enforces the rest. Nothing is lost.
 
+**Complexity fallback.** Strict mode compiles the schema into a
+constrained-decoding grammar with a complexity ceiling. The richest schemas
+(`scientific_paper`, `contract`) exceed it and the API returns
+`400 "Schema is too complex."`. The worker handles this automatically: on that
+specific error it retries the page with a **non-strict** tool (no grammar, no
+ceiling) and memoizes the doc type so later pages skip straight to non-strict.
+Correctness is unaffected — local `jsonschema` validation still enforces the
+full schema on every response. So strict is used where the API accepts it and
+transparently dropped where it doesn't.
+
 To add a new document type, see the [schema authoring guide](https://github.com/lucagattoni/PDFScout/blob/main/schemas/README.md)
 and [development](../04-contributing/01-development.md#extending-with-new-document-types).

@@ -5,9 +5,16 @@ import sys
 from typing import Any
 
 import jsonschema
-from anthropic import AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncAnthropic,
+    BadRequestError,
+    InternalServerError,
+    RateLimitError,
+)
 from pypdf import PdfReader
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.config import (
     CONCURRENCY_LIMIT,
@@ -124,7 +131,19 @@ def _truncation_error(current_page: int) -> str:
     )
 
 
+# Retry only transient failures. A 4xx like BadRequestError is deterministic —
+# retrying it wastes paid calls and buries the real message under a RetryError
+# wrapper, so it must propagate immediately to the strict-fallback handler.
+_TRANSIENT_API_ERRORS = (APITimeoutError, APIConnectionError, RateLimitError, InternalServerError)
+
+# Doc types whose strict tool schema the API rejected as "too complex" this
+# process. Populated on first failure so every later page/run for that type
+# skips straight to the non-strict tool (one wasted probe per type per process).
+_STRICT_INCOMPATIBLE: set[str] = set()
+
+
 @retry(
+    retry=retry_if_exception_type(_TRANSIENT_API_ERRORS),
     stop=stop_after_attempt(HTTP_MAX_RETRIES),
     wait=wait_exponential(
         multiplier=RETRY_BACKOFF_MULTIPLIER,
@@ -142,14 +161,48 @@ async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dic
     )
 
 
+def _extraction_tool(doc_type: str) -> dict:
+    """Build the extraction tool, using strict tool use unless this doc type has
+    already been found strict-incompatible in this process."""
+    _, tool = SchemaRegistry().get_schema_and_tool(
+        doc_type, strict=doc_type not in _STRICT_INCOMPATIBLE
+    )
+    return tool
+
+
+async def _call_extraction(
+    client: AsyncAnthropic, messages: list, tool_definition: dict, doc_type: str
+) -> Any:
+    """Call the extraction tool, falling back to a non-strict tool if the API
+    rejects the strict schema as too complex (scientific_paper, contract).
+
+    The strict grammar has a complexity ceiling the richer schemas exceed; the
+    non-strict tool has none, and local jsonschema validation still enforces the
+    full schema. The doc type is memoized so only the first page pays the probe."""
+    try:
+        return await _call_api(client, messages, tool_definition)
+    except BadRequestError as e:
+        if tool_definition.get("strict") and "too complex" in str(e).lower():
+            _STRICT_INCOMPATIBLE.add(doc_type)
+            print(
+                f"[STRICT-FALLBACK] {doc_type}: strict tool schema rejected as too "
+                f"complex — retrying without strict (later pages skip strict).",
+                file=sys.stderr,
+                flush=True,
+            )
+            _, non_strict = SchemaRegistry().get_schema_and_tool(doc_type, strict=False)
+            return await _call_api(client, messages, non_strict)
+        raise
+
+
 async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
     async with _get_semaphore():
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
-        _, tool_definition = SchemaRegistry().get_schema_and_tool(state["document_type"])
+        doc_type = state["document_type"]
+        tool_definition = _extraction_tool(doc_type)
         pdf_base64 = await encode_pdf_async(state["file_path"])
 
-        doc_type = state["document_type"]
         extra_instructions = _doc_type_instructions(doc_type)
         anchor_instruction = await _page_anchor_instruction(state["file_path"], current_page)
         content = [
@@ -183,7 +236,9 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-        response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
+        response = await _call_extraction(
+            client, [{"role": "user", "content": content}], tool_definition, doc_type
+        )
         usage = usage_entry(f"pioneer page {current_page}", response)
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_block is None:
@@ -222,7 +277,6 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
         client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         current_page = state["current_page"]
         doc_type = state["document_type"]
-        _, tool_definition = SchemaRegistry().get_schema_and_tool(doc_type)
         pdf_base64 = await encode_pdf_async(state["file_path"])
         extra_instructions = _doc_type_instructions(doc_type)
         anchor_instruction = await _page_anchor_instruction(state["file_path"], current_page)
@@ -231,6 +285,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
         usage_log: list[dict] = []
 
         for attempt in range(1, VALIDATION_MAX_RETRIES + 1):
+            tool_definition = _extraction_tool(doc_type)
             content: list = [
                 {
                     "type": "document",
@@ -262,8 +317,8 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
 
-            response = await _call_api(
-                client, [{"role": "user", "content": content}], tool_definition
+            response = await _call_extraction(
+                client, [{"role": "user", "content": content}], tool_definition, doc_type
             )
             usage_log.append(usage_entry(f"burst page {current_page} attempt {attempt}", response))
             tool_block = next((b for b in response.content if b.type == "tool_use"), None)

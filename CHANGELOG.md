@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.12.2] — 20260713 13:52
+
+### Fixed
+
+- **Strict tool use broke `scientific_paper` and `contract` extraction**
+  (regression since v1.10.1). Strict mode compiles the tool `input_schema` into
+  a constrained-decoding grammar with a complexity ceiling; the richest
+  per-doc-type schemas (scientific_paper 40 props, contract 37) exceed it and
+  the API returns `400 invalid_request_error: "Schema is too complex."`. Every
+  scientific-paper/contract page 400'd — surfaced by the real-doc golden
+  regeneration (first live scientific-paper call since strict shipped).
+  `worker_node` now retries the page with a **non-strict** tool on that specific
+  error and memoizes the doc type (`_STRICT_INCOMPATIBLE`) so later pages skip
+  the strict probe; `baseline_core`/`invoice` keep strict. Correctness is
+  unchanged — local `jsonschema` validation still enforces the full schema.
+- **`_call_api` retried deterministic 4xx errors.** Tenacity retried *every*
+  exception, so a 400 was retried 3× and re-raised as an opaque `RetryError`
+  (which hid this very bug). It now retries only transient errors
+  (`APITimeoutError`, `APIConnectionError`, `RateLimitError`,
+  `InternalServerError`); `BadRequestError` propagates immediately.
+- **`SchemaRegistry.get_schema_and_tool(doc_type, strict=...)`** gained a
+  `strict` parameter (default `True`); `strict=False` returns the raw schema
+  tool with no grammar ceiling. 7 new unit tests cover the non-strict tool and
+  the worker fallback/memoization/4xx-propagation paths.
+
 ## [1.12.1] — 20260713 10:16
 
 ### Added
