@@ -108,6 +108,13 @@ matching — v2 of the coverage oracle).
 
 ### 6 · Real-document golden corpus completion (Group R)
 
+**Status 2026-07-13 (v1.9.0):** sp-1 regenerated and e2e-verified on the final
+pipeline (anchors active). sp-5 regeneration failed twice: the API credit
+balance ran out mid-slot (the deterministic 400 was initially masked by
+tenacity's RetryError — the regen script now logs per-run failures and
+survives them). sp-5 carries a temporary `skip_e2e_reason`; regenerate and
+unskip after topping up credits. sp-4 remains skipped (large doc).
+
 **Generator improvement (small, found during v1.9.0 regen):**
 `generate_real_ground_truth.py` computes `metadata_required` consensus by exact
 value equality, so run-to-run case flicker ("Physics-Informed" vs

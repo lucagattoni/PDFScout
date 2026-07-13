@@ -63,7 +63,8 @@
     "license": "CC BY",
     "memorisation_risk": "high",
     "min_blocks_override": null,
-    "notes": "BERT (Devlin et al. 2018), 16 pp, two-column, numbered refs; memorisation risk HIGH; URL verified accessible"
+    "notes": "BERT (Devlin et al. 2018), 16 pp, two-column, numbered refs; memorisation risk HIGH; URL verified accessible",
+    "skip_e2e_reason": "Golden is stale for the current model (fragment set drifts run-to-run); regeneration attempted 2026-07-13 but blocked: API credit balance exhausted mid-run. Re-run scripts/generate_real_ground_truth.py --slot sp-5 --runs 5 --force after topping up credits, then remove this key."
   },
   {
     "slot_id": "sp-6",

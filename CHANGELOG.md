@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.9.0] — 20260713 05:21
+
+### Added
+
+- **Completeness oracle** (`src/nodes/coverage_node.py`, new `coverage_auditor` graph
+  node between the workers and the hierarchy agent; no API call) — audits each page's
+  extracted blocks against the PDF's native text layer, word-level and order-free
+  (robust to hyphenation, column reflow, table linearization; table cells and metadata
+  count as coverage). Warns below 50% word coverage (25% on figure pages — figures are
+  summarized by design); self-disables on unusable native layers (subset-font PDFs
+  extract as control-character soup; char-class ratio separates cleanly). Validated:
+  flags the historical dropped-page failure at 0%, silent on known-good runs.
+  Closes ROADMAP #3.
+- **Cross-page duplication detection** (same node) — flags a page whose substantial
+  blocks mostly duplicate ONE other page (page-attribution failure: a worker
+  re-extracting a neighbouring page, observed on a real 16-page paper as duplicates
+  plus silently dropped sections). Single-dominant rule suppresses templated-
+  boilerplate false positives. ROADMAP #7 detection half.
+- **Native page anchors in worker prompts** (`worker_node.py`) — each page's
+  extraction prompt carries the first/last native-text-layer lines («…»), anchoring
+  the model to the physical page; best-effort, cache-safe. ROADMAP #7 prevention half.
+- **Pioneer [RETRY] visibility** (`retry_node.py`) — the pioneer retry path now prints
+  the same [RETRY] stderr line as burst workers (a live run showed a silent retry).
+
+### Changed
+
+- **sp-1 golden regenerated** for the current model (5 runs; min_blocks 90→105,
+  unstable fragment dropped by consensus) and e2e-verified against the final pipeline.
+- **Manifest `skip_e2e_reason`** — real-doc slots can opt out of routine e2e runs with
+  a recorded reason; set for sp-4 (large document, deferred) and temporarily for sp-5
+  (regeneration blocked: API credit balance exhausted mid-run on 2026-07-13).
+
+### Fixed
+
+- **Golden regeneration survives single-run failures**
+  (`scripts/generate_real_ground_truth.py`) — one failed run no longer aborts the slot
+  and loses completed paid runs; requires ≥ max(3, 60%·n) successes.
+
+
 ## [1.8.2] — 20260713 04:43
 
 ### Fixed
