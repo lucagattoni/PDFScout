@@ -1,6 +1,7 @@
 # Reading-order banding v2 — general, scale-invariant ordering
 
-_Created: 2026-07-13 03:54_
+_Created: 2026-07-13 03:54_\
+_Updated: 2026-07-13 04:33 · BAND_PULLDOWN_GAP_FRAC 0.035 → 0.05 (v1.8.1): e2e run showed glyph-tight bboxes make heading↔table gaps ≈ two line-heights_
 
 Fixes ROADMAP Open #1 (three reading-order defects found on real documents on
 2026-07-13). Method and constraints follow CLAUDE.md → Investigation rules:
@@ -32,7 +33,7 @@ tests, anti-overfit gate over the whole fixture corpus.
 |---|---|---|
 | `BAND_FULL_WIDTH_FRAC` | 0.55 | A horizontal separator spans clearly more than half the page; multi-column layouts keep columns ≤ ~0.5 of span |
 | `COLUMN_BUCKET_FRAC` | 0.11 | Column gutters exceed ~1/9 of page width; same-column xmin jitter stays below it |
-| `BAND_PULLDOWN_GAP_FRAC` | 0.035 | A heading sits within about one line-height of the content it introduces |
+| `BAND_PULLDOWN_GAP_FRAC` | 0.05 (was 0.035, v1.8.1) | A heading sits within about two line-heights of the content it introduces — the model bounds glyphs tightly, so gaps include cell padding |
 
 ## Offline validation (zero API cost)
 

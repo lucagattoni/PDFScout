@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.1] — 20260713 04:33
+
+### Fixed
+
+- **Heading pull-down gap too tight** (`src/config.py`) — `BAND_PULLDOWN_GAP_FRAC`
+  0.035 → 0.05. The e2e generalization run caught the synthetic
+  `grp_g_heading_table_sidebar` fixture missing pull-down by 0.1 unit (gap 28.0 vs
+  threshold 27.9 on a 796 span): the model bounds text glyphs tightly, so real
+  heading-to-table gaps include cell padding — about two line-heights, not one.
+  Offline replay on both real documents unchanged (11/12 constraints);
+  `test_g4_heading_adjacent_to_its_table` now passes live.
+
+
 ## [1.8.0] — 20260713 04:22
 
 ### Added
