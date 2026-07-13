@@ -103,10 +103,16 @@ positives; validated: catches the real 4/5 failure, silent on clean docs);
 (b) prevention — worker prompts carry first/last native-text-layer line anchors
 per page when the layer is usable.
 
+**Auto-retry shipped in v1.11.0:** the coverage auditor re-extracts up to
+`COVERAGE_RETRY_MAX_PAGES` flagged pages once each and replaces a page's blocks
+only when the retry scores better native coverage (never regresses; unscoreable
+pages are not retried). For a duplicate pair, the page with the LOWER native
+coverage is the one retried (that's the misattributed one). Verified via unit
+tests incl. the real sp-5 failure shape; triggers naturally on live flagged runs.
+
 **Remains open:** structural fix (send each worker a single-page PDF —
-trade-off: loses the shared prompt-cache prefix); auto-retry of a flagged page;
-single dropped headings on otherwise-covered pages (needs span/bbox-aware
-matching — v2 of the coverage oracle).
+trade-off: loses the shared prompt-cache prefix); single dropped headings on
+otherwise-covered pages (needs span/bbox-aware matching — v2 of the oracle).
 
 ### 6 · Real-document golden corpus completion (Group R)
 

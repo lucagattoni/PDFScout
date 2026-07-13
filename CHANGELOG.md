@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.11.0] — 20260713 08:08
+
+### Added
+
+- **Coverage auto-retry** (`coverage_auditor`) — pages flagged by the completeness
+  oracle (dropped content, cross-page duplication) are re-extracted once each, cost-
+  capped at `COVERAGE_RETRY_MAX_PAGES = 2` per run; a page's blocks are replaced only
+  when the retry scores better native word coverage (never regresses; unscoreable
+  pages are skipped instead of spending the call). For a duplicate pair the page with
+  the lower native coverage is retried — that's the misattributed one (post-review
+  caught that retrying the *reported* page was wrong for the real sp-5 failure).
+  New `__replace_pages__` reducer contract lets a retry replace a page's blocks in
+  the append-only accumulator. ROADMAP #7 auto-retry half.
+
+### Fixed
+
+- **Usage summary double-counted across runs of the same document** (`src/state.py`,
+  `extractor_node`) — the checkpointer persists state per pdf_hash, and `usage_log`
+  had no fresh-run reset (blocks and warnings did): a second run of the same PDF
+  reported 9 API calls when 4 were made. `usage_log` now resets like the block
+  buffer. Caught in the post-review live run.
+- **Golden metadata consensus normalization** (v1.10.2 entry folded here) — see
+  commit history: consensus groups by normalized value; case flicker no longer
+  drops `metadata_required` keys.
+
+
 ## [1.10.1] — 20260713 07:57
 
 ### Changed

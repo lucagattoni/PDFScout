@@ -26,6 +26,7 @@ from src.config import (
     COVERAGE_CHAR_CLASS_MIN,
     COVERAGE_MIN_NATIVE_CHARS,
     COVERAGE_MIN_WORDS,
+    COVERAGE_RETRY_MAX_PAGES,
     COVERAGE_WARN_THRESHOLD,
     COVERAGE_WARN_THRESHOLD_FIGURE,
     CROSS_PAGE_DUP_MIN_BLOCKS,
@@ -72,44 +73,64 @@ def _page_haystack(blocks: list[dict[str, Any]], page: int) -> set[str]:
     return significant_words(" ".join(parts))
 
 
-def audit_page_coverage(
+def page_word_coverage(native: str, blocks: list[dict[str, Any]], page: int) -> float | None:
+    """Fraction of a page's significant native words present in its extracted
+    blocks; None when the page is not auditable."""
+    if not native_layer_usable(native):
+        return None
+    native_words = significant_words(native)
+    if len(native_words) < COVERAGE_MIN_WORDS:
+        return None
+    return len(native_words & _page_haystack(blocks, page)) / len(native_words)
+
+
+def coverage_findings(
     native_texts: dict[int, str], blocks: list[dict[str, Any]]
-) -> list[str]:
-    """Pure audit: page number → native text, plus extracted blocks → warnings."""
-    warnings: list[str] = []
+) -> list[dict[str, Any]]:
+    """Structured per-page findings for pages below their warn threshold."""
+    findings: list[dict[str, Any]] = []
     for page, native in sorted(native_texts.items()):
-        if not native_layer_usable(native):
+        coverage = page_word_coverage(native, blocks, page)
+        if coverage is None:
             continue
-        native_words = significant_words(native)
-        if len(native_words) < COVERAGE_MIN_WORDS:
-            continue
-        page_blocks_words = _page_haystack(blocks, page)
-        coverage = len(native_words & page_blocks_words) / len(native_words)
         has_figure = any(
             b["bbox"]["page_number"] == page and b.get("type") == "figure" for b in blocks
         )
         threshold = COVERAGE_WARN_THRESHOLD_FIGURE if has_figure else COVERAGE_WARN_THRESHOLD
         if coverage < threshold:
-            sample = sorted(native_words - page_blocks_words)[:8]
-            warnings.append(
-                f"Page {page}: only {coverage:.0%} of the native text layer's "
-                f"significant words appear in the extracted blocks "
-                f"(threshold {threshold:.0%}) — content may have been dropped. "
-                f"Missing examples: {', '.join(sample)}"
+            native_words = significant_words(native)
+            sample = sorted(native_words - _page_haystack(blocks, page))[:8]
+            findings.append(
+                {"page": page, "coverage": coverage, "threshold": threshold, "sample": sample}
             )
-    return warnings
+    return findings
+
+
+def audit_page_coverage(
+    native_texts: dict[int, str], blocks: list[dict[str, Any]], *, suffix: str = ""
+) -> list[str]:
+    """Pure audit: page number → native text, plus extracted blocks → warnings."""
+    return [
+        (
+            f"Page {f['page']}: only {f['coverage']:.0%} of the native text layer's "
+            f"significant words appear in the extracted blocks "
+            f"(threshold {f['threshold']:.0%}) — content may have been dropped{suffix}. "
+            f"Missing examples: {', '.join(f['sample'])}"
+        )
+        for f in coverage_findings(native_texts, blocks)
+    ]
 
 
 def _squash(s: str) -> str:
     return re.sub(r"\s+", " ", _norm(s)).strip()
 
 
-def audit_cross_page_duplication(blocks: list[dict[str, Any]]) -> list[str]:
+def duplication_findings(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Detect page-attribution failures: a worker that extracted the wrong
     page re-emits another page's content under its own page number (observed
     on a real 16-page paper: page 5's worker re-described page 4, so page 5's
     real content was silently dropped). Flag any page whose substantial blocks
-    mostly duplicate another single page's text."""
+    mostly duplicate another single page's text. Returns structured findings."""
     by_page: dict[int, list[str]] = {}
     for b in blocks:
         text = _squash(b.get("text", ""))
@@ -140,12 +161,20 @@ def audit_cross_page_duplication(blocks: list[dict[str, Any]]) -> list[str]:
         if pair in reported:
             continue
         reported.add(pair)
-        warnings.append(
-            f"Pages {n} and {m}: {ratios[m]:.0%} of page {n}'s substantial blocks "
-            f"duplicate page {m}'s text — a worker may have extracted the wrong "
-            f"page, and page {n}'s real content may be missing."
-        )
+        warnings.append({"page": n, "other": m, "ratio": ratios[m]})
     return warnings
+
+
+def audit_cross_page_duplication(blocks: list[dict[str, Any]], *, suffix: str = "") -> list[str]:
+    return [
+        (
+            f"Pages {f['page']} and {f['other']}: {f['ratio']:.0%} of page {f['page']}'s "
+            f"substantial blocks duplicate page {f['other']}'s text — a worker may have "
+            f"extracted the wrong page, and page {f['page']}'s real content may be "
+            f"missing{suffix}."
+        )
+        for f in duplication_findings(blocks)
+    ]
 
 
 def page_anchors(native_text: str) -> tuple[str, str] | None:
@@ -162,7 +191,9 @@ def page_anchors(native_text: str) -> tuple[str, str] | None:
 
 
 async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Graph node: read native text per page and audit the extracted blocks."""
+    """Graph node: audit the extracted blocks against the native text layer,
+    then re-extract up to COVERAGE_RETRY_MAX_PAGES flagged pages once each,
+    keeping whichever block set scores better native coverage (never regress)."""
     try:
         reader = PdfReader(state["file_path"])
         native_texts = {
@@ -175,6 +206,89 @@ async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
             ]
         }
     blocks = state["extracted_flat_blocks"] or []
-    warnings = audit_page_coverage(native_texts, blocks)
-    warnings += audit_cross_page_duplication(blocks)
-    return {"extraction_warnings": warnings}
+
+    flagged: list[int] = []
+    for f in coverage_findings(native_texts, blocks):
+        flagged.append(f["page"])
+    for f in duplication_findings(blocks):
+        # A duplicate pair means one page's real content is missing — retry the
+        # page with the LOWER native coverage (that's the misattributed one;
+        # observed: pages 4/5 duplicated, page 5's real content was gone).
+        n, m = f["page"], f["other"]
+        cov_n = page_word_coverage(native_texts.get(n, ""), blocks, n)
+        cov_m = page_word_coverage(native_texts.get(m, ""), blocks, m)
+        if cov_n is None and cov_m is not None:
+            pick = m
+        elif cov_m is None or cov_n is None:
+            pick = n
+        else:
+            pick = n if cov_n <= cov_m else m
+        if pick not in flagged:
+            flagged.append(pick)
+
+    if not flagged:
+        return {"extraction_warnings": []}
+
+    # Late import: worker_node imports page_anchors from this module.
+    from src.nodes.worker_node import burst_worker_node
+
+    usage_log: list[dict] = []
+    extra_warnings: list[str] = []
+    replaced_pages: list[int] = []
+    replacement_blocks: list[dict[str, Any]] = []
+    for page in flagged[:COVERAGE_RETRY_MAX_PAGES]:
+        # A retry can only be kept if the result is scoreable against the
+        # native layer — skip the paid call when it isn't (never-regress rule).
+        if page_word_coverage(native_texts.get(page, ""), blocks, page) is None and not (
+            native_layer_usable(native_texts.get(page, ""))
+        ):
+            extra_warnings.append(
+                f"Coverage retry: page {page} flagged but not retried — its native "
+                f"text layer is unusable, so an improvement could not be verified."
+            )
+            continue
+        result = await burst_worker_node(
+            {**state, "current_page": page, "last_validation_error": None}
+        )
+        usage_log += result.get("usage_log", [])
+        extra_warnings += result.get("extraction_warnings", [])
+        # Strict page scope: only blocks the retry attributes to this page count.
+        new_page_blocks = [
+            b for b in (result.get("extracted_flat_blocks") or [])
+            if b.get("bbox", {}).get("page_number") == page
+        ]
+        old_cov = page_word_coverage(native_texts.get(page, ""), blocks, page)
+        new_cov = page_word_coverage(native_texts.get(page, ""), new_page_blocks, page)
+        if new_cov is not None and (old_cov is None or new_cov > old_cov):
+            replaced_pages.append(page)
+            replacement_blocks += new_page_blocks
+
+    if replaced_pages:
+        final_blocks = [
+            b for b in blocks
+            if b.get("bbox", {}).get("page_number") not in set(replaced_pages)
+        ] + replacement_blocks
+        extra_warnings.append(
+            f"Coverage retry: re-extracted page(s) "
+            f"{', '.join(str(p) for p in replaced_pages)} after audit flags; "
+            f"better-scoring result kept."
+        )
+    else:
+        final_blocks = blocks
+
+    skipped = flagged[COVERAGE_RETRY_MAX_PAGES:]
+    if skipped:
+        extra_warnings.append(
+            f"Coverage retry: page(s) {', '.join(str(p) for p in skipped)} also "
+            f"flagged but not retried (COVERAGE_RETRY_MAX_PAGES={COVERAGE_RETRY_MAX_PAGES})."
+        )
+
+    warnings = audit_page_coverage(native_texts, final_blocks, suffix=" (after retry)" if replaced_pages else "")
+    warnings += audit_cross_page_duplication(final_blocks, suffix=" (after retry)" if replaced_pages else "")
+
+    out: dict[str, Any] = {"extraction_warnings": warnings + extra_warnings, "usage_log": usage_log}
+    if replaced_pages:
+        out["extracted_flat_blocks"] = (
+            [{"__replace_pages__": replaced_pages}] + replacement_blocks
+        )
+    return out

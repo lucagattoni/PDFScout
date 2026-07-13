@@ -24,3 +24,4 @@ COVERAGE_WARN_THRESHOLD_FIGURE = 0.25  # lower bar on pages with figure blocks (
 CROSS_PAGE_DUP_MIN_CHARS = 20  # min normalized text length for a block to count in cross-page duplication checks (filters page furniture)
 CROSS_PAGE_DUP_MIN_BLOCKS = 4  # min substantial blocks on a page for its duplication ratio to be meaningful
 CROSS_PAGE_DUP_RATIO = 0.5  # warn when this fraction of a page's substantial blocks duplicates one other page
+COVERAGE_RETRY_MAX_PAGES = 2  # cost cap: max flagged pages re-extracted per run (one attempt each, better result kept)

@@ -64,7 +64,7 @@ START
 | `retry_node` | Re-runs `jsonschema` validation to capture the specific error, increments `retry_count`, and writes the error detail to state for the model's next attempt |
 | `burst_dispatcher` | Emits one `Send("parser_worker", ...)` per remaining page using LangGraph's Send API; writes a degradation warning to state if pioneer validation exhausted its retries |
 | `parser_worker` | Extracts pages 2–N concurrently under an `asyncio.Semaphore`; includes an inline validation-retry loop (up to 3 attempts) mirroring the pioneer's graph-level retry; degrades gracefully with a warning after 3 failed attempts |
-| `coverage_auditor` | Completeness oracle (no API call): compares each page's extracted blocks against the PDF's native text layer, word-level and order-free; appends an extraction warning when a large share of a page's native words is missing (possible dropped content). Self-disables on pages whose native layer is unusable (scans, subset-font encodings) and applies a lower threshold on figure pages |
+| `coverage_auditor` | Completeness oracle: compares each page's extracted blocks against the PDF's native text layer, word-level and order-free; flags pages with dropped content or cross-page duplication (wrong-page extraction), then **re-extracts up to `COVERAGE_RETRY_MAX_PAGES` flagged pages once each**, keeping whichever block set scores better native coverage (never regresses). Self-disables on pages whose native layer is unusable (scans, subset-font encodings) and applies a lower threshold on figure pages |
 | `hierarchy_node` | Deduplicates blocks by `block_id`, sorts by geometric reading order, then uses Claude tool-calling to assign `parent_id` relationships across the full flat block list |
 
 ### Self-Healing Loop (Pioneer Page)
@@ -479,6 +479,7 @@ HIERARCHY_TOKENS_PER_BLOCK = 40     # Estimated tokens per block used for dynami
 COVERAGE_CHAR_CLASS_MIN = 0.85      # Min fraction of standard document chars for a usable native text layer
 COVERAGE_WARN_THRESHOLD = 0.5       # Warn when less than this fraction of native words is covered by extraction
 COVERAGE_WARN_THRESHOLD_FIGURE = 0.25  # Lower bar on pages containing figure blocks (figures are summarized)
+COVERAGE_RETRY_MAX_PAGES = 2        # Cost cap: max flagged pages re-extracted per run (one attempt each)
 RETRY_BACKOFF_MULTIPLIER = 1        # Tenacity exponential backoff multiplier (seconds)
 RETRY_BACKOFF_MIN_SECONDS = 1       # Minimum wait between HTTP retries (seconds)
 RETRY_BACKOFF_MAX_SECONDS = 10      # Maximum wait between HTTP retries (seconds)

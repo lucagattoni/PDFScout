@@ -21,5 +21,6 @@ async def native_extractor_node(state: dict[str, Any]) -> dict[str, Any]:
         "retry_count": 0,
         "last_validation_error": None,
         "extracted_flat_blocks": None,  # None sentinel resets the reducer buffer
+        "usage_log": None,  # None sentinel resets the usage log (checkpoint persists per pdf_hash)
         "extraction_warnings": [],
     }

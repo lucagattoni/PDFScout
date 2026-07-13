@@ -1,10 +1,14 @@
+from unittest.mock import AsyncMock, MagicMock
+
 from src.nodes.coverage_node import (
     audit_cross_page_duplication,
     audit_page_coverage,
+    coverage_auditor_node,
     native_layer_usable,
     page_anchors,
     significant_words,
 )
+from src.state import merge_flat_blocks
 
 
 def _block(page: int, text: str, btype: str = "paragraph", cells: list | None = None):
@@ -188,3 +192,146 @@ class TestPageAnchors:
 
     def test_single_line_yields_none(self):
         assert page_anchors("Just one line of sufficient length here " * 3) is None
+
+
+class TestReplacePagesReducer:
+    def test_replace_drops_old_page_blocks(self):
+        existing = [_block(1, "page one text"), _block(2, "old page two text")]
+        new = [{"__replace_pages__": [2]}, _block(2, "new page two text")]
+        merged = merge_flat_blocks(existing, new)
+        texts = [b["text"] for b in merged]
+        assert "old page two text" not in texts
+        assert "new page two text" in texts
+        assert "page one text" in texts
+
+    def test_normal_append_unchanged(self):
+        merged = merge_flat_blocks([_block(1, "a")], [_block(2, "b")])
+        assert len(merged) == 2
+
+    def test_none_still_resets(self):
+        assert merge_flat_blocks([_block(1, "a")], None) == []
+
+
+def _reader_mock(mocker, page_texts: list[str]):
+    pages = []
+    for t in page_texts:
+        pg = MagicMock()
+        pg.extract_text.return_value = t
+        pages.append(pg)
+    reader = MagicMock()
+    reader.pages = pages
+    mocker.patch("src.nodes.coverage_node.PdfReader", return_value=reader)
+
+
+class TestCoverageRetry:
+    async def test_clean_document_makes_no_retry_call(self, mocker):
+        _reader_mock(mocker, [_CLEAN_TEXT])
+        worker = mocker.patch(
+            "src.nodes.worker_node.burst_worker_node", new=AsyncMock()
+        )
+        result = await coverage_auditor_node(
+            {"file_path": "x.pdf", "extracted_flat_blocks": [_block(1, _CLEAN_TEXT)]}
+        )
+        worker.assert_not_called()
+        assert result["extraction_warnings"] == []
+
+    async def test_flagged_page_retried_and_replaced_when_better(self, mocker):
+        # Page 2 extracted nothing; retry returns full coverage -> replaced.
+        _reader_mock(mocker, [_CLEAN_TEXT, _CLEAN_TEXT])
+        good = _block(2, _CLEAN_TEXT)
+        worker = mocker.patch(
+            "src.nodes.worker_node.burst_worker_node",
+            new=AsyncMock(return_value={"extracted_flat_blocks": [good], "usage_log": [{"context": "burst page 2 attempt 1", "input_tokens": 1, "output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "stop_reason": "tool_use"}]}),
+        )
+        result = await coverage_auditor_node(
+            {"file_path": "x.pdf", "extracted_flat_blocks": [_block(1, _CLEAN_TEXT)]}
+        )
+        worker.assert_called_once()
+        assert worker.call_args.args[0]["current_page"] == 2
+        assert result["extracted_flat_blocks"][0] == {"__replace_pages__": [2]}
+        assert result["extracted_flat_blocks"][1]["text"] == _CLEAN_TEXT
+        assert any("re-extracted page(s) 2" in w for w in result["extraction_warnings"])
+        # coverage warning resolved after retry
+        assert not any(w.startswith("Page 2:") for w in result["extraction_warnings"])
+        assert len(result["usage_log"]) == 1
+
+    async def test_worse_retry_never_regresses(self, mocker):
+        # Page 2 has partial coverage; retry returns empty -> original kept.
+        _reader_mock(mocker, [_CLEAN_TEXT, _CLEAN_TEXT])
+        partial = _block(2, "quarterly statement summarises electricity")
+        worker = mocker.patch(
+            "src.nodes.worker_node.burst_worker_node",
+            new=AsyncMock(return_value={"extracted_flat_blocks": [], "usage_log": []}),
+        )
+        result = await coverage_auditor_node(
+            {"file_path": "x.pdf",
+             "extracted_flat_blocks": [_block(1, _CLEAN_TEXT), partial]}
+        )
+        worker.assert_called_once()
+        assert "extracted_flat_blocks" not in result
+        assert any(w.startswith("Page 2:") for w in result["extraction_warnings"])
+
+    async def test_retry_cost_cap_respected(self, mocker):
+        # Three empty pages flagged; only COVERAGE_RETRY_MAX_PAGES (2) retried.
+        _reader_mock(mocker, [_CLEAN_TEXT, _CLEAN_TEXT, _CLEAN_TEXT, _CLEAN_TEXT])
+        worker = mocker.patch(
+            "src.nodes.worker_node.burst_worker_node",
+            new=AsyncMock(return_value={"extracted_flat_blocks": [], "usage_log": []}),
+        )
+        result = await coverage_auditor_node(
+            {"file_path": "x.pdf", "extracted_flat_blocks": [_block(1, _CLEAN_TEXT)]}
+        )
+        assert worker.call_count == 2
+        assert any("not retried" in w for w in result["extraction_warnings"])
+
+    async def test_unscoreable_page_not_retried(self, mocker):
+        # A duplicate pair on a document with a garbled native layer cannot be
+        # scored — the paid retry is skipped (never-regress rule).
+        _reader_mock(mocker, [_GARBLED, _GARBLED])
+        dup = [
+            _block(1, f"Shared substantial sentence number {i} appearing twice")
+            for i in range(4)
+        ] + [
+            _block(2, f"Shared substantial sentence number {i} appearing twice")
+            for i in range(4)
+        ]
+        worker = mocker.patch(
+            "src.nodes.worker_node.burst_worker_node", new=AsyncMock()
+        )
+        result = await coverage_auditor_node(
+            {"file_path": "x.pdf", "extracted_flat_blocks": dup}
+        )
+        worker.assert_not_called()
+        assert any("could not be verified" in w for w in result["extraction_warnings"])
+
+    async def test_duplicate_pair_retries_lower_coverage_page(self, mocker):
+        # Real sp-5 shape: pages 4/5 duplicated; the page whose native words
+        # are missing (page 2 here) is the one retried — not the reported page.
+        page2_native = (
+            "Entirely different second page content about experiments results "
+            "methodology evaluation benchmarks metrics baselines comparisons "
+            "training procedure hyperparameters optimization convergence"
+        )
+        _reader_mock(mocker, [_CLEAN_TEXT, page2_native])
+        shared = [
+            _block(1, f"Shared substantial duplicated sentence number {i} here")
+            for i in range(4)
+        ]
+        dup_on_2 = [
+            _block(2, f"Shared substantial duplicated sentence number {i} here")
+            for i in range(4)
+        ]
+        blocks = [_block(1, _CLEAN_TEXT)] + shared + dup_on_2
+        worker = mocker.patch(
+            "src.nodes.worker_node.burst_worker_node",
+            new=AsyncMock(return_value={
+                "extracted_flat_blocks": [_block(2, page2_native)],
+                "usage_log": [],
+            }),
+        )
+        result = await coverage_auditor_node(
+            {"file_path": "x.pdf", "extracted_flat_blocks": blocks}
+        )
+        worker.assert_called_once()
+        assert worker.call_args.args[0]["current_page"] == 2
+        assert result["extracted_flat_blocks"][0] == {"__replace_pages__": [2]}

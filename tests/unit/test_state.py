@@ -28,3 +28,14 @@ class TestMergeWarnings:
 
     def test_none_new_on_empty_existing(self):
         assert merge_warnings([], None) == []
+
+
+class TestMergeUsageLog:
+    def test_none_resets(self):
+        from src.state import merge_usage_log
+        assert merge_usage_log([{"context": "old"}], None) == []
+
+    def test_appends(self):
+        from src.state import merge_usage_log
+        merged = merge_usage_log([{"context": "a"}], [{"context": "b"}])
+        assert [e["context"] for e in merged] == ["a", "b"]

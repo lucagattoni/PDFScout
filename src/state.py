@@ -5,13 +5,25 @@ def merge_flat_blocks(
     existing: list[dict[str, Any]], new: list[dict[str, Any]] | None
 ) -> list[dict[str, Any]]:
     """Appends sub-agent page payloads into a unified global accumulation array.
-    Passing None as new resets the buffer (used by extractor/retry nodes on fresh runs)."""
+
+    Passing None as new resets the buffer (used by extractor/retry nodes on
+    fresh runs). If new[0] is a `{"__replace_pages__": [n, ...]}` sentinel, the
+    existing blocks on those pages are dropped and the remainder of `new` is
+    appended — used by the coverage auditor's page retry, which must replace a
+    flagged page's blocks rather than append duplicates."""
     if new is None:
         return []
     if not isinstance(new, list):
         # Guard: a non-list value (e.g. serialised JSON string from a model quirk) must
         # never propagate — return the existing accumulator unchanged.
         return existing if isinstance(existing, list) else []
+    if new and isinstance(new[0], dict) and "__replace_pages__" in new[0]:
+        drop = set(new[0]["__replace_pages__"])
+        kept = [
+            b for b in (existing or [])
+            if b.get("bbox", {}).get("page_number") not in drop
+        ]
+        return kept + new[1:]
     if not existing:
         return new
     return existing + new
@@ -26,8 +38,13 @@ def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
 
 
 def merge_usage_log(existing: list[dict[str, Any]], new: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """None resets the log (used by native_extractor on fresh runs — the
+    checkpointer persists state per pdf_hash, so without a reset the usage
+    summary double-counts across runs of the same document)."""
+    if new is None:
+        return []
     if not existing:
-        return new if new is not None else []
+        return new
     if not new:
         return existing
     return existing + new
