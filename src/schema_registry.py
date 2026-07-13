@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -7,6 +8,36 @@ import jsonschema
 from src.config import EXTRACTION_NOTE_MAX_LENGTH, FALLBACK_DOC_TYPE
 
 _SCHEMA_DIR = Path(__file__).parent.parent / "schemas"
+
+# JSON Schema keywords the API's strict tool-use validator does not support.
+# They are stripped from the API-side schema only — the local jsonschema
+# validation layer keeps the full schema, so these constraints are still
+# enforced (two-layer validation, same approach as the SDK's parse() helper).
+_STRICT_UNSUPPORTED = (
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "multipleOf",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "pattern",
+)
+
+
+def _strictify(node: Any) -> Any:
+    """Deep-copy a JSON Schema into its strict-tool-use-compatible form:
+    every object gets additionalProperties: false, unsupported constraint
+    keywords are removed."""
+    if isinstance(node, dict):
+        out = {k: _strictify(v) for k, v in node.items() if k not in _STRICT_UNSUPPORTED}
+        if out.get("type") == "object":
+            out["additionalProperties"] = False
+        return out
+    if isinstance(node, list):
+        return [_strictify(v) for v in node]
+    return copy.copy(node)
 
 
 class SchemaRegistry:
@@ -37,7 +68,12 @@ class SchemaRegistry:
         tool = {
             "name": f"extract_{doc_type}_structure",
             "description": f"Outputs structured semantic and layout blocks for a {doc_type} document.",
-            "input_schema": tool_schema,
+            # strict: the API guarantees tool inputs validate against the
+            # (sanitized) schema exactly — structural variance and invalid
+            # shapes are rejected at generation time instead of surfacing as
+            # jsonschema retries. Full constraints still enforced locally.
+            "strict": True,
+            "input_schema": _strictify(tool_schema),
         }
         return schema, tool
 

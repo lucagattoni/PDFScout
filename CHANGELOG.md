@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.10.1] — 20260713 08:02
+
+### Changed
+
+- **Strict tool use on all model-facing tools** (`src/schema_registry.py`,
+  `src/nodes/hierarchy_node.py`) — extraction tools and the hierarchy relation tool
+  now set `strict: true`: tool inputs are guaranteed schema-exact at generation time,
+  removing structural variance (missing fields, stray keys) before the jsonschema
+  retry loop. Two-layer validation: the API-side schema is sanitized (`_strictify`
+  adds `additionalProperties: false` everywhere and strips unsupported constraint
+  keywords — minItems/maxItems/uniqueItems/maxLength/…); the local jsonschema layer
+  keeps the full constraints. Optional block fields stay optional. The API's
+  `uniqueItems` rejection was caught by a cheap live probe and added to the strip
+  set. Live-verified on a real 2-page bill: zero 400s, zero retries, zero warnings,
+  richest extraction of that document to date (69 blocks), reasoning behavior
+  unchanged on forced-tool calls. Note: the tools-prefix change invalidates existing
+  prompt-cache entries once.
+
+
 ## [1.10.0] — 20260713 07:42
 
 ### Added

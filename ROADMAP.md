@@ -67,7 +67,9 @@ a measurable acceptance test.
 
 **Actionable next steps (tracked):** Open #2 (disable classifier thinking) — the
 first and highest-value fix — **shipped in v1.8.0** (`thinking: disabled` on the
-classifier call). Open #3 (completeness oracle) targets the *symptom*
+classifier call). Candidate (i) `strict: true` — **shipped in v1.10.1** (both
+extraction tools and the hierarchy relation tool; unsupported constraint
+keywords stripped API-side, enforced locally — two-layer validation). Open #3 (completeness oracle) targets the *symptom*
 of residual variance — silently dropped blocks — regardless of cause. New
 candidates from this analysis: (i) add `strict:true` to the extraction/hierarchy
 tools; (ii) trial `effort:"low"`; (iii) add a block-count-spread-over-N-runs

@@ -162,3 +162,55 @@ class TestExtractionFlags:
         block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "x" * (EXTRACTION_NOTE_MAX_LENGTH + 1)}
         with pytest.raises(jsonschema.ValidationError):
             registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
+
+
+class TestStrictToolSchema:
+    def test_tool_is_strict(self):
+        _, tool = SchemaRegistry().get_schema_and_tool("invoice")
+        assert tool["strict"] is True
+
+    def test_every_object_has_additional_properties_false(self):
+        _, tool = SchemaRegistry().get_schema_and_tool("invoice")
+        def check(node, path="root"):
+            if isinstance(node, dict):
+                if node.get("type") == "object":
+                    assert node.get("additionalProperties") is False, path
+                for k, v in node.items():
+                    check(v, f"{path}.{k}")
+            elif isinstance(node, list):
+                for i, v in enumerate(node):
+                    check(v, f"{path}[{i}]")
+        check(tool["input_schema"])
+
+    def test_unsupported_constraints_stripped_from_tool_only(self):
+        schema, tool = SchemaRegistry().get_schema_and_tool("invoice")
+        dumped = str(tool["input_schema"])
+        assert "minItems" not in dumped
+        assert "maxItems" not in dumped
+        assert "maxLength" not in dumped
+        assert "uniqueItems" not in dumped
+        # the local validation schema keeps the full constraints
+        coords = schema["properties"]["blocks"]["items"]["properties"]["bbox"]["properties"]["coordinates"]
+        assert coords["minItems"] == 4 and coords["maxItems"] == 4
+        note = schema["properties"]["blocks"]["items"]["properties"]["extraction_note"]
+        assert note["maxLength"] > 0
+
+    def test_local_validation_still_enforces_stripped_constraints(self):
+        import jsonschema
+        import pytest
+        bad = {
+            "document_type": "invoice",
+            "blocks": [{
+                "block_id": "b1", "type": "paragraph", "text": "x",
+                "bbox": {"page_number": 1, "coordinates": [1, 2, 3]},  # only 3 coords
+            }],
+        }
+        with pytest.raises(jsonschema.ValidationError):
+            SchemaRegistry().validate("invoice", bad)
+
+    def test_required_fields_unchanged(self):
+        # optional block fields stay optional in the strict schema — strict
+        # must not force the model to emit extraction_note on every block
+        _, tool = SchemaRegistry().get_schema_and_tool("invoice")
+        items = tool["input_schema"]["properties"]["blocks"]["items"]
+        assert items["required"] == ["block_id", "type", "bbox", "text"]

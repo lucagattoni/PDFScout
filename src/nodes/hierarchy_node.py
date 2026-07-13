@@ -23,6 +23,10 @@ from src.utils.usage import usage_entry
 RELATION_TOOL = {
     "name": "set_block_relations",
     "description": "Maps each block_id to its parent_id based on spatial reading order and document hierarchy.",
+    # strict: relation tuples are guaranteed schema-exact at generation time
+    # (no missing parent_id fields, no stray keys) — removes a whole class of
+    # structural variance from the hierarchy call.
+    "strict": True,
     "input_schema": {
         "type": "object",
         "properties": {
@@ -35,10 +39,12 @@ RELATION_TOOL = {
                         "parent_id": {"type": ["string", "null"]},
                     },
                     "required": ["block_id", "parent_id"],
+                    "additionalProperties": False,
                 },
             }
         },
         "required": ["relations"],
+        "additionalProperties": False,
     },
 }
 
