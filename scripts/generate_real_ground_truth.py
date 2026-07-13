@@ -50,14 +50,26 @@ def _normalize(text: str) -> str:
 
 
 async def _run_all_for_slot(pdf_path: Path, n_runs: int) -> list[tuple[int, dict]]:
-    """Run the pipeline n_runs times sequentially in a single event loop."""
+    """Run the pipeline n_runs times sequentially in a single event loop.
+
+    A single failed run (transient API error) must not abort the slot and lose
+    the paid runs already completed — log it and continue. The caller enforces
+    a minimum number of successful runs."""
     from src.graph import build_app
     results = []
     for i in range(n_runs):
-        app = build_app(checkpointer=None)
-        result = await app.ainvoke({"file_path": str(pdf_path)})
+        try:
+            app = build_app(checkpointer=None)
+            result = await app.ainvoke({"file_path": str(pdf_path)})
+        except Exception as e:  # noqa: BLE001 — deliberate: preserve completed paid runs
+            print(f"    run {i + 1}/{n_runs} FAILED ({type(e).__name__}: {e}) — continuing")
+            continue
         block_count = len(result["hierarchical_document_tree"]["structured_payload"])
         results.append((block_count, result))
+    if len(results) < max(3, math.ceil(0.6 * n_runs)):
+        raise RuntimeError(
+            f"Only {len(results)}/{n_runs} runs succeeded — too few for a stable golden."
+        )
     return results
 
 
