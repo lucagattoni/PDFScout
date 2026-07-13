@@ -1,7 +1,7 @@
 # Reading-order banding v2 — general, scale-invariant ordering
 
 _Created: 2026-07-13 03:54_\
-_Updated: 2026-07-13 04:33 · BAND_PULLDOWN_GAP_FRAC 0.035 → 0.05 (v1.8.1): e2e run showed glyph-tight bboxes make heading↔table gaps ≈ two line-heights_
+_Updated: 2026-07-13 04:23 · BAND_PULLDOWN_GAP_FRAC 0.035 → 0.05 (v1.8.1): e2e run showed glyph-tight bboxes make heading↔table gaps ≈ two line-heights_
 
 Fixes ROADMAP Open #1 (three reading-order defects found on real documents on
 2026-07-13). Method and constraints follow CLAUDE.md → Investigation rules:

@@ -1,6 +1,28 @@
 # Changelog
 
-## [1.8.1] — 20260713 04:33
+## [1.8.2] — 20260713 04:43
+
+### Fixed
+
+- **Real-doc golden metadata comparison over-brittle** (`tests/integration/
+  test_real_docs.py`) — `metadata_required` compared model-extracted strings by byte
+  equality; a one-character case difference ("Physics-Informed" vs
+  "Physics-informed") or a line-break hyphenation reading ("task-specific" vs
+  "taskspecific") failed the test even though the value was captured. New `_norm_eq`
+  compares whitespace/case-normalized with hyphen canonicalization; lists compare
+  element-wise. Verified offline against captured trees: all sp-1 and sp-5
+  metadata assertions pass.
+
+### Known issues (recorded in ROADMAP)
+
+- sp goldens are stale for the current model (sp-4 `min_blocks` 309 vs observed 281;
+  fragment sets drift) — needs regeneration, sign-off required (Open #6).
+- Cross-page duplicate blocks + dropped sections observed in burst extraction on a
+  16-page paper (new Open #7); block_id-only dedup cannot catch cross-worker
+  duplicates.
+
+
+## [1.8.1] — 20260713 04:23
 
 ### Fixed
 

@@ -33,7 +33,35 @@ convert silent drops into visible ones.
 **Scope:** Medium — needs a matching heuristic robust to whitespace/reflow, and
 a threshold for "significant".
 
+### 7 · Cross-page duplicate blocks and dropped sections in burst extraction
+
+**What (found 2026-07-13 on a real 16-page paper):** adjacent burst workers each
+extract the full PDF with a "page N only" instruction; near page boundaries the
+model sometimes re-emits neighbouring-page blocks (observed: "3.1 Pre-training
+BERT", "Task #1/#2", "References" duplicated under distinct block_ids — 251
+blocks where 5 prior runs produced 126–162) while other sections drop entirely
+(observed: "3.2 Fine-tuning BERT", "4 Experiments" headings absent). The
+hierarchy node's dedup is by block_id only, so cross-worker duplicates survive
+into the output.
+
+**Investigate:** content+bbox-based dedup across pages (same normalized text +
+overlapping bbox on the same page number → duplicate); stricter page-exclusivity
+prompting; and page-attribution validation (block's bbox page vs assigned page).
+Related to #3 (both are completeness/attribution variance); fixing #3's oracle
+would also detect the dropped sections.
+
 ### 6 · Real-document golden corpus completion (Group R)
+
+**Update (2026-07-13, v1.8.x):** the sp goldens are additionally **stale for the
+current model** — they were generated 2026-06-04 under the previous MODEL. The
+e2e generalization run showed: sp-4 block counts shifted below `min_blocks`
+(281 vs golden 309, old-model runs were 314–366); some long
+`spot_check_fragments` no longer extract verbatim; fragment stability differs
+run-to-run (also see Open #3). Metadata byte-equality brittleness is fixed
+(normalized comparison in `test_real_docs.py`, v1.8.2), but `min_blocks` and
+fragment sets need regeneration via `scripts/generate_real_ground_truth.py`
+(5 runs per slot — nontrivial API cost, sp-4 is a large NIST document; get
+sign-off before running).
 
 **What:** `tests/integration/test_real_docs.py` (`grp_r`, `e2e`-marked) is
 parametrized over 15 manifest slots defined in `tests/fixtures/real_manifest.json`:

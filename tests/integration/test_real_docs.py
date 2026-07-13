@@ -5,7 +5,24 @@ from pathlib import Path
 import pytest
 
 from tests.fixtures._golden import CURRENT_SCHEMA_VERSION, load_golden
-from tests.integration._compare import _text_in_some, assert_valid_bbox_fields
+from tests.integration._compare import _normalize, _text_in_some, assert_valid_bbox_fields
+
+
+def _norm_eq(a, b) -> bool:
+    """Whitespace/case-insensitive equality for model-extracted strings.
+
+    Byte equality is over-brittle for LLM-extracted metadata: the same title
+    can come back as 'Physics-Informed' vs 'Physics-informed' between runs or
+    model versions. The assertion's intent is 'the value was captured', so
+    compare normalized. Lists compare element-wise under the same rule."""
+    if isinstance(a, str) and isinstance(b, str):
+        na, nb = _normalize(a).lower(), _normalize(b).lower()
+        # Hyphenation at PDF line breaks is read inconsistently between runs
+        # ('task-specific' vs 'taskspecific') — canonicalize both sides.
+        return na == nb or na.replace("-", "") == nb.replace("-", "")
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_norm_eq(x, y) for x, y in zip(a, b))
+    return a == b
 
 _REAL_PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs" / "real"
 
@@ -23,7 +40,7 @@ def _sha256(path: Path) -> str:
 def _assert_metadata_required(blocks: list[dict], golden: dict) -> None:
     for key, expected in golden["metadata_required"].items():
         found = any(
-            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected
+            _norm_eq(b.get("metadata", {}).get("bibliographic", {}).get(key), expected)
             for b in blocks
         )
         assert found, f"metadata_required[{key!r}]={expected!r} not found in any block"
