@@ -2,81 +2,80 @@
   {
     "slot_id": "sp-1",
     "doc_type": "scientific_paper",
-    "label": "seismic_traveltime_2311_03751.pdf",
-    "url": "https://arxiv.org/pdf/2311.03751",
+    "label": "tokenizer_transplant_2607_09598.pdf",
+    "url": "https://arxiv.org/pdf/2607.09598",
     "fallback_url": null,
-    "pdf_sha256": "43744eab7f880d71a83b142950061a721f64cff75e3fb630d44cf06de434d437",
-    "size_bytes": 10021397,
-    "license": "CC BY",
-    "memorisation_risk": "low",
+    "pdf_sha256": "d9526aa6d608972d6f064c96655b60a910d80eb2c059b1560fc49d1cd6aef395",
+    "size_bytes": 1438852,
+    "license": "CC BY-SA 4.0",
+    "memorisation_risk": "none (post-knowledge-cutoff)",
     "min_blocks_override": null,
-    "notes": "arXiv:2311.03751 \u2014 seismic traveltime via physics-informed FNO (Song et al. 2023), 13 pp, 12 figs, IEEE TGRS two-column, geophysics/niche"
+    "notes": "arXiv:2607.09598 (2026-07-10) — Tokenizer Transplantation, Bengali ASR (Hasan & Rahman), 5 pp, 2 figs, cs.CL two-column; post-cutoff"
   },
   {
     "slot_id": "sp-2",
     "doc_type": "scientific_paper",
-    "label": "radiative_transfer_2302_02641.pdf",
-    "url": "https://arxiv.org/pdf/2302.02641",
+    "label": "pinching_antenna_2607_08873.pdf",
+    "url": "https://arxiv.org/pdf/2607.08873",
     "fallback_url": null,
-    "pdf_sha256": "6238fadf231b3fed50604b585103fe85204181d12d33d2550f3943319c6d3e3b",
-    "size_bytes": 382661,
-    "license": "CC BY",
-    "memorisation_risk": "low",
+    "pdf_sha256": "cf6b5706cbad3e21548f32de6904e40aa5fd1c212d62ace36c851e582adfd441",
+    "size_bytes": 231016,
+    "license": "CC BY 4.0",
+    "memorisation_risk": "none (post-knowledge-cutoff)",
     "min_blocks_override": null,
-    "notes": "arXiv:2302.02641 \u2014 radiative transfer approximation for surface spectral features (Schmidt 2023), 4 pp, IEEE GRSL two-column, planetary remote sensing"
+    "notes": "arXiv:2607.08873 (2026-07-09) — Fast Pinching-Antenna Activation for AirComp, 5 pp, eess.SP two-column; post-cutoff"
   },
   {
     "slot_id": "sp-3",
     "doc_type": "scientific_paper",
-    "label": "helioseismology_2007_01432.pdf",
-    "url": "https://arxiv.org/pdf/2007.01432",
+    "label": "wimax_filter_2607_07661.pdf",
+    "url": "https://arxiv.org/pdf/2607.07661",
     "fallback_url": null,
-    "pdf_sha256": "2f8ce4282b233b24a34675b1758fc893369d11880ed9dc1b4a0d041c83120aeb",
-    "size_bytes": 1837152,
+    "pdf_sha256": "8f210b7500cc86939fbd6eea031fd6eaa1341ba77503d162c1623c986e01a265",
+    "size_bytes": 470996,
     "license": "CC BY 4.0",
-    "memorisation_risk": "low",
+    "memorisation_risk": "none (post-knowledge-cutoff)",
     "min_blocks_override": null,
-    "notes": "arXiv:2007.01432 \u2014 Probabilistic Inversions for Time-Distance Helioseismology (Jackiewicz 2020), ~25 pp, author-year refs, niche astrophysics; replaces bot-blocked Frontiers/PMC"
+    "notes": "arXiv:2607.07661 (2026-07-08) — Six-Pole Dual-band Bandpass Filter for WiMAX, 4 pp, 5 figs, 1 table; post-cutoff"
   },
   {
     "slot_id": "sp-4",
     "doc_type": "scientific_paper",
-    "label": "nist_ir_8170.pdf",
-    "url": "https://nvlpubs.nist.gov/nistpubs/ir/2020/NIST.IR.8170.pdf",
+    "label": "themis_telescope_2607_08240.pdf",
+    "url": "https://arxiv.org/pdf/2607.08240",
     "fallback_url": null,
-    "pdf_sha256": "2a777e50d78f4f41b1223988e14013dddffae1b6b62a40a042d855104fc8da0b",
-    "size_bytes": 940336,
-    "license": "Public domain",
-    "memorisation_risk": "low",
+    "pdf_sha256": "e1fd973dc24751dc030e16d4589bd2982550000be0761c7d80002be82ab0be48",
+    "size_bytes": 6037839,
+    "license": "CC BY 4.0",
+    "memorisation_risk": "none (post-knowledge-cutoff)",
     "min_blocks_override": null,
-    "notes": "NIST IR 8170 (2020) \u2014 Approaches for Federal Agencies to Use the Cybersecurity Framework, 33 pp, single-column, table-heavy",
-    "skip_e2e_reason": "Large document (35+ pages, 300+ blocks): golden regeneration and routine e2e runs deferred for cost \u2014 golden is stale for the current model (min_blocks 309 vs observed 281). Re-enable by regenerating the golden and removing this key. Decided 2026-07-13."
+    "notes": "arXiv:2607.08240 (2026-07-09) — THEMIS calibration-free solar telescope, 4 pp, 10 figs (figure-heavy), astro-ph.SR; post-cutoff"
   },
   {
     "slot_id": "sp-5",
     "doc_type": "scientific_paper",
-    "label": "bert_1810_04805.pdf",
-    "url": "https://arxiv.org/pdf/1810.04805",
+    "label": "chiral_anomaly_2607_07912.pdf",
+    "url": "https://arxiv.org/pdf/2607.07912",
     "fallback_url": null,
-    "pdf_sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
-    "size_bytes": 775166,
-    "license": "CC BY",
-    "memorisation_risk": "high",
+    "pdf_sha256": "aca468b5e911db0b4fcf35dae94d6fc429c69ce23da0994ca2ebdb557646e252",
+    "size_bytes": 360899,
+    "license": "CC BY 4.0",
+    "memorisation_risk": "none (post-knowledge-cutoff)",
     "min_blocks_override": null,
-    "notes": "BERT (Devlin et al. 2018), 16 pp, two-column, numbered refs; memorisation risk HIGH; URL verified accessible"
+    "notes": "arXiv:2607.07912 (2026-07-08) — Node-locked annual modulations, gravitational chiral anomaly in solar Kerr field, 4 pp, 2 figs, theory-dense; post-cutoff"
   },
   {
     "slot_id": "sp-6",
     "doc_type": "scientific_paper",
-    "label": "nbs_technicalnote290.pdf",
-    "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/TN/nbstechnicalnote290.pdf",
+    "label": "quantum_repeater_2607_09378.pdf",
+    "url": "https://arxiv.org/pdf/2607.09378",
     "fallback_url": null,
-    "pdf_sha256": "18937469e305e1c39ea76dc18a629121b6667f4d15e23c1edeee6047abbaefe1",
-    "size_bytes": 2695282,
-    "license": "Public domain",
-    "memorisation_risk": "low",
+    "pdf_sha256": "f96f0d2e31d48b98f2b80c94f040658df182ed9642e2164469f5a6b9e2be87cc",
+    "size_bytes": 445878,
+    "license": "arXiv non-exclusive (download-only fixture, not redistributed)",
+    "memorisation_risk": "none (post-knowledge-cutoff)",
     "min_blocks_override": null,
-    "notes": "NBS TN 290 (1966) \u2014 Information Handling in the NSRDS (Franz L. Alt), scanned typewritten, ~34 pp; URL verified accessible"
+    "notes": "arXiv:2607.09378 (2026-07-10) — Adversarial Co-Learning in Quantum Repeater Networks (Bell et al.), 4 pp verified, 5 figs, cs.CR/quantum; post-cutoff"
   },
   {
     "slot_id": "inv-1",
@@ -146,15 +145,15 @@
   {
     "slot_id": "bc-1",
     "doc_type": "baseline_core",
-    "label": "nist_sp_1301.pdf",
-    "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.1301.pdf",
+    "label": "fr_ferc_scoping_2026_14082.pdf",
+    "url": "https://www.govinfo.gov/content/pkg/FR-2026-07-13/pdf/2026-14082.pdf",
     "fallback_url": null,
-    "pdf_sha256": "baf10ffc7ed7792a54e724b983a858b6c194c2ebcd21843034bee78a858f46d8",
-    "size_bytes": 2945618,
+    "pdf_sha256": "f4f81400cf54dca17ec75a9cb2f4d51ccc5ddc6440618b6e11dc233bab1cb1c0",
+    "size_bytes": 221626,
     "license": "Public domain",
-    "memorisation_risk": "low",
+    "memorisation_risk": "low (recent publication)",
     "min_blocks_override": null,
-    "notes": "NIST SP 1301 \u2014 CSF 2.0 Quick-Start Guide for Organizational Profiles, ~11 pp, headings + prose + tables; replaces blocked cbo.gov"
+    "notes": "Federal Register 2026-07-13 — FERC Notice of Scoping Period (Northern Natural Gas), 3 pp, structured notice with headings/dates/contacts; published same-day (post-cutoff)"
   },
   {
     "slot_id": "bc-2",
@@ -162,25 +161,25 @@
     "label": "gao_wastewater_surveillance.pdf",
     "url": "https://govinfo.gov/content/pkg/GOVPUB-GA-PURL-gpo177086/pdf/GOVPUB-GA-PURL-gpo177086.pdf",
     "fallback_url": null,
-    "pdf_sha256": "4c50f6efedf2cd0d31541339188d3662b0a4b211f9eb2a96a4c4b188bea9744f",
-    "size_bytes": 493914,
+    "pdf_sha256": "3e4cae70c451bc727b8693ac46feaebde2464b01d68607f2b050328e29a1eeeb",
+    "size_bytes": 493886,
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "GAO-22-105841 Wastewater Surveillance \u2014 govinfo primary (gao.gov blocks bots); same document as before"
+    "notes": "GAO-22-105841 Wastewater Surveillance — govinfo primary (gao.gov blocks bots); same document as before"
   },
   {
     "slot_id": "bc-3",
     "doc_type": "baseline_core",
-    "label": "jekyll_hyde_stevenson.pdf",
-    "url": "https://www.planetebook.com/free-ebooks/the-strange-case-of-dr-jekyll.pdf",
+    "label": "fomc_statement_20260617.pdf",
+    "url": "https://www.federalreserve.gov/monetarypolicy/files/monetary20260617a1.pdf",
     "fallback_url": null,
-    "pdf_sha256": "b13404455402d2d4b625a53505c829661e18844a96540730d0b32695b4ba2587",
-    "size_bytes": 1774942,
+    "pdf_sha256": "13c6558e213dd433c4a0c255d5f7a25ab79992f672c9644994307afea5d7932f",
+    "size_bytes": 229274,
     "license": "Public domain",
-    "memorisation_risk": "low",
+    "memorisation_risk": "low (recent publication)",
     "min_blocks_override": null,
-    "notes": "Planet eBook \u2014 The Strange Case of Dr Jekyll and Mr Hyde (Stevenson, 1886), ~70 pp native PDF, 13 titled chapters, prose only, no tables"
+    "notes": "FOMC statement 2026-06-17, 2 pp, prose-only baseline (replaces 96-page Jekyll & Hyde — famous text, high memorisation risk)"
   },
   {
     "slot_id": "bc-4",
@@ -193,6 +192,6 @@
     "license": "Public domain",
     "memorisation_risk": "low",
     "min_blocks_override": null,
-    "notes": "CISA fact sheet Oct 2022 \u2014 phishing-resistant MFA, ~5 pp, headings + bullets; replaces blocked GAO-22-106118 (no govinfo mirror found)"
+    "notes": "CISA fact sheet Oct 2022 — phishing-resistant MFA, ~5 pp, headings + bullets; replaces blocked GAO-22-106118 (no govinfo mirror found)"
   }
 ]

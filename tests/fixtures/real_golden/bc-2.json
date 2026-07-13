@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "slot_id": "bc-2",
+  "doc_type": "baseline_core",
+  "generated_at": "2026-07-13T16:43:09Z",
+  "pdf_sha256": "3e4cae70c451bc727b8693ac46feaebde2464b01d68607f2b050328e29a1eeeb",
+  "n_runs": 3,
+  "raw_block_counts": [
+    51,
+    54,
+    52
+  ],
+  "min_blocks": 45,
+  "classification": "scientific_paper",
+  "classification_unstable": false,
+  "metadata_required": {},
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "Science, Technology Assessment, and Analytics",
+    "/// THE SCIENCE",
+    "APRIL 2022",
+    "What are some concerns?",
+    "GAO SUPPORT:"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}

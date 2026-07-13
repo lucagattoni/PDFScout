@@ -157,50 +157,29 @@ tests incl. the real sp-5 failure shape; triggers naturally on live flagged runs
 trade-off: loses the shared prompt-cache prefix); single dropped headings on
 otherwise-covered pages (needs span/bbox-aware matching — v2 of the oracle).
 
-### 6 · Real-document golden corpus completion (Group R)
+### 6 · Real-document golden corpus completion (Group R) — ✅ COMPLETE (v1.12.6)
 
-**Status 2026-07-13 (v1.10.0):** sp-1 regenerated and e2e-verified; sp-5
-regenerated (3 runs, cost-capped per user instruction) and unskipped. The
-`min_blocks` formula is now clamped to 95% of the observed minimum (0.85×p80
-exceeded a generating run's own count under high spread). Remaining: sp-4
-(large-doc skip stands), sp-6 + bc-1..4 (never generated). Generator's exact-
-match metadata consensus still pending (see below).
+**Done 2026-07-13.** The corpus was fully refreshed and all goldens regenerated
+against the current model:
 
-**Generator consensus normalization — shipped v1.10.2:** metadata consensus now
-groups by normalized form (case/whitespace/hyphenation) and stores the most
-common raw value; case flicker no longer drops keys from `metadata_required`.
-Existing goldens are unchanged — sp-1 regains its `title` requirement at its
-next regeneration.
+- **New documents (≤5 pages, verified with pypdf):** `sp-1..6` replaced with six
+  fresh arXiv papers (July 2026, post-knowledge-cutoff — no memorisation risk);
+  `bc-1` → Federal Register FERC scoping notice, `bc-3` → June FOMC statement;
+  `bc-2`/`bc-4`/`inv-1..5` unchanged. Recency rule applies to scientific slots
+  only (see CLAUDE.md → Test corpus).
+- **All 10 slots regenerated** (`sp-1..6`, `bc-1..4`), 3 runs each, `effort=low`,
+  1-hour prompt cache. Median run-to-run block spread 6.3% (7/10 ≤8%; sp-2/bc-1/
+  bc-3 higher — the `min_blocks` 95%-of-observed-min clamp keeps all goldens
+  non-flaky). `inv-1..5` goldens unchanged. **15/15 committed.**
+- Metadata consensus normalization (v1.10.2) confirmed working: `sp-1` golden
+  carries `title`, `authors`, and `abstract` in `metadata_required`.
 
-**Update (2026-07-13, v1.8.x):** the sp goldens are additionally **stale for the
-current model** — they were generated 2026-06-04 under the previous MODEL. The
-e2e generalization run showed: sp-4 block counts shifted below `min_blocks`
-(281 vs golden 309, old-model runs were 314–366); some long
-`spot_check_fragments` no longer extract verbatim; fragment stability differs
-run-to-run (also see Open #3). Metadata byte-equality brittleness is fixed
-(normalized comparison in `test_real_docs.py`, v1.8.2), but `min_blocks` and
-fragment sets need regeneration via `scripts/generate_real_ground_truth.py`
-(5 runs per slot — nontrivial API cost, sp-4 is a large NIST document; get
-sign-off before running).
+This work drove the v1.12.2–v1.12.5 pipeline fixes (strict-schema 400, streaming
+for `APITimeoutError`, and the strict+streaming hang) — extraction was
+effectively broken for `scientific_paper`/`contract` until they landed.
 
-**What:** `tests/integration/test_real_docs.py` (`grp_r`, `e2e`-marked) is
-parametrized over 15 manifest slots defined in `tests/fixtures/real_manifest.json`:
-`sp-1..6` (scientific_paper), `inv-1..5` (invoice), `bc-1..4` (baseline_core).
-Only 10 of 15 have a golden file, and of those, only 5 are actually committed:
-
-| Slot group | Golden generated | Committed |
-|---|---|---|
-| `inv-1..5` | 5/5 | ✅ 5/5 |
-| `sp-1..6` | 5/6 (`sp-1..5`) | ✅ 5/5 (`sp-1..5` committed in v1.6.3, 2026-07-13); `sp-6` ungenerated |
-| `bc-1..4` | 0/4 | ❌ 0/4 |
-
-**Fix:**
-
-1. ~~Commit the 5 untracked `sp-*.json` files.~~ Done in v1.6.3 (`b12a29f`/`d617b71`).
-2. Run `scripts/download_real_fixtures.py --slot sp-6,bc-1,bc-2,bc-3,bc-4` then
-   `scripts/generate_real_ground_truth.py --slot sp-6,bc-1,bc-2,bc-3,bc-4` to
-   fill the remaining 5 slots (`sp-6` + `bc-1..4`).
-3. Confirm `pytest -m e2e -k grp_r` passes for all 15 slots.
+Remaining follow-up: run `pytest -m e2e -k grp_r` for a full green e2e pass on
+the new corpus (cheap now — all docs ≤5 pages; needs sign-off as a paid sweep).
 
 **Scope:** Medium — no code changes, but requires live API calls to generate
 ground truth and manual verification of `bc-3`/`sp-1` fixture notes (manifest

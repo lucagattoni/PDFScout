@@ -2,32 +2,39 @@
   "schema_version": 1,
   "slot_id": "sp-4",
   "doc_type": "scientific_paper",
-  "generated_at": "2026-06-04T21:56:13Z",
-  "pdf_sha256": "2a777e50d78f4f41b1223988e14013dddffae1b6b62a40a042d855104fc8da0b",
-  "n_runs": 5,
+  "generated_at": "2026-07-13T16:20:07Z",
+  "pdf_sha256": "e1fd973dc24751dc030e16d4589bd2982550000be0761c7d80002be82ab0be48",
+  "n_runs": 3,
   "raw_block_counts": [
-    366,
-    314,
-    364,
-    352,
-    343
+    63,
+    61,
+    58
   ],
-  "min_blocks": 309,
-  "classification": "baseline_core",
-  "classification_unstable": true,
-  "metadata_required": {},
-  "metadata_deferred": {},
+  "min_blocks": 53,
+  "classification": "scientific_paper",
+  "classification_unstable": false,
+  "metadata_required": {
+    "title": "TH\u00c9MIS: a calibration-free solar telescope",
+    "authors": [
+      "V. Bommier",
+      "B. Gelly",
+      "R. Douet"
+    ]
+  },
+  "metadata_deferred": {
+    "abstract": "Context. TH\u00c9MIS was initially built as a calibration-free telescope, with the polarisation analysis performed in F1 focus, before any oblique reflection. Recently, the telescope was improved with installation of an Adaptive Optics apparatus. Aims. We would like to show you that it remains a calibration-free telescope, even if the two beams able to provide the light polarisation, are now separated in front of the cameras only. Methods. This is obtained owing to an adaptation of all the oblique reflections along the ray path. Results. We present raw images taken across a sunspot, with three lines: two polarisable lines, which display the sunspot magnetic field polarisation, linear and circular, and one unpolarisable line, which does not display any polarisation, which shows that the telescope is essentially free of any instrumental polarisation, because, if this line had showed any polarisation, this polarisation would have been of instrumental origin. Those images were recorded on September 12, 2024. We also present vector magnetic field, vector current density and vector Lorentz force maps obtained in July 2025, which are in accordance with previous results: circular currents wrapping spots clockwise about a positive polarity spot and counterclockwise about a negative polarity spot, and centripetal Lorentz force maintaining sunspots. Conclusions. As a result, TH\u00c9MIS remains a calibration-free telescope."
+  },
   "spot_check_fragments": [
-    "Warning Notice",
-    "Withdrawn Publication",
-    "Superseding Publication(s) (if applicable)",
-    "Additional Information (if applicable)",
-    "NISTIR 8170",
-    "Executive Summary",
-    "Summary of the Approach: Integrate and Align Cybersecurity and Acquisition Processes",
-    "4. Evaluate Organizational Cybersecurity",
-    "Summary of the Approach: Evaluate Organizational Cybersecurity",
-    "5. Manage the Cybersecurity Program"
+    "ABSTRACT",
+    "1. Introduction",
+    "2. Polarimetric Analysis before 2016",
+    "3. The 2016 modification for Adaptive Optics introduction",
+    "4. Test of the instrumental polarization",
+    "5. Mueller matrix of the telescope",
+    "V. Bommier et al.: TH\u00c9MIS: a calibration-free solar telescope",
+    "6. Vector magnetic field observations",
+    "7. Conclusion",
+    "References"
   ],
   "table_assertions": [],
   "stability_notes": ""

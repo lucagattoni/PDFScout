@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.6] — 20260713 17:51
+
+### Changed
+
+- **Real-document test corpus fully refreshed (ROADMAP #6 complete).** The 6
+  scientific-paper slots (`sp-1..6`) were replaced with fresh July-2026 arXiv
+  papers (≤5 pages, post-knowledge-cutoff so the model can't have memorised
+  them); `bc-1` → Federal Register FERC notice, `bc-3` → June FOMC statement.
+  All 10 non-invoice slots (`sp-1..6`, `bc-1..4`) had goldens **regenerated
+  against the current model** — 3 runs each, `effort=low`, 1-hour prompt cache
+  — replacing the stale/missing goldens. `inv-1..5` unchanged. 15/15 goldens
+  now committed. Median run-to-run block-count spread 6.3% (the `min_blocks`
+  95%-of-observed-min clamp keeps every golden non-flaky). `sp-1` metadata
+  consensus recovered `title`/`authors`/`abstract`. Generator now unwraps
+  tenacity `RetryError` so the real underlying API error is logged.
+
 ## [1.12.5] — 20260713 16:43
 
 ### Fixed

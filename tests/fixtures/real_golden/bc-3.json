@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "slot_id": "bc-3",
+  "doc_type": "baseline_core",
+  "generated_at": "2026-07-13T16:44:56Z",
+  "pdf_sha256": "13c6558e213dd433c4a0c255d5f7a25ab79992f672c9644994307afea5d7932f",
+  "n_runs": 3,
+  "raw_block_counts": [
+    23,
+    14,
+    23
+  ],
+  "min_blocks": 13,
+  "classification": "contract",
+  "classification_unstable": false,
+  "metadata_required": {},
+  "metadata_deferred": {},
+  "spot_check_fragments": [],
+  "table_assertions": [],
+  "stability_notes": ""
+}

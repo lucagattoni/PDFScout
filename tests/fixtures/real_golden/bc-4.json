@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "slot_id": "bc-4",
+  "doc_type": "baseline_core",
+  "generated_at": "2026-07-13T16:48:25Z",
+  "pdf_sha256": "0f8fff1a8208b30565f086dd312ea7c7767f9aca5ed70cad54192c140b4d50b5",
+  "n_runs": 3,
+  "raw_block_counts": [
+    55,
+    54,
+    53
+  ],
+  "min_blocks": 46,
+  "classification": "scientific_paper",
+  "classification_unstable": false,
+  "metadata_required": {},
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "OVERVIEW",
+    "CYBER THREATS TO MFA",
+    "RECOMMENDED IMPLEMENTATIONS",
+    "PHISHING-RESISTANT MFA IMPLEMENTATIONS",
+    "FIDO/WebAuthn Authentication",
+    "PKI-based MFA",
+    "AREAS OF FOCUS FOR IMPLEMENTING PHISHING-RESISTANT MFA",
+    "Prioritizing Implementation Phases",
+    "Common Issues and Paths Forward",
+    "RESOURCES"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "slot_id": "bc-1",
+  "doc_type": "baseline_core",
+  "generated_at": "2026-07-13T16:39:25Z",
+  "pdf_sha256": "f4f81400cf54dca17ec75a9cb2f4d51ccc5ddc6440618b6e11dc233bab1cb1c0",
+  "n_runs": 3,
+  "raw_block_counts": [
+    84,
+    101,
+    68
+  ],
+  "min_blocks": 64,
+  "classification": "contract",
+  "classification_unstable": true,
+  "metadata_required": {},
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "42956 Federal Register / Vol. 91, No. 132 / Monday, July 13, 2026 / Notices",
+    "Public Participation",
+    "Summary of the Proposed Project",
+    "Land Requirements for Construction",
+    "NEPA Process and the Environmental Document"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}

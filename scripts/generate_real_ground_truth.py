@@ -19,6 +19,8 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from tenacity import RetryError
+
 _PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -81,7 +83,12 @@ async def _run_all_for_slot(pdf_path: Path, n_runs: int) -> list[tuple[int, dict
             app = build_app(checkpointer=None)
             result = await app.ainvoke({"file_path": str(pdf_path)})
         except Exception as e:  # noqa: BLE001 — deliberate: preserve completed paid runs
-            print(f"    run {i + 1}/{n_runs} FAILED ({type(e).__name__}: {e}) — continuing")
+            # Unwrap tenacity's RetryError so the real underlying API error
+            # (e.g. a 400 BadRequestError body) is logged, not the opaque wrapper.
+            cause = e
+            if isinstance(e, RetryError) and e.last_attempt is not None:
+                cause = e.last_attempt.exception() or e
+            print(f"    run {i + 1}/{n_runs} FAILED ({type(cause).__name__}: {cause}) — continuing")
             continue
         block_count = len(result["hierarchical_document_tree"]["structured_payload"])
         results.append((block_count, result))

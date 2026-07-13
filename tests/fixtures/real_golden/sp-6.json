@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "slot_id": "sp-6",
+  "doc_type": "scientific_paper",
+  "generated_at": "2026-07-13T16:34:53Z",
+  "pdf_sha256": "f96f0d2e31d48b98f2b80c94f040658df182ed9642e2164469f5a6b9e2be87cc",
+  "n_runs": 3,
+  "raw_block_counts": [
+    72,
+    76,
+    73
+  ],
+  "min_blocks": 64,
+  "classification": "scientific_paper",
+  "classification_unstable": false,
+  "metadata_required": {
+    "title": "When Routes Run Out: Adversarial Co-Learning and Explainable Robustness in Quantum Repeater Networks",
+    "authors": [
+      "Brennan Bell",
+      "Inti Gabriel Mendoza Estrada",
+      "Andreas Tr\u00fcgler",
+      "Paul Erker"
+    ],
+    "abstract": "We study an adversarial bandit problem for entanglement-based quantum-network routing over a modest graph corpus. Alice selects an end-to-end repeater route for an Ekert-91 protocol (E91) representing her move, while Eve selects an attack surface, either edge intercept\u2013resend or repeater memory degradation. Payoffs are drawn from cached SeQUeNCe-simulated E91 transcripts, and Alice accepts a turn when the finite-sample statistic violates the Clauser-Horne-Shimony-Holt (CHSH) bound. Performing adversarial co-learning across 50 structured topologies, we find that learned retention tracks a full-matrix minimax reference closely (Pearson r = 0.99): under a one-surface Eve action model, bottleneck families have zero retention, while non-bottleneck families follow a 1\u22121/N coverage principle. We then fit decision-tree explanation models to graph-, attack-, and route-level topology-corpus targets and report their faithfulness. Finally, we construct prompt records for local language models to summarize the tree evidence, resulting in an open-source explanation workflow for quantum-repeater network games."
+  },
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "I. INTRODUCTION",
+    "A. Research questions",
+    "B. Motivation",
+    "C. Related work",
+    "II. MODELING AND METHODOLOGY",
+    "A. Quantum repeater network simulation",
+    "B. Minimax reference and Exp3",
+    "III. EXPERIMENTS",
+    "A. Implementation choices",
+    "B. Control and target outcomes"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}

@@ -2,34 +2,37 @@
   "schema_version": 1,
   "slot_id": "sp-2",
   "doc_type": "scientific_paper",
-  "generated_at": "2026-06-04T20:31:58Z",
-  "pdf_sha256": "6238fadf231b3fed50604b585103fe85204181d12d33d2550f3943319c6d3e3b",
-  "n_runs": 5,
+  "generated_at": "2026-07-13T16:09:40Z",
+  "pdf_sha256": "cf6b5706cbad3e21548f32de6904e40aa5fd1c212d62ace36c851e582adfd441",
+  "n_runs": 3,
   "raw_block_counts": [
-    32,
-    32,
-    34,
-    35,
-    33
+    88,
+    67,
+    79
   ],
-  "min_blocks": 28,
+  "min_blocks": 63,
   "classification": "scientific_paper",
   "classification_unstable": false,
   "metadata_required": {
-    "title": "Approximation of radiative transfer for surface spectral features",
+    "title": "Fast Pinching-Antenna Activation for AirComp",
     "authors": [
-      "Fr\u00e9d\u00e9ric Schmidt"
+      "Zhenqiao Cheng",
+      "Boqun Zhao",
+      "Chongjun Ouyang",
+      "Xingqi Zhang"
     ],
-    "abstract": "Remote sensing hyperspectral and more generally spectral instruments are common tools to decipher surface features in Earth and Planetary science. While linear mixture is the most common approximation for compounds detection (mineral, water, ice, etc...), the transfer of light in surface and atmospheric medium are highly non-linear. The exact simulation of non-linearities can be estimated at very high numerical cost. Here I propose a very simple non-linear form (that includes the regular linear area mixture) of radiative transfer to approximate surface spectral feature. I demonstrate that this analytical form is able to approximate the grain size and intimate mixture dependence of surface features. In addition, the same analytical form can approximate the effect of Martian mineral aerosols. Unfortunately, Earth aerosols are more complex (water droplet, water ice, soot,...) and are not expected to follow the same trend."
+    "abstract": "A pinching-antenna system (PASS) is considered for over-the-air computation (AirComp). Multiple dielectric waveguides are deployed at the base station, and one pinching antenna (PA) is activated on each waveguide. For practical implementation, each PA is restricted to a finite set of preconfigured locations. The resulting discrete activation problem is formulated to minimize the AirComp mean-squared error (MSE). After the optimal aggregation vector is derived, the minimum MSE is expressed through an inverse Gram matrix. A rank-one recursion is derived to evaluate the exact MSE reduction produced by each candidate. Greedy search and beam search are then developed for fast tree search. To further reduce complexity, coherent aggregation search is proposed from a first-order MSE approximation. It admits a separable closed-form selection rule and is asymptotically optimal in the low signal-to-noise ratio (SNR) regime. Numerical results show that the proposed methods substantially improve the AirComp accuracy of PASS over conventional antenna arrays."
   },
   "metadata_deferred": {},
   "spot_check_fragments": [
     "I. INTRODUCTION",
-    "A. Method",
-    "B. Results",
-    "II. CONCLUSION",
-    "1) Grain size and granular mixture:",
-    "2) Martian aerosols:"
+    "II. SYSTEM MODEL",
+    "III. FAST PA ACTIVATION",
+    "A. MSE-Reduction Recursion",
+    "B. Greedy and Beam Searches",
+    "C. Coherent Aggregation Search",
+    "D. Computational Complexity",
+    "REFERENCES"
   ],
   "table_assertions": [],
   "stability_notes": ""
