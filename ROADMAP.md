@@ -28,6 +28,7 @@ batch-invariant kernels in the serving stack, which Anthropic controls, not us
 Levers, most → least in our control:
 
 **A · Application-level (ours; the only true determinism we have — already shipped).**
+
 - **Checkpoint cache by `pdf_hash`.** Same PDF → same `thread_id` → LangGraph
   resumes from `state_checkpoint.db` without re-calling the model → byte-identical
   on re-run. Caveat: only same-file re-runs on a persistent DB; a fresh run,
@@ -37,6 +38,7 @@ Levers, most → least in our control:
   identical ordering. Keep every downstream sort/dedup total-ordered.
 
 **B · Request parameters (ours to set; each needs a quality check before committing).**
+
 - **Disable thinking — highest-value lever.** Post-Sonnet-5, omitting `thinking`
   silently runs *adaptive* thinking, whose depth/content vary run-to-run and feed
   the output. Workers + hierarchy already force `tool_choice` (thinking
@@ -189,6 +191,7 @@ Only 10 of 15 have a golden file, and of those, only 5 are actually committed:
 | `bc-1..4` | 0/4 | ❌ 0/4 |
 
 **Fix:**
+
 1. ~~Commit the 5 untracked `sp-*.json` files.~~ Done in v1.6.3 (`b12a29f`/`d617b71`).
 2. Run `scripts/download_real_fixtures.py --slot sp-6,bc-1,bc-2,bc-3,bc-4` then
    `scripts/generate_real_ground_truth.py --slot sp-6,bc-1,bc-2,bc-3,bc-4` to

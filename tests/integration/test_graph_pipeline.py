@@ -85,9 +85,7 @@ class TestGraphPipelineHappyPath:
 
 
 class TestClassifierFallback:
-    async def test_c2_unknown_doc_type_falls_back_to_baseline_core(
-        self, minimal_pdf_path, mocker
-    ):
+    async def test_c2_unknown_doc_type_falls_back_to_baseline_core(self, minimal_pdf_path, mocker):
         mocker.patch("src.nodes.extractor_node.get_page_count", return_value=1)
         mocker.patch("src.nodes.extractor_node.hash_file", return_value="a" * 64)
         mocker.patch(
@@ -214,10 +212,10 @@ class TestBurstAdversarial:
         worker_client = worker_mock.return_value
         worker_client.messages.create = AsyncMock(
             side_effect=[
-                _make_tool_use_response([_valid_block(1)]),   # pioneer page 1 → valid
-                _make_tool_use_response([malformed_block]),   # burst page 2, attempt 1 → invalid
-                _make_tool_use_response([malformed_block]),   # burst page 2, attempt 2 → invalid
-                _make_tool_use_response([malformed_block]),   # burst page 2, attempt 3 → invalid
+                _make_tool_use_response([_valid_block(1)]),  # pioneer page 1 → valid
+                _make_tool_use_response([malformed_block]),  # burst page 2, attempt 1 → invalid
+                _make_tool_use_response([malformed_block]),  # burst page 2, attempt 2 → invalid
+                _make_tool_use_response([malformed_block]),  # burst page 2, attempt 3 → invalid
             ]
         )
 

@@ -8,7 +8,7 @@
     ]
   },
   "grp_b": {
-    "hash": "3cdf84c18e20aa762ae7a19771875a906f1b6e5f6547183d0e4666fc588d4c7c",
+    "hash": "919a7f8ea9af277ba206b7a55641930fa03f96f0e218fd26624128dab528be62",
     "fixtures": [
       "grp_b_invoice.pdf",
       "grp_b_scientific_paper.pdf",
@@ -52,7 +52,7 @@
     ]
   },
   "grp_g": {
-    "hash": "6d40c5e89607d8d931fa377bb9b762d2eb1dda89f2843c7533ac57e6d4cf0fac",
+    "hash": "c0f9e66a5521608b60bd16f8b7dede62474c6fef8f10ad420a313e73bd3e0ec7",
     "fixtures": [
       "grp_g_two_column.pdf",
       "grp_g_three_column.pdf",

@@ -104,7 +104,11 @@ class TestWindowParserNode:
         assert result["extracted_flat_blocks"][0].get("extraction_flags") == ["low_legibility"]
 
     async def test_extraction_note_passed_through(self, sample_state, sample_block, mocker):
-        block_with_note = {**sample_block, "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint."}
+        block_with_note = {
+            **sample_block,
+            "extraction_flags": ["low_legibility"],
+            "extraction_note": "Text is faint.",
+        }
         response = _make_tool_use_response([block_with_note])
         _setup_mocks(mocker, response)
         result = await window_parser_node(sample_state)
@@ -141,7 +145,11 @@ class TestBurstWorkerNode:
         assert result["extracted_flat_blocks"][0].get("extraction_flags") == ["low_legibility"]
 
     async def test_extraction_note_passed_through(self, sample_state, sample_block, mocker):
-        block_with_note = {**sample_block, "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint."}
+        block_with_note = {
+            **sample_block,
+            "extraction_flags": ["low_legibility"],
+            "extraction_note": "Text is faint.",
+        }
         response = _make_tool_use_response([block_with_note])
         _setup_mocks(mocker, response)
         result = await burst_worker_node(sample_state)
@@ -180,9 +188,7 @@ class TestBurstWorkerNode:
         assert len(warnings) == 1
         assert f"schema validation failed after {VALIDATION_MAX_RETRIES} attempts" in warnings[0]
 
-    async def test_error_injected_into_retry_content(
-        self, sample_state, sample_block, mocker
-    ):
+    async def test_error_injected_into_retry_content(self, sample_state, sample_block, mocker):
         invalid_block = {**sample_block, "type": "invalid_type"}
         mocker.patch(
             "src.nodes.worker_node.encode_pdf_async",
@@ -197,9 +203,9 @@ class TestBurstWorkerNode:
             ]
         )
         await burst_worker_node(sample_state)
-        second_call_content = mock_client.messages.create.call_args_list[1].kwargs[
-            "messages"
-        ][0]["content"]
+        second_call_content = mock_client.messages.create.call_args_list[1].kwargs["messages"][0][
+            "content"
+        ]
         assert len(second_call_content) == 3
         assert "PREVIOUS VALIDATION ERROR" in second_call_content[2]["text"]
 
@@ -238,15 +244,13 @@ class TestBurstWorkerNode:
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [sample_block]
         assert mock_client.messages.create.call_count == 2
-        second_call_content = mock_client.messages.create.call_args_list[1].kwargs[
-            "messages"
-        ][0]["content"]
+        second_call_content = mock_client.messages.create.call_args_list[1].kwargs["messages"][0][
+            "content"
+        ]
         assert "truncated" in second_call_content[2]["text"]
         assert "concise" in second_call_content[2]["text"]
 
-    async def test_persistent_truncation_warns_with_truncation_detail(
-        self, sample_state, mocker
-    ):
+    async def test_persistent_truncation_warns_with_truncation_detail(self, sample_state, mocker):
         mock_client = _setup_mocks(mocker, _make_truncated_response())
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == []
@@ -324,9 +328,7 @@ class TestBurstWorkerNode:
         assert "Opening heading of the page" in text
         assert "Closing footer line of the page" in text
 
-    async def test_no_anchor_when_native_layer_unreadable(
-        self, sample_state, sample_block, mocker
-    ):
+    async def test_no_anchor_when_native_layer_unreadable(self, sample_state, sample_block, mocker):
         response = _make_tool_use_response([sample_block])
         mock_client = _setup_mocks(mocker, response)
         mocker.patch("src.nodes.worker_node.PdfReader", side_effect=OSError("no such file"))

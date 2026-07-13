@@ -198,7 +198,9 @@ def _make_b3_contract() -> object:
         w=170,
     )
 
-    draw_text(pdf, "IN WITNESS WHEREOF, the parties have executed this Agreement.", 20, 196, size=10)
+    draw_text(
+        pdf, "IN WITNESS WHEREOF, the parties have executed this Agreement.", 20, 196, size=10
+    )
 
     draw_text(pdf, "CLIENT:", 20, 210, size=10, style="B")
     draw_text(pdf, "Alpha Corp", 20, 218, size=10)

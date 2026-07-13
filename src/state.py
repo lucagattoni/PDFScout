@@ -19,10 +19,7 @@ def merge_flat_blocks(
         return existing if isinstance(existing, list) else []
     if new and isinstance(new[0], dict) and "__replace_pages__" in new[0]:
         drop = set(new[0]["__replace_pages__"])
-        kept = [
-            b for b in (existing or [])
-            if b.get("bbox", {}).get("page_number") not in drop
-        ]
+        kept = [b for b in (existing or []) if b.get("bbox", {}).get("page_number") not in drop]
         return kept + new[1:]
     if not existing:
         return new
@@ -37,7 +34,9 @@ def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
     return existing + new
 
 
-def merge_usage_log(existing: list[dict[str, Any]], new: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+def merge_usage_log(
+    existing: list[dict[str, Any]], new: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
     """None resets the log (used by native_extractor on fresh runs — the
     checkpointer persists state per pdf_hash, so without a reset the usage
     summary double-counts across runs of the same document)."""
@@ -64,7 +63,9 @@ class PDFParserState(TypedDict):
     current_page: int
     retry_count: int
     last_validation_error: str | None
-    truncation_error: str | None  # set when the worker response hit max_tokens (tool JSON discarded)
+    truncation_error: (
+        str | None
+    )  # set when the worker response hit max_tokens (tool JSON discarded)
 
     # Aggregate Buffers
     extracted_flat_blocks: Annotated[list[dict[str, Any]], merge_flat_blocks]

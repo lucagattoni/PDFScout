@@ -226,18 +226,13 @@ def assert_valid_bbox_fields(blocks: list[dict]) -> None:
             f"block {b['block_id']!r}: xmin ({xmin}) >= xmax ({xmax}) — "
             "wrong coordinate order or zero-width block"
         )
-        assert ymin >= 0 and xmin >= 0, (
-            f"block {b['block_id']!r}: negative coordinates {coords}"
-        )
+        assert ymin >= 0 and xmin >= 0, f"block {b['block_id']!r}: negative coordinates {coords}"
 
 
 def _text_in_some(fragment: str, blocks: list[dict]) -> bool:
     """Return True if the normalised fragment appears in any block's text."""
     norm_fragment = _normalize(fragment).lower()
-    return any(
-        norm_fragment in _normalize(b.get("text", "")).lower()
-        for b in blocks
-    )
+    return any(norm_fragment in _normalize(b.get("text", "")).lower() for b in blocks)
 
 
 def assert_nearest_heading_parent(blocks: list[dict]) -> None:

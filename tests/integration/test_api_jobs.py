@@ -81,8 +81,8 @@ class TestJobStorePersistence:
         try:
             await job_module.init(db_path)
             await job_module.save(record)
-            job_module.jobs.clear()          # lose in-memory state
-            await job_module.init(db_path)   # reload from SQLite
+            job_module.jobs.clear()  # lose in-memory state
+            await job_module.init(db_path)  # reload from SQLite
             assert "persist-001" in job_module.jobs
             reloaded = job_module.jobs["persist-001"]
             assert reloaded.status == "completed"

@@ -12,7 +12,14 @@ import pytest
 
 from tests.integration._compare import _make_relation_response, assert_valid_bbox_fields
 
-_CLASSIFIER_USAGE_STUB = {"context": "classifier", "input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "stop_reason": "end_turn"}
+_CLASSIFIER_USAGE_STUB = {
+    "context": "classifier",
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "stop_reason": "end_turn",
+}
 
 
 _PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs"
@@ -23,7 +30,10 @@ async def _run_c_test(pdf_path: str, doc_type: str = "baseline_core") -> list[di
 
     app = build_app(checkpointer=None)
     with (
-        patch("src.nodes.classifier_node._classify", new=AsyncMock(return_value=(doc_type, _CLASSIFIER_USAGE_STUB))),
+        patch(
+            "src.nodes.classifier_node._classify",
+            new=AsyncMock(return_value=(doc_type, _CLASSIFIER_USAGE_STUB)),
+        ),
         patch(
             "src.nodes.hierarchy_node._call_api",
             new=AsyncMock(return_value=_make_relation_response([])),

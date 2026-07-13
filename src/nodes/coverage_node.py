@@ -16,6 +16,7 @@ Design constraints (all thresholds principled, none document-specific):
   contain figure blocks get a lower warn threshold instead of being flagged
   for missing diagram text.
 """
+
 import re
 import unicodedata
 from typing import Any
@@ -183,8 +184,11 @@ def page_anchors(native_text: str) -> tuple[str, str] | None:
     extraction. None when the native layer is unusable."""
     if not native_layer_usable(native_text):
         return None
-    lines = [ln.strip() for ln in native_text.splitlines()
-             if len(ln.strip()) >= 8 and sum(c.isalnum() for c in ln) >= 5]
+    lines = [
+        ln.strip()
+        for ln in native_text.splitlines()
+        if len(ln.strip()) >= 8 and sum(c.isalnum() for c in ln) >= 5
+    ]
     if len(lines) < 2:
         return None
     return lines[0][:120], lines[-1][:120]
@@ -254,7 +258,8 @@ async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
         extra_warnings += result.get("extraction_warnings", [])
         # Strict page scope: only blocks the retry attributes to this page count.
         new_page_blocks = [
-            b for b in (result.get("extracted_flat_blocks") or [])
+            b
+            for b in (result.get("extracted_flat_blocks") or [])
             if b.get("bbox", {}).get("page_number") == page
         ]
         old_cov = page_word_coverage(native_texts.get(page, ""), blocks, page)
@@ -265,8 +270,7 @@ async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
 
     if replaced_pages:
         final_blocks = [
-            b for b in blocks
-            if b.get("bbox", {}).get("page_number") not in set(replaced_pages)
+            b for b in blocks if b.get("bbox", {}).get("page_number") not in set(replaced_pages)
         ] + replacement_blocks
         extra_warnings.append(
             f"Coverage retry: re-extracted page(s) "
@@ -283,12 +287,14 @@ async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
             f"flagged but not retried (COVERAGE_RETRY_MAX_PAGES={COVERAGE_RETRY_MAX_PAGES})."
         )
 
-    warnings = audit_page_coverage(native_texts, final_blocks, suffix=" (after retry)" if replaced_pages else "")
-    warnings += audit_cross_page_duplication(final_blocks, suffix=" (after retry)" if replaced_pages else "")
+    warnings = audit_page_coverage(
+        native_texts, final_blocks, suffix=" (after retry)" if replaced_pages else ""
+    )
+    warnings += audit_cross_page_duplication(
+        final_blocks, suffix=" (after retry)" if replaced_pages else ""
+    )
 
     out: dict[str, Any] = {"extraction_warnings": warnings + extra_warnings, "usage_log": usage_log}
     if replaced_pages:
-        out["extracted_flat_blocks"] = (
-            [{"__replace_pages__": replaced_pages}] + replacement_blocks
-        )
+        out["extracted_flat_blocks"] = [{"__replace_pages__": replaced_pages}] + replacement_blocks
     return out

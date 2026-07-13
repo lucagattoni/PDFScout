@@ -37,7 +37,9 @@ _CLEAN_TEXT = (
 
 # Subset-font PDFs map glyphs to control codes — the native layer extracts as
 # control-character soup (observed on a real invoice: \x01, \x1b, \x17 dominate).
-_GARBLED = "\x01\x1b#%\x17)\x19\x02\x06(\x15'\x11\x18\x0e\x1a 9988\x01=988\x02$0 \x061122334455 " * 5
+_GARBLED = (
+    "\x01\x1b#%\x17)\x19\x02\x06(\x15'\x11\x18\x0e\x1a 9988\x01=988\x02$0 \x061122334455 " * 5
+)
 
 
 class TestNativeLayerUsable:
@@ -163,7 +165,9 @@ class TestCrossPageDuplication:
         for p in (1, 2, 3):
             pages.append(_block(p, "VAT Reg No IE 8F 52100V E&OE all rights reserved"))
             for i in range(5):
-                pages.append(_block(p, f"Unique page {p} paragraph number {i} with distinct content here"))
+                pages.append(
+                    _block(p, f"Unique page {p} paragraph number {i} with distinct content here")
+                )
         assert audit_cross_page_duplication(pages) == []
 
     def test_small_pages_skipped(self):
@@ -226,9 +230,7 @@ def _reader_mock(mocker, page_texts: list[str]):
 class TestCoverageRetry:
     async def test_clean_document_makes_no_retry_call(self, mocker):
         _reader_mock(mocker, [_CLEAN_TEXT])
-        worker = mocker.patch(
-            "src.nodes.worker_node.burst_worker_node", new=AsyncMock()
-        )
+        worker = mocker.patch("src.nodes.worker_node.burst_worker_node", new=AsyncMock())
         result = await coverage_auditor_node(
             {"file_path": "x.pdf", "extracted_flat_blocks": [_block(1, _CLEAN_TEXT)]}
         )
@@ -241,7 +243,21 @@ class TestCoverageRetry:
         good = _block(2, _CLEAN_TEXT)
         worker = mocker.patch(
             "src.nodes.worker_node.burst_worker_node",
-            new=AsyncMock(return_value={"extracted_flat_blocks": [good], "usage_log": [{"context": "burst page 2 attempt 1", "input_tokens": 1, "output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "stop_reason": "tool_use"}]}),
+            new=AsyncMock(
+                return_value={
+                    "extracted_flat_blocks": [good],
+                    "usage_log": [
+                        {
+                            "context": "burst page 2 attempt 1",
+                            "input_tokens": 1,
+                            "output_tokens": 1,
+                            "cache_read_input_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                            "stop_reason": "tool_use",
+                        }
+                    ],
+                }
+            ),
         )
         result = await coverage_auditor_node(
             {"file_path": "x.pdf", "extracted_flat_blocks": [_block(1, _CLEAN_TEXT)]}
@@ -264,8 +280,7 @@ class TestCoverageRetry:
             new=AsyncMock(return_value={"extracted_flat_blocks": [], "usage_log": []}),
         )
         result = await coverage_auditor_node(
-            {"file_path": "x.pdf",
-             "extracted_flat_blocks": [_block(1, _CLEAN_TEXT), partial]}
+            {"file_path": "x.pdf", "extracted_flat_blocks": [_block(1, _CLEAN_TEXT), partial]}
         )
         worker.assert_called_once()
         assert "extracted_flat_blocks" not in result
@@ -289,18 +304,10 @@ class TestCoverageRetry:
         # scored — the paid retry is skipped (never-regress rule).
         _reader_mock(mocker, [_GARBLED, _GARBLED])
         dup = [
-            _block(1, f"Shared substantial sentence number {i} appearing twice")
-            for i in range(4)
-        ] + [
-            _block(2, f"Shared substantial sentence number {i} appearing twice")
-            for i in range(4)
-        ]
-        worker = mocker.patch(
-            "src.nodes.worker_node.burst_worker_node", new=AsyncMock()
-        )
-        result = await coverage_auditor_node(
-            {"file_path": "x.pdf", "extracted_flat_blocks": dup}
-        )
+            _block(1, f"Shared substantial sentence number {i} appearing twice") for i in range(4)
+        ] + [_block(2, f"Shared substantial sentence number {i} appearing twice") for i in range(4)]
+        worker = mocker.patch("src.nodes.worker_node.burst_worker_node", new=AsyncMock())
+        result = await coverage_auditor_node({"file_path": "x.pdf", "extracted_flat_blocks": dup})
         worker.assert_not_called()
         assert any("could not be verified" in w for w in result["extraction_warnings"])
 
@@ -314,20 +321,20 @@ class TestCoverageRetry:
         )
         _reader_mock(mocker, [_CLEAN_TEXT, page2_native])
         shared = [
-            _block(1, f"Shared substantial duplicated sentence number {i} here")
-            for i in range(4)
+            _block(1, f"Shared substantial duplicated sentence number {i} here") for i in range(4)
         ]
         dup_on_2 = [
-            _block(2, f"Shared substantial duplicated sentence number {i} here")
-            for i in range(4)
+            _block(2, f"Shared substantial duplicated sentence number {i} here") for i in range(4)
         ]
         blocks = [_block(1, _CLEAN_TEXT)] + shared + dup_on_2
         worker = mocker.patch(
             "src.nodes.worker_node.burst_worker_node",
-            new=AsyncMock(return_value={
-                "extracted_flat_blocks": [_block(2, page2_native)],
-                "usage_log": [],
-            }),
+            new=AsyncMock(
+                return_value={
+                    "extracted_flat_blocks": [_block(2, page2_native)],
+                    "usage_log": [],
+                }
+            ),
         )
         result = await coverage_auditor_node(
             {"file_path": "x.pdf", "extracted_flat_blocks": blocks}

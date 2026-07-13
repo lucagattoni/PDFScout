@@ -148,7 +148,11 @@ class TestExtractionFlags:
     @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
     def test_extraction_note_with_flags_accepted(self, doc_type):
         registry = SchemaRegistry()
-        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "Text is faint due to low scan contrast."}
+        block = {
+            **_base_block(),
+            "extraction_flags": ["low_legibility"],
+            "extraction_note": "Text is faint due to low scan contrast.",
+        }
         registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
 
     @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
@@ -159,7 +163,11 @@ class TestExtractionFlags:
     @pytest.mark.parametrize("doc_type", _ALL_DOC_TYPES)
     def test_extraction_note_too_long_rejected(self, doc_type):
         registry = SchemaRegistry()
-        block = {**_base_block(), "extraction_flags": ["low_legibility"], "extraction_note": "x" * (EXTRACTION_NOTE_MAX_LENGTH + 1)}
+        block = {
+            **_base_block(),
+            "extraction_flags": ["low_legibility"],
+            "extraction_note": "x" * (EXTRACTION_NOTE_MAX_LENGTH + 1),
+        }
         with pytest.raises(jsonschema.ValidationError):
             registry.validate(doc_type, {"document_type": doc_type, "blocks": [block]})
 
@@ -171,6 +179,7 @@ class TestStrictToolSchema:
 
     def test_every_object_has_additional_properties_false(self):
         _, tool = SchemaRegistry().get_schema_and_tool("invoice")
+
         def check(node, path="root"):
             if isinstance(node, dict):
                 if node.get("type") == "object":
@@ -180,6 +189,7 @@ class TestStrictToolSchema:
             elif isinstance(node, list):
                 for i, v in enumerate(node):
                     check(v, f"{path}[{i}]")
+
         check(tool["input_schema"])
 
     def test_unsupported_constraints_stripped_from_tool_only(self):
@@ -190,7 +200,9 @@ class TestStrictToolSchema:
         assert "maxLength" not in dumped
         assert "uniqueItems" not in dumped
         # the local validation schema keeps the full constraints
-        coords = schema["properties"]["blocks"]["items"]["properties"]["bbox"]["properties"]["coordinates"]
+        coords = schema["properties"]["blocks"]["items"]["properties"]["bbox"]["properties"][
+            "coordinates"
+        ]
         assert coords["minItems"] == 4 and coords["maxItems"] == 4
         note = schema["properties"]["blocks"]["items"]["properties"]["extraction_note"]
         assert note["maxLength"] > 0
@@ -198,12 +210,17 @@ class TestStrictToolSchema:
     def test_local_validation_still_enforces_stripped_constraints(self):
         import jsonschema
         import pytest
+
         bad = {
             "document_type": "invoice",
-            "blocks": [{
-                "block_id": "b1", "type": "paragraph", "text": "x",
-                "bbox": {"page_number": 1, "coordinates": [1, 2, 3]},  # only 3 coords
-            }],
+            "blocks": [
+                {
+                    "block_id": "b1",
+                    "type": "paragraph",
+                    "text": "x",
+                    "bbox": {"page_number": 1, "coordinates": [1, 2, 3]},  # only 3 coords
+                }
+            ],
         }
         with pytest.raises(jsonschema.ValidationError):
             SchemaRegistry().validate("invoice", bad)

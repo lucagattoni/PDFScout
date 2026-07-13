@@ -60,8 +60,19 @@ async def init(db_path: str) -> None:
 
 
 def _from_row(row: tuple) -> JobRecord:
-    (job_id, file_name, status, created_at, completed_at, total_pages,
-     document_type, warnings, error, result, events) = row
+    (
+        job_id,
+        file_name,
+        status,
+        created_at,
+        completed_at,
+        total_pages,
+        document_type,
+        warnings,
+        error,
+        result,
+        events,
+    ) = row
     return JobRecord(
         job_id=job_id,
         file_name=file_name,

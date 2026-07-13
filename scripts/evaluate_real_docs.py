@@ -6,6 +6,7 @@ Produces a JSON report without pytest overhead.
 Usage:
     python scripts/evaluate_real_docs.py [--slot sp-1,inv-2] [--output-dir reports/]
 """
+
 import argparse
 import asyncio
 import hashlib
@@ -33,12 +34,14 @@ def _try_assert(fn, *args, **kwargs) -> tuple[bool, str]:
 
 async def _run_pipeline(pdf_path: Path) -> dict:
     from src.graph import build_app
+
     app = build_app(checkpointer=None)
     return await app.ainvoke({"file_path": str(pdf_path)})
 
 
 def _text_in_some(fragment: str, blocks: list[dict]) -> bool:
     from tests.integration._compare import _text_in_some as _cmp_text_in_some
+
     return _cmp_text_in_some(fragment, blocks)
 
 
@@ -111,8 +114,7 @@ def _evaluate_slot(entry: dict, golden: dict) -> dict:
     metadata_required_pass = True
     for key, expected in golden.get("metadata_required", {}).items():
         found = any(
-            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected
-            for b in blocks
+            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected for b in blocks
         )
         if not found:
             metadata_required_pass = False
@@ -122,8 +124,7 @@ def _evaluate_slot(entry: dict, golden: dict) -> dict:
     metadata_deferred_mismatches = []
     for key, expected in golden.get("metadata_deferred", {}).items():
         found = any(
-            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected
-            for b in blocks
+            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected for b in blocks
         )
         if not found:
             metadata_deferred_mismatches.append(key)
@@ -180,9 +181,13 @@ def _write_report(data: dict, path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Evaluate real-document corpus against golden files")
+    parser = argparse.ArgumentParser(
+        description="Evaluate real-document corpus against golden files"
+    )
     parser.add_argument("--slot", help="Comma-separated slot IDs to evaluate")
-    parser.add_argument("--output-dir", default=".", help="Directory for the JSON report (default: cwd)")
+    parser.add_argument(
+        "--output-dir", default=".", help="Directory for the JSON report (default: cwd)"
+    )
     args = parser.parse_args()
 
     from tests.fixtures._golden import load_golden
@@ -204,34 +209,38 @@ def main() -> int:
         golden = load_golden(slot_id)
         if not golden:
             print(f"  {slot_id}: no golden file — SKIP")
-            results.append({
-                "slot_id": slot_id,
-                "doc_type": entry["doc_type"],
-                "blocks_actual": None,
-                "blocks_min_required": None,
-                "text_check": None,
-                "metadata_required_pass": None,
-                "metadata_deferred_mismatches": [],
-                "table_assertions_pass": None,
-                "verdict": "SKIP",
-                "skip_reason": "no golden file",
-            })
+            results.append(
+                {
+                    "slot_id": slot_id,
+                    "doc_type": entry["doc_type"],
+                    "blocks_actual": None,
+                    "blocks_min_required": None,
+                    "text_check": None,
+                    "metadata_required_pass": None,
+                    "metadata_deferred_mismatches": [],
+                    "table_assertions_pass": None,
+                    "verdict": "SKIP",
+                    "skip_reason": "no golden file",
+                }
+            )
             continue
 
         if entry.get("url") is None:
             print(f"  {slot_id}: no URL set — SKIP")
-            results.append({
-                "slot_id": slot_id,
-                "doc_type": entry["doc_type"],
-                "blocks_actual": None,
-                "blocks_min_required": None,
-                "text_check": None,
-                "metadata_required_pass": None,
-                "metadata_deferred_mismatches": [],
-                "table_assertions_pass": None,
-                "verdict": "SKIP",
-                "skip_reason": "no URL — NEEDS SELECTION",
-            })
+            results.append(
+                {
+                    "slot_id": slot_id,
+                    "doc_type": entry["doc_type"],
+                    "blocks_actual": None,
+                    "blocks_min_required": None,
+                    "text_check": None,
+                    "metadata_required_pass": None,
+                    "metadata_deferred_mismatches": [],
+                    "table_assertions_pass": None,
+                    "verdict": "SKIP",
+                    "skip_reason": "no URL — NEEDS SELECTION",
+                }
+            )
             continue
 
         result = _evaluate_slot(entry, golden)
@@ -253,7 +262,9 @@ def main() -> int:
 
     _write_report(report, report_path)
     print(f"\nReport written: {report_path}")
-    print(f"Summary: PASS={summary['pass']} WARN={summary['warn']} SKIP={summary['skip']} FAIL={summary['fail']}")
+    print(
+        f"Summary: PASS={summary['pass']} WARN={summary['warn']} SKIP={summary['skip']} FAIL={summary['fail']}"
+    )
 
     return 1 if summary["fail"] > 0 else 0
 

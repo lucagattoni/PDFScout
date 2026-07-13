@@ -123,8 +123,17 @@ def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return ordered
 
 
-@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
-async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = HIERARCHY_MAX_TOKENS_BASE) -> Any:
+@retry(
+    stop=stop_after_attempt(HTTP_MAX_RETRIES),
+    wait=wait_exponential(
+        multiplier=RETRY_BACKOFF_MULTIPLIER,
+        min=RETRY_BACKOFF_MIN_SECONDS,
+        max=RETRY_BACKOFF_MAX_SECONDS,
+    ),
+)
+async def _call_api(
+    client: AsyncAnthropic, manifest: list, max_tokens: int = HIERARCHY_MAX_TOKENS_BASE
+) -> Any:
     return await client.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
@@ -187,7 +196,10 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             }
             for b in sorted_blocks
         ]
-        max_tokens = min(HIERARCHY_MAX_TOKENS_CEIL, max(HIERARCHY_MAX_TOKENS_BASE, len(sorted_blocks) * HIERARCHY_TOKENS_PER_BLOCK))
+        max_tokens = min(
+            HIERARCHY_MAX_TOKENS_CEIL,
+            max(HIERARCHY_MAX_TOKENS_BASE, len(sorted_blocks) * HIERARCHY_TOKENS_PER_BLOCK),
+        )
         response = await _call_api(client, manifest, max_tokens)
         usage_log = [usage_entry("hierarchy", response)]
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)

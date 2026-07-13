@@ -108,6 +108,5 @@ class TestGroupF:
             f"got parent_id={by_id['orphan']['parent_id']!r}"
         )
         assert by_id["p1"]["parent_id"] == "h1", (
-            f"Post-heading paragraph should have parent_id='h1', "
-            f"got {by_id['p1']['parent_id']!r}"
+            f"Post-heading paragraph should have parent_id='h1', got {by_id['p1']['parent_id']!r}"
         )

@@ -1,6 +1,6 @@
 # Calibration Notes
 
-**Status: COMPLETE — BBOX_ASSERTIONS_VIABLE = False (confirmed by Phase 1)**
+Status: **COMPLETE** — BBOX_ASSERTIONS_VIABLE = False (confirmed by Phase 1)
 
 Calibration must be performed before enabling bbox assertions.
 
@@ -30,6 +30,7 @@ async def calibrate():
 asyncio.run(calibrate())
 ```
 
+<!-- markdownlint-disable MD029 -->
 3. The generator places "The quick brown fox..." paragraph at fpdf2 position:
    - `x_mm = 20 mm`, `y_mm = 50 mm`, `w_mm = 170 mm`, `h_mm = 8 mm`
    - So expected bounding box in mm: `[ymin=50, xmin=20, ymax=58, xmax=190]`
@@ -37,6 +38,7 @@ asyncio.run(calibrate())
 4. Compare returned `coordinates` to mm values:
    - If `coordinates ≈ mm_values × k` consistently → set `COORD_SCALE = k`
    - If values vary widely across 3 runs → keep `BBOX_ASSERTIONS_VIABLE = False`
+<!-- markdownlint-enable MD029 -->
 
 ## Decision
 
@@ -47,7 +49,7 @@ asyncio.run(calibrate())
 
 All 3 runs returned identical coordinates — the model is deterministic:
 
-```
+```text
 Run 1: [107, 71, 124, 312]
 Run 2: [107, 71, 124, 312]
 Run 3: [107, 71, 124, 312]
@@ -59,6 +61,7 @@ Known placement (mm): `[ymin=50, xmin=20, ymax=58, xmax=190]`
 Returned coordinates: `[107, 71, 124, 312]`
 
 Scale ratios:
+
 - ymin: 107 / 50 = **2.14**
 - ymax: 124 / 58 = **2.138** ← consistent with ymin ✓
 - xmin: 71 / 20 = **3.55**
@@ -79,7 +82,7 @@ used in the grp_g test.
 
 ## Phase 1 — Multi-point x-axis calibration
 
-**Status: COMPLETE — Phase 1 FAILED; plan closed**
+Status: **COMPLETE** — Phase 1 FAILED; plan closed
 
 Phase 1 goal: verify k_x is linear by running three text blocks at distinct x positions
 (x_mm = 20, 60, 100) through the pioneer parser and fitting a linear model to the
@@ -114,13 +117,14 @@ asyncio.run(calibrate())
 ```
 
 Fixture blocks (all Helvetica 12pt, w_mm=60):
+
 - Block A: x_mm=20, y_mm=50  → declared right edge 80 mm
 - Block B: x_mm=60, y_mm=80  → declared right edge 120 mm
 - Block C: x_mm=100, y_mm=110 → declared right edge 160 mm
 
 ### Raw results
 
-```
+```text
 Run 1:
   'Block A.': [183, 97, 201, 152]
   'Block B.': [311, 222, 329, 288]

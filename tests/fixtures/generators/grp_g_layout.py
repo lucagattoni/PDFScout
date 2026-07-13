@@ -93,12 +93,24 @@ def _make_g3_label_sidebar():
     pdf.add_page()
 
     rows = [
-        ("LBL1", "Online Discount", "TXT1: This invoice includes a discount of one euro for the "
-                                    "online billing service you activated last year."),
-        ("LBL2", "Energy Cost", "TXT2: The average unit cost in this invoice is calculated as "
-                                "the ratio of the amount due to the kilowatt hours billed."),
-        ("LBL3", "Contact Us", "TXT3: You can amend or cancel your contract through the toll "
-                               "free number available every day of the week."),
+        (
+            "LBL1",
+            "Online Discount",
+            "TXT1: This invoice includes a discount of one euro for the "
+            "online billing service you activated last year.",
+        ),
+        (
+            "LBL2",
+            "Energy Cost",
+            "TXT2: The average unit cost in this invoice is calculated as "
+            "the ratio of the amount due to the kilowatt hours billed.",
+        ),
+        (
+            "LBL3",
+            "Contact Us",
+            "TXT3: You can amend or cancel your contract through the toll "
+            "free number available every day of the week.",
+        ),
     ]
     y = 40
     for _, label, text in rows:
@@ -113,7 +125,9 @@ def _make_g4_heading_table_sidebar():
     pdf = make_pdf()
     pdf.add_page()
 
-    draw_text(pdf, "INTRO: Summary of your account for the current period.", 12.7, 40, size=11, w=90)
+    draw_text(
+        pdf, "INTRO: Summary of your account for the current period.", 12.7, 40, size=11, w=90
+    )
     draw_multiline(
         pdf,
         "SIDEBAR: Questions about this document? Visit our help centre or call "

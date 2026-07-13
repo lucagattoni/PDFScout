@@ -3,6 +3,7 @@
 Usage:
     python scripts/download_real_fixtures.py [--slot inv-1,inv-2] [--force] [--dry-run]
 """
+
 import argparse
 import hashlib
 import json
@@ -123,10 +124,7 @@ def main() -> int:
 
     selected = set(args.slot.split(",")) if args.slot else None
 
-    entries_to_process = [
-        e for e in manifest
-        if selected is None or e["slot_id"] in selected
-    ]
+    entries_to_process = [e for e in manifest if selected is None or e["slot_id"] in selected]
 
     if not entries_to_process:
         print("No entries matched the --slot filter.")

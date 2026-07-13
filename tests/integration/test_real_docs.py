@@ -1,4 +1,5 @@
 """Group R — Real-document corpus tests."""
+
 import hashlib
 import json
 from pathlib import Path
@@ -25,6 +26,7 @@ def _norm_eq(a, b) -> bool:
         return len(a) == len(b) and all(_norm_eq(x, y) for x, y in zip(a, b))
     return a == b
 
+
 _REAL_PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs" / "real"
 _MANIFEST = Path(__file__).parent.parent / "fixtures" / "real_manifest.json"
 
@@ -40,6 +42,7 @@ def _manifest_skip_reason(slot_id: str) -> str | None:
 
 async def _run_pipeline(pdf_path: Path) -> dict:
     from src.graph import build_app
+
     app = build_app(checkpointer=None)
     return await app.ainvoke({"file_path": str(pdf_path)})
 
@@ -60,8 +63,7 @@ def _assert_metadata_required(blocks: list[dict], golden: dict) -> None:
 def _log_metadata_deferred(blocks: list[dict], golden: dict) -> None:
     for key, expected in golden.get("metadata_deferred", {}).items():
         found = any(
-            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected
-            for b in blocks
+            b.get("metadata", {}).get("bibliographic", {}).get(key) == expected for b in blocks
         )
         if not found:
             print(f"[grp_r deferred] {key!r}: expected {expected!r} not found in any block")
@@ -80,11 +82,26 @@ def _assert_table_dimensions(blocks: list[dict], ta: dict) -> None:
 @pytest.mark.e2e
 @pytest.mark.grp_r
 class TestRealDocs:
-    @pytest.mark.parametrize("slot_id", [
-        "sp-1", "sp-2", "sp-3", "sp-4", "sp-5", "sp-6",
-        "inv-1", "inv-2", "inv-3", "inv-4", "inv-5",
-        "bc-1", "bc-2", "bc-3", "bc-4",
-    ])
+    @pytest.mark.parametrize(
+        "slot_id",
+        [
+            "sp-1",
+            "sp-2",
+            "sp-3",
+            "sp-4",
+            "sp-5",
+            "sp-6",
+            "inv-1",
+            "inv-2",
+            "inv-3",
+            "inv-4",
+            "inv-5",
+            "bc-1",
+            "bc-2",
+            "bc-3",
+            "bc-4",
+        ],
+    )
     async def test_real_doc(self, slot_id):
         skip_reason = _manifest_skip_reason(slot_id)
         if skip_reason:
@@ -125,9 +142,7 @@ class TestRealDocs:
         )
 
         for fragment in golden["spot_check_fragments"]:
-            assert _text_in_some(fragment, blocks), (
-                f"Fragment {fragment!r} not found in any block"
-            )
+            assert _text_in_some(fragment, blocks), f"Fragment {fragment!r} not found in any block"
 
         if golden.get("metadata_required"):
             _assert_metadata_required(blocks, golden)

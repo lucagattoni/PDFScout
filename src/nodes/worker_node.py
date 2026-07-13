@@ -89,6 +89,7 @@ async def _page_anchor_instruction(file_path: str, current_page: int) -> str:
     layer's first/last lines. Prevents page-attribution failures (a worker
     re-extracting a neighbouring page's content — observed on a real 16-page
     paper). Empty string when the native layer is unusable or unreadable."""
+
     def _read() -> str:
         try:
             reader = PdfReader(file_path)
@@ -123,7 +124,14 @@ def _truncation_error(current_page: int) -> str:
     )
 
 
-@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
+@retry(
+    stop=stop_after_attempt(HTTP_MAX_RETRIES),
+    wait=wait_exponential(
+        multiplier=RETRY_BACKOFF_MULTIPLIER,
+        min=RETRY_BACKOFF_MIN_SECONDS,
+        max=RETRY_BACKOFF_MAX_SECONDS,
+    ),
+)
 async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dict) -> Any:
     return await client.messages.create(
         model=MODEL,
@@ -226,7 +234,11 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
             content: list = [
                 {
                     "type": "document",
-                    "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64},
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": pdf_base64,
+                    },
                     "cache_control": cache_control(),
                 },
                 {
@@ -243,12 +255,16 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                 },
             ]
             if last_error:
-                content.append({
-                    "type": "text",
-                    "text": f"PREVIOUS VALIDATION ERROR:\n{last_error}\nFix the schema alignment issue in your response.",
-                })
+                content.append(
+                    {
+                        "type": "text",
+                        "text": f"PREVIOUS VALIDATION ERROR:\n{last_error}\nFix the schema alignment issue in your response.",
+                    }
+                )
 
-            response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
+            response = await _call_api(
+                client, [{"role": "user", "content": content}], tool_definition
+            )
             usage_log.append(usage_entry(f"burst page {current_page} attempt {attempt}", response))
             tool_block = next((b for b in response.content if b.type == "tool_use"), None)
             if tool_block is None:
@@ -279,7 +295,9 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                 )
             else:
                 try:
-                    SchemaRegistry().validate(doc_type, {"document_type": doc_type, "blocks": blocks})
+                    SchemaRegistry().validate(
+                        doc_type, {"document_type": doc_type, "blocks": blocks}
+                    )
                     return {"extracted_flat_blocks": blocks, "usage_log": usage_log}
                 except jsonschema.ValidationError as e:
                     path = " → ".join(str(p) for p in e.absolute_path) or "root"

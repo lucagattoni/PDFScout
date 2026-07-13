@@ -5,23 +5,41 @@ FALLBACK_DOC_TYPE = "baseline_core"
 COLUMN_BUCKET_FRAC = 0.11  # column bucket width as fraction of page x-span (scale-invariant: the model emits spans of 855-1125 units for the same A4 page)
 BAND_FULL_WIDTH_FRAC = 0.55  # min width (as fraction of page x-span) for a block to start a reading-order band (0.6 missed a real 0.59 separator; paper columns stay safely below at ~0.45)
 BAND_PULLDOWN_GAP_FRAC = 0.05  # max vertical gap (fraction of x-span) for a heading above a full-width block to join its band — about two line-heights: the model bounds text glyphs tightly, so heading-to-table gaps include cell padding (a real fixture measured 28 units on a 796 span, missing the old 0.035 cutoff by 0.1)
-EXTRACTION_NOTE_MAX_LENGTH = 200  # max chars for extraction_note; injected into all schemas at load time
-VALIDATION_MAX_RETRIES = 3  # max schema-validation retries for both pioneer (graph-level) and burst (inline)
+EXTRACTION_NOTE_MAX_LENGTH = (
+    200  # max chars for extraction_note; injected into all schemas at load time
+)
+VALIDATION_MAX_RETRIES = (
+    3  # max schema-validation retries for both pioneer (graph-level) and burst (inline)
+)
 HTTP_MAX_RETRIES = 3  # max tenacity retries on transient HTTP errors (429/529) at the API call site
 CLASSIFIER_MAX_TOKENS = 10  # single-token classification response
 WORKER_MAX_TOKENS = 16000  # token budget for page extraction worker; dense pages need >4000 (truncation drops the page)
 HIERARCHY_MAX_TOKENS_BASE = 4000  # minimum token budget for hierarchy agent
-HIERARCHY_MAX_TOKENS_CEIL = 16000  # maximum token budget for hierarchy agent (scales with block count)
-HIERARCHY_TOKENS_PER_BLOCK = 40  # token scaling factor: estimated tokens per block in hierarchy manifest
+HIERARCHY_MAX_TOKENS_CEIL = (
+    16000  # maximum token budget for hierarchy agent (scales with block count)
+)
+HIERARCHY_TOKENS_PER_BLOCK = (
+    40  # token scaling factor: estimated tokens per block in hierarchy manifest
+)
 RETRY_BACKOFF_MULTIPLIER = 1  # tenacity exponential backoff multiplier (seconds)
 RETRY_BACKOFF_MIN_SECONDS = 1  # minimum wait between HTTP retries (seconds)
 RETRY_BACKOFF_MAX_SECONDS = 10  # maximum wait between HTTP retries (seconds)
 COVERAGE_MIN_NATIVE_CHARS = 80  # below this, a page's native layer is too thin to audit
 COVERAGE_CHAR_CLASS_MIN = 0.85  # min fraction of standard document characters for a usable native layer (subset-font soup scores ~0.5-0.7)
 COVERAGE_MIN_WORDS = 10  # min significant native words for a page to be auditable
-COVERAGE_WARN_THRESHOLD = 0.5  # warn when less than this fraction of native words appears in extracted blocks
-COVERAGE_WARN_THRESHOLD_FIGURE = 0.25  # lower bar on pages with figure blocks (figures are summarized by design)
+COVERAGE_WARN_THRESHOLD = (
+    0.5  # warn when less than this fraction of native words appears in extracted blocks
+)
+COVERAGE_WARN_THRESHOLD_FIGURE = (
+    0.25  # lower bar on pages with figure blocks (figures are summarized by design)
+)
 CROSS_PAGE_DUP_MIN_CHARS = 20  # min normalized text length for a block to count in cross-page duplication checks (filters page furniture)
-CROSS_PAGE_DUP_MIN_BLOCKS = 4  # min substantial blocks on a page for its duplication ratio to be meaningful
-CROSS_PAGE_DUP_RATIO = 0.5  # warn when this fraction of a page's substantial blocks duplicates one other page
-COVERAGE_RETRY_MAX_PAGES = 2  # cost cap: max flagged pages re-extracted per run (one attempt each, better result kept)
+CROSS_PAGE_DUP_MIN_BLOCKS = (
+    4  # min substantial blocks on a page for its duplication ratio to be meaningful
+)
+CROSS_PAGE_DUP_RATIO = (
+    0.5  # warn when this fraction of a page's substantial blocks duplicates one other page
+)
+COVERAGE_RETRY_MAX_PAGES = (
+    2  # cost cap: max flagged pages re-extracted per run (one attempt each, better result kept)
+)

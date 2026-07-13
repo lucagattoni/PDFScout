@@ -1,4 +1,5 @@
 """Unit tests for the golden ground-truth generator's consensus logic."""
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -63,9 +64,7 @@ class TestMetadataConsensus:
         golden = _gen._derive_golden("sp-x", "scientific_paper", runs, None, 5, None)
         assert "title" in golden["metadata_required"]
         # representative value is the most common raw form
-        assert golden["metadata_required"]["title"] == (
-            "Physics-Informed Fourier Neural Operator"
-        )
+        assert golden["metadata_required"]["title"] == ("Physics-Informed Fourier Neural Operator")
 
     def test_genuinely_unstable_value_still_deferred_or_dropped(self):
         titles = ["Alpha Paper", "Beta Paper", "Gamma Paper", "Delta Paper", "Epsilon Paper"]

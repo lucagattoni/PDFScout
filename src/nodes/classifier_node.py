@@ -18,7 +18,14 @@ from src.utils.pdf_utils import encode_pdf_async
 from src.utils.usage import cache_control, usage_entry
 
 
-@retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
+@retry(
+    stop=stop_after_attempt(HTTP_MAX_RETRIES),
+    wait=wait_exponential(
+        multiplier=RETRY_BACKOFF_MULTIPLIER,
+        min=RETRY_BACKOFF_MIN_SECONDS,
+        max=RETRY_BACKOFF_MAX_SECONDS,
+    ),
+)
 async def _classify(client: AsyncAnthropic, pdf_base64: str) -> tuple[str, dict]:
     response = await client.messages.create(
         model=MODEL,
