@@ -72,10 +72,13 @@ and rejected proposals.
 
 - **Version bump ⇒ `uv lock` in the same commit** (a stale lock self-version
   dirties every later `uv run` and causes rebase conflicts).
-- **Release commit on main ⇒ annotated git tag + GitHub release immediately**
-  (`git tag -a v<X.Y.Z>` + `gh release create v<X.Y.Z> --notes-file <CHANGELOG
-  section>`). Tags silently froze at v1.7.1 while CHANGELOG reached v1.11.0;
-  nine releases had to be backfilled (2026-07-13).
+- **Release commit on main ⇒ push the annotated tag immediately** (`git tag -a
+  v<X.Y.Z> && git push origin v<X.Y.Z>`); `release.yml` then auto-publishes the
+  GitHub release with the CHANGELOG section as notes — verify its run succeeded.
+  Two traps: pushing **>3 tags in one push suppresses the trigger** (push tags
+  one at a time, or `gh release create` manually as fallback), and tags silently
+  froze at v1.7.1 while CHANGELOG reached v1.11.0 — nine releases backfilled
+  (2026-07-13).
 
 ## Test corpus (real-document fixtures)
 

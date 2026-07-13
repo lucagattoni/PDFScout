@@ -205,6 +205,21 @@ flags these as needing selection review). Full detail in
 
 ## Deferred
 
+### D2 · PyPI publishing (removed dead workflow, 2026-07-13)
+
+**What:** `.github/workflows/python-publish.yml` (an unedited GitHub template)
+fired on every GitHub release and always failed: `pdfscout` does not exist on
+PyPI and no trusted publisher is configured — its only nine runs ever (the
+2026-07-13 release backfill) all failed with `invalid-publisher`. It lay
+dormant before that because releases created by `release.yml` use the built-in
+`GITHUB_TOKEN`, which never triggers other workflows. Removed in the same
+commit as this entry.
+
+**To revive:** decide whether PDFScout should be pip-installable; if yes,
+create the PyPI project, configure trusted publishing (repo
+`lucagattoni/PDFScout`, workflow `python-publish.yml`, environment `pypi`),
+and restore the workflow from git history (`1603a19`).
+
 ### D1 · Streaming worker calls for >16k-token pages (contingency)
 
 **What:** `WORKER_MAX_TOKENS = 16000` (v1.7.2) covers the densest real pages
