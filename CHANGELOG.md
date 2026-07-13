@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Reading-order banding in `geometric_pre_sorter`** (`src/nodes/hierarchy_node.py`,
+  `src/config.py`) — the pre-sorter now splits each page into horizontal bands at every
+  full-width block (width ≥ new `BAND_FULL_WIDTH_FRAC = 0.6` of the page x-span) and orders
+  blocks column-major within each band, instead of column-major over the whole page. This
+  produces natural top-to-bottom reading order for invoices/forms (full-width tables,
+  headers, and footers no longer sort after or between the side-by-side field groups) while
+  leaving multi-column papers grouped by column. Strict superset of the previous behavior:
+  with no full-width blocks every block lands in band 0 and the order is unchanged. Two new
+  unit tests cover the full-width-band case and a real-invoice regression fixture (18 blocks).
+
+  _Bump to 1.7.0 (MINOR) on merge; pending e2e validation (`pytest -m e2e -k "grp_g or grp_r"`
+  + a real invoice run)._
+
 ## [1.6.3] — 20260713 01:56
 
 ### Changed

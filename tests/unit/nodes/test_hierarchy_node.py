@@ -5,6 +5,15 @@ import pytest
 from src.nodes.hierarchy_node import geometric_pre_sorter, layout_hierarchy_agent_node
 
 
+def _grid_block(block_id: str, ymin: int, xmin: int, xmax: int) -> dict:
+    return {
+        "block_id": block_id,
+        "type": "paragraph",
+        "text": "x",
+        "bbox": {"page_number": 1, "coordinates": [ymin, xmin, ymin + 10, xmax]},
+    }
+
+
 def _make_relation_response(relations: list):
     tool_block = MagicMock()
     tool_block.type = "tool_use"
@@ -78,6 +87,61 @@ class TestGeometricPreSorter:
         result = geometric_pre_sorter([b1, b2])
         assert result[0]["block_id"] == "b2"
         assert result[1]["block_id"] == "b1"
+
+    def test_full_width_block_starts_a_band(self):
+        # Two-column rows split by a full-width divider: the divider ends the
+        # first band; blocks below it read after both top-row columns.
+        # Page x-span here is 0..100, so full-width = width >= 60.
+        left_top = _grid_block("lt", 10, 0, 40)  # band 0, left
+        right_top = _grid_block("rt", 10, 60, 100)  # band 0, right
+        divider = _grid_block("dv", 40, 0, 100)  # full-width → starts band 1
+        left_bot = _grid_block("lb", 70, 0, 40)  # band 1, left
+        right_bot = _grid_block("rb", 70, 60, 100)  # band 1, right
+        result = geometric_pre_sorter([right_bot, divider, left_top, right_top, left_bot])
+        assert [b["block_id"] for b in result] == ["lt", "rt", "dv", "lb", "rb"]
+
+    def test_real_invoice_banded_order(self):
+        # Regression fixture: the 18 blocks of the real aruba invoice
+        # (coordinates [ymin, xmin, ymax, xmax]). Full-width tables/footer band
+        # the page; side-by-side form fields read left-group then right-group.
+        raw = [
+            ("b1", 28, 28, 95, 200),
+            ("b2", 28, 210, 95, 620),
+            ("b3", 110, 28, 125, 100),
+            ("b4", 125, 28, 230, 430),
+            ("b5", 230, 28, 270, 430),
+            ("b6", 110, 470, 125, 620),
+            ("b7", 125, 470, 230, 870),
+            ("b8", 295, 28, 345, 870),
+            ("b9", 360, 28, 375, 150),
+            ("b10", 375, 28, 460, 430),
+            ("b11", 360, 470, 375, 700),
+            ("b12", 375, 470, 395, 700),
+            ("b13", 490, 28, 560, 870),
+            ("b14", 580, 28, 650, 870),
+            ("b15", 665, 28, 760, 430),
+            ("b16", 665, 470, 685, 700),
+            ("b17", 685, 470, 760, 870),
+            ("b18", 820, 28, 840, 870),
+        ]
+        blocks = [
+            {
+                "block_id": bid,
+                "type": "paragraph",
+                "text": "x",
+                "bbox": {"page_number": 1, "coordinates": [ymin, xmin, ymax, xmax]},
+            }
+            for bid, ymin, xmin, ymax, xmax in raw
+        ]
+        result = [b["block_id"] for b in geometric_pre_sorter(blocks)]
+        assert result == [
+            "b1", "b3", "b4", "b5", "b2", "b6", "b7",  # top band: left group then right group
+            "b8",  # full-width Document table starts band 1
+            "b9", "b10", "b11", "b12",  # Payment (left) / due-date (right)
+            "b13", "b14",  # full-width line-item + VAT tables
+            "b15", "b16", "b17",  # TOTAL (left) / notes (right)
+            "b18",  # full-width footer
+        ]
 
 
 class TestLayoutHierarchyAgentNode:

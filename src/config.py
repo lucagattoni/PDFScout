@@ -3,6 +3,7 @@ CONCURRENCY_LIMIT = 3  # asyncio.Semaphore cap across parallel burst page invoca
 SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 FALLBACK_DOC_TYPE = "baseline_core"
 COLUMN_BUCKET_PX = 50  # xmin bucket width for geometric pre-sorter column grouping
+BAND_FULL_WIDTH_FRAC = 0.6  # min width (as fraction of page x-span) for a block to start a reading-order band
 EXTRACTION_NOTE_MAX_LENGTH = 200  # max chars for extraction_note; injected into all schemas at load time
 VALIDATION_MAX_RETRIES = 3  # max schema-validation retries for both pioneer (graph-level) and burst (inline)
 HTTP_MAX_RETRIES = 3  # max tenacity retries on transient HTTP errors (429/529) at the API call site

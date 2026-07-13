@@ -6,6 +6,7 @@ from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import (
+    BAND_FULL_WIDTH_FRAC,
     COLUMN_BUCKET_PX,
     EXTRACTION_TEMPERATURE,
     HIERARCHY_MAX_TOKENS_BASE,
@@ -42,15 +43,42 @@ RELATION_TOOL = {
 
 
 def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Sorts blocks deterministically: page ASC → column bucket ASC → ymin ASC.
-    COLUMN_BUCKET_PX controls how finely columns are grouped; tune in src/config.py."""
+    """Sorts blocks into natural reading order, page ASC.
 
-    def sort_key(b):
-        page = b["bbox"]["page_number"]
-        ymin, xmin, _, _ = b["bbox"]["coordinates"]
-        return (page, xmin // COLUMN_BUCKET_PX, ymin)
+    Each page is split into horizontal *bands* at every full-width block (one
+    whose width is >= BAND_FULL_WIDTH_FRAC of the page's x-span). Within a band
+    the full-width block leads, then remaining blocks are ordered column-major
+    (xmin bucket ASC → ymin ASC). This gives top-to-bottom reading order while
+    keeping multi-column regions (two-column papers, side-by-side form fields)
+    grouped by column. With no full-width blocks every block lands in band 0, so
+    the result is plain column-major — identical to the previous behavior.
 
-    return sorted(blocks, key=sort_key)
+    COLUMN_BUCKET_PX and BAND_FULL_WIDTH_FRAC tune the grouping; see src/config.py."""
+
+    ordered: list[dict[str, Any]] = []
+    for page in sorted({b["bbox"]["page_number"] for b in blocks}):
+        page_blocks = [b for b in blocks if b["bbox"]["page_number"] == page]
+
+        span = max(b["bbox"]["coordinates"][3] for b in page_blocks) - min(
+            b["bbox"]["coordinates"][1] for b in page_blocks
+        )
+        full_ids = set()
+        cuts: list[int] = []
+        for b in page_blocks:
+            ymin, xmin, _, xmax = b["bbox"]["coordinates"]
+            if span > 0 and (xmax - xmin) >= BAND_FULL_WIDTH_FRAC * span:
+                full_ids.add(b["block_id"])
+                cuts.append(ymin)
+        cuts.sort()
+
+        def sort_key(b, full_ids=full_ids, cuts=cuts):
+            ymin, xmin, _, _ = b["bbox"]["coordinates"]
+            is_full = b["block_id"] in full_ids
+            band = sum(1 for c in cuts if ymin >= c)
+            return (band, 0 if is_full else 1, 0 if is_full else xmin // COLUMN_BUCKET_PX, ymin, b["block_id"])
+
+        ordered.extend(sorted(page_blocks, key=sort_key))
+    return ordered
 
 
 @retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
