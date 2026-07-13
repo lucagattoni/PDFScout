@@ -50,3 +50,10 @@ class TestRetryIncrementorNode:
         result = await retry_incrementor_node(state)
         assert result["last_validation_error"] is not None
         assert len(result["last_validation_error"]) > 0
+
+    async def test_retry_cause_printed_to_stderr(self, sample_state, capsys):
+        state = {**sample_state, "extracted_flat_blocks": [], "retry_count": 0}
+        await retry_incrementor_node(state)
+        err = capsys.readouterr().err
+        assert "[RETRY]" in err
+        assert "attempt 1/" in err

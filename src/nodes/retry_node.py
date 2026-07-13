@@ -1,3 +1,4 @@
+import sys
 from typing import Any
 
 import jsonschema
@@ -32,6 +33,14 @@ async def retry_incrementor_node(state: dict[str, Any]) -> dict[str, Any]:
             error_detail = f"Field '{path}': {e.message}"
 
     attempt = state["retry_count"] + 1
+    # Retry causes are valuable operational signal (each retry is a paid call) —
+    # mirror the burst worker's [RETRY] stderr line for the pioneer path.
+    print(
+        f"[RETRY] Page {state['current_page']} attempt {attempt}/{VALIDATION_MAX_RETRIES} "
+        f"failed validation: {error_detail}",
+        file=sys.stderr,
+        flush=True,
+    )
     return {
         "retry_count": attempt,
         "last_validation_error": (

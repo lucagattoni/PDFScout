@@ -20,10 +20,12 @@ class TestBurstDispatcherNode:
 
 
 class TestDispatchPages:
-    def test_single_page_returns_hierarchy_string(self, sample_state):
+    def test_single_page_routes_to_coverage_auditor(self, sample_state):
+        # 1-page docs skip the burst fan-out and go straight to the
+        # completeness oracle (which precedes the hierarchy agent).
         state = {**sample_state, "total_pages": 1}
         result = dispatch_pages(state)
-        assert result == "hierarchy_node"
+        assert result == "coverage_auditor"
 
     def test_multi_page_returns_send_objects(self, sample_state):
         state = {**sample_state, "total_pages": 3}
@@ -58,6 +60,7 @@ class TestBuildApp:
             "retry_node",
             "burst_dispatcher",
             "parser_worker",
+            "coverage_auditor",
             "hierarchy_node",
         }
         assert expected.issubset(set(app.nodes.keys()))
