@@ -13,6 +13,17 @@ class TestRetryIncrementorNode:
         result = await retry_incrementor_node(state)
         assert "No blocks" in result["last_validation_error"]
 
+    async def test_truncation_error_preferred_over_no_blocks(self, sample_state):
+        state = {
+            **sample_state,
+            "extracted_flat_blocks": [],
+            "retry_count": 0,
+            "truncation_error": "Model output for page 1 was truncated at 16000 tokens",
+        }
+        result = await retry_incrementor_node(state)
+        assert "truncated" in result["last_validation_error"]
+        assert "No blocks" not in result["last_validation_error"]
+
     async def test_retry_count_increments(self, sample_state):
         state = {**sample_state, "extracted_flat_blocks": [], "retry_count": 1}
         result = await retry_incrementor_node(state)
