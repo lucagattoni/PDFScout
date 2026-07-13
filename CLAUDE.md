@@ -138,7 +138,7 @@ rejected proposals. During active development, keep it in sync:
   `ROADMAP.md` (correct section: Open Now / Deferred / Rejected), not into chat or a
   commit message that then vanishes.
 
-## Iterative loops
+## Commit & push cadence
 
 - **Commit and push every commit immediately when it is ready** — do not accumulate
   commits and push them in a batch at the end. As soon as a commit is made, push it.
