@@ -1,5 +1,10 @@
 This document provides a deterministic, zero-discretion execution plan for building the **Agnostic Multi-Agent PDF Structure Extractor**. It is structured as a step-by-step engineering pipeline. An AI agent or software engineer can execute these steps sequentially to generate a fully functioning system.
 
+> **Historical note (20260713):** the `temperature=0.0` in the code snippets below is
+> superseded. `claude-sonnet-5` (the current `MODEL`) rejects `temperature` with a 400,
+> so it was removed from all API call sites in v1.6.4. Do not copy `temperature=…` from
+> this plan into current code.
+
 ---
 
 ## Step 1: Environment & Dependency Initialization

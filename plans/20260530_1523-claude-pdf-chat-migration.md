@@ -1,5 +1,10 @@
 # Migration Plan: Replace pdfplumber with Claude PDF Chat + Lightweight Page Counter
 
+> **Historical note (20260713):** the `temperature=0.0` in the code snippets below is
+> superseded. `claude-sonnet-5` (the current `MODEL`) rejects `temperature` with a 400,
+> so it was removed from all API call sites in v1.6.4. Do not copy `temperature=…` from
+> this plan into current code.
+
 **Date:** 2026-05-30  
 **Branch:** `main-YyDgA`  
 **Scope:** Complete replacement of `pdfplumber`-based text extraction with Claude's native PDF vision API. A single lightweight library (`pypdf`) is retained for the sole purpose of counting pages before API dispatch.
