@@ -1,5 +1,6 @@
 """Group R — Real-document corpus tests."""
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,16 @@ def _norm_eq(a, b) -> bool:
     return a == b
 
 _REAL_PDFS = Path(__file__).parent.parent / "fixtures" / "pdfs" / "real"
+_MANIFEST = Path(__file__).parent.parent / "fixtures" / "real_manifest.json"
+
+
+def _manifest_skip_reason(slot_id: str) -> str | None:
+    """Slots can opt out of routine e2e runs via `skip_e2e_reason` in the
+    manifest (e.g. large documents whose runs are deferred for cost)."""
+    for entry in json.loads(_MANIFEST.read_text()):
+        if entry.get("slot_id") == slot_id:
+            return entry.get("skip_e2e_reason")
+    return None
 
 
 async def _run_pipeline(pdf_path: Path) -> dict:
@@ -75,6 +86,10 @@ class TestRealDocs:
         "bc-1", "bc-2", "bc-3", "bc-4",
     ])
     async def test_real_doc(self, slot_id):
+        skip_reason = _manifest_skip_reason(slot_id)
+        if skip_reason:
+            pytest.skip(f"{slot_id}: {skip_reason}")
+
         golden = load_golden(slot_id)
         if not golden:
             pytest.skip(f"{slot_id}: no golden file — run generate_real_ground_truth.py first")

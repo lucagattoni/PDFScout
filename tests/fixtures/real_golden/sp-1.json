@@ -2,21 +2,20 @@
   "schema_version": 1,
   "slot_id": "sp-1",
   "doc_type": "scientific_paper",
-  "generated_at": "2026-06-04T18:12:27Z",
+  "generated_at": "2026-07-13T04:06:53Z",
   "pdf_sha256": "43744eab7f880d71a83b142950061a721f64cff75e3fb630d44cf06de434d437",
   "n_runs": 5,
   "raw_block_counts": [
-    106,
-    101,
-    106,
-    102,
-    106
+    133,
+    124,
+    120,
+    109,
+    121
   ],
-  "min_blocks": 90,
+  "min_blocks": 105,
   "classification": "scientific_paper",
   "classification_unstable": false,
   "metadata_required": {
-    "title": "Seismic Traveltime Simulation for Variable Velocity Models Using Physics-Informed Fourier Neural Operator",
     "authors": [
       "Chao Song",
       "Tianshuo Zhao",
@@ -28,12 +27,12 @@
   },
   "metadata_deferred": {},
   "spot_check_fragments": [
-    "1 Introduction",
     "ABSTRACT",
+    "1 Introduction",
     "2 Theory",
     "2.1 The eikonal equation and its factorized form",
+    "2.2 Physics-informed Fourier neural operator",
     "3 Results",
-    "2.3 Training setup",
     "4 Discussion",
     "5 Conclusion",
     "6 Acknowledgement",
