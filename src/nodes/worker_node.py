@@ -9,7 +9,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import (
     CONCURRENCY_LIMIT,
-    EXTRACTION_TEMPERATURE,
     HTTP_MAX_RETRIES,
     MODEL,
     RETRY_BACKOFF_MAX_SECONDS,
@@ -86,7 +85,6 @@ async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dic
     return await client.messages.create(
         model=MODEL,
         max_tokens=WORKER_MAX_TOKENS,
-        temperature=EXTRACTION_TEMPERATURE,
         tools=[tool_definition],
         tool_choice={"type": "tool", "name": tool_definition["name"]},
         messages=messages,

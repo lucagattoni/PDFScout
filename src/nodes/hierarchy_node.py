@@ -7,7 +7,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import (
     COLUMN_BUCKET_PX,
-    EXTRACTION_TEMPERATURE,
     HIERARCHY_MAX_TOKENS_BASE,
     HIERARCHY_MAX_TOKENS_CEIL,
     HIERARCHY_TOKENS_PER_BLOCK,
@@ -58,7 +57,6 @@ async def _call_api(client: AsyncAnthropic, manifest: list, max_tokens: int = HI
     return await client.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
-        temperature=EXTRACTION_TEMPERATURE,
         tools=[RELATION_TOOL],
         tool_choice={"type": "tool", "name": "set_block_relations"},
         messages=[
