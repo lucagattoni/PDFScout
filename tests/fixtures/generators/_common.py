@@ -5,7 +5,13 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from src.config import MODEL
+# Fixed provenance stamp for synthetic goldens' meta. Decoupled from the live
+# config MODEL on purpose: these goldens' expected data is hand-authored and
+# model-agnostic, so binding this to MODEL would rewrite every tracked golden on
+# each test run and misrepresent provenance whenever MODEL changes without the
+# expected data being regenerated. Update this literal only when goldens are
+# deliberately regenerated against a new model.
+_GOLDEN_MODEL_VERSION = "claude-sonnet-5"
 
 # ---------------------------------------------------------------------------
 # Calibration constant — set after running Phase 0 calibration
@@ -152,6 +158,6 @@ def golden_meta(generator: str) -> dict:
         "generator": generator,
         "page_size_pts": [PAGE_W_PTS, PAGE_H_PTS],
         "coord_scale": None,  # null = pre-calibration; false = not viable; float = scale factor
-        "model_version": MODEL,
+        "model_version": _GOLDEN_MODEL_VERSION,
         "created": "2026-06-03",
     }

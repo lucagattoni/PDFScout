@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.1] — 20260713 02:45
+
+### Fixed
+
+- **Golden `model_version` decoupled from live `MODEL`** (`tests/fixtures/generators/_common.py`)
+  — `golden_meta` stamped `model_version: MODEL`, so the session-start fixture regeneration
+  rewrote every tracked synthetic golden on each test run and misrepresented provenance
+  whenever `MODEL` changed without the (hand-authored, model-agnostic) expected data being
+  regenerated. Replaced with a fixed `_GOLDEN_MODEL_VERSION = "claude-sonnet-5"` literal, so
+  regeneration produces no golden churn. Two regression tests
+  (`tests/unit/test_golden_meta.py`) fail if the coupling is reintroduced. Verified: v1.6.4's
+  golden regen changed only this one metadata line per file — no expected data was altered.
+
 ## [1.7.0] — 20260713 02:33
 
 ### Changed
