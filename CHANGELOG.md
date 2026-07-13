@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.6.4] — 20260713 02:22
+
+### Fixed
+
+- **`temperature` param rejected by Sonnet 5** (`src/config.py`, `src/nodes/classifier_node.py`,
+  `src/nodes/worker_node.py`, `src/nodes/hierarchy_node.py`) — the API began returning
+  `400 invalid_request_error: 'temperature' is deprecated for this model` on
+  `claude-sonnet-5`, crashing the classifier node on every run. Removed
+  `temperature=EXTRACTION_TEMPERATURE` from all three API call sites and dropped the
+  `EXTRACTION_TEMPERATURE` constant (README config table updated). Verified by the full
+  non-e2e suite (160 passed) and a real-bill end-to-end run.
+- **Ruff UP017 lint failures** (`scripts/evaluate_real_docs.py`,
+  `scripts/generate_real_ground_truth.py`) — `datetime.timezone.utc` → `datetime.UTC`
+  alias; pre-existing failures surfaced by the ruff bump in the 1.6.3 lockfile refresh.
+
+### Changed
+
+- **Golden fixtures regenerated** (`tests/fixtures/golden/grp_*.json`) — `model_version`
+  meta updated `claude-sonnet-4-6` → `claude-sonnet-5`; stale since the MODEL bump, rewritten
+  by the session-start fixture regeneration hook.
+
 ## [1.6.3] — 20260713 01:56
 
 ### Changed

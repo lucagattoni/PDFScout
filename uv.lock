@@ -829,7 +829,7 @@ wheels = [
 
 [[package]]
 name = "pdfscout"
-version = "1.6.2"
+version = "1.6.4"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
