@@ -12,7 +12,12 @@ async def retry_incrementor_node(state: dict[str, Any]) -> dict[str, Any]:
         b for b in (state["extracted_flat_blocks"] or []) if b["bbox"]["page_number"] == 1
     ]
     error_detail: str
-    if not active_blocks:
+    if state.get("truncation_error"):
+        # Worker response hit max_tokens — surface the truncation detail instead of
+        # the misleading 'no blocks' message (the model extracted blocks; the output
+        # budget cut them off).
+        error_detail = state["truncation_error"]
+    elif not active_blocks:
         error_detail = (
             f"No blocks were extracted for page {state['current_page']}. "
             "Return at least one block covering this page's content."

@@ -80,6 +80,20 @@ def _doc_type_instructions(doc_type: str) -> str:
     return ""
 
 
+def _truncation_error(current_page: int) -> str:
+    """Error text for a response cut off by max_tokens.
+
+    A forced tool call truncated mid-JSON is discarded by the API (tool input
+    arrives as an empty dict), so the failure must not be reported as 'no
+    blocks extracted' — the corrective instruction is conciseness, not volume."""
+    return (
+        f"Model output for page {current_page} was truncated at {WORKER_MAX_TOKENS} "
+        f"tokens (stop_reason=max_tokens) and the partial tool call was discarded. "
+        f"Be more concise: shorten block text, summarise long table content, and omit "
+        f"decorative text so the complete block list fits within the output limit."
+    )
+
+
 @retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
 async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dict) -> Any:
     return await client.messages.create(
@@ -138,6 +152,14 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 f"API returned no tool_use block for page {current_page}. "
                 f"Content types: {[b.type for b in response.content]}"
             )
+        if response.stop_reason == "max_tokens":
+            # Truncated tool JSON is discarded by the API — any blocks present are
+            # unusable. Return empty so the graph-level retry fires, and pass the
+            # truncation detail for retry_incrementor_node to surface.
+            return {
+                "extracted_flat_blocks": [],
+                "truncation_error": _truncation_error(current_page),
+            }
         blocks = tool_block.input.get("blocks", [])
         if isinstance(blocks, str):
             # Claude occasionally serialises the array as a JSON string inside the tool call.
@@ -147,7 +169,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 blocks = []
         if not isinstance(blocks, list):
             blocks = []
-        return {"extracted_flat_blocks": blocks}
+        return {"extracted_flat_blocks": blocks, "truncation_error": None}
 
 
 async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -209,7 +231,13 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(blocks, list):
                 blocks = []
 
-            if not blocks:
+            if response.stop_reason == "max_tokens":
+                # Truncated tool JSON is discarded by the API — any blocks present
+                # are unusable. Retry with a conciseness instruction, not a
+                # 'return more blocks' nudge.
+                blocks = []
+                last_error = _truncation_error(current_page)
+            elif not blocks:
                 last_error = (
                     f"No blocks were extracted for page {current_page}. "
                     "Return at least one block covering this page's content."

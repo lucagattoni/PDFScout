@@ -39,6 +39,7 @@ class PDFParserState(TypedDict):
     current_page: int
     retry_count: int
     last_validation_error: str | None
+    truncation_error: str | None  # set when the worker response hit max_tokens (tool JSON discarded)
 
     # Aggregate Buffers
     extracted_flat_blocks: Annotated[list[dict[str, Any]], merge_flat_blocks]

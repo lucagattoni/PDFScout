@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7.2] — 20260713 03:12
+
+### Fixed
+
+- **Dense pages silently dropped by max_tokens truncation** (`src/config.py`,
+  `src/nodes/worker_node.py`, `src/nodes/retry_node.py`, `src/state.py`) — pages whose
+  extraction needed more than `WORKER_MAX_TOKENS = 4000` output tokens hit
+  `stop_reason: "max_tokens"`; the API discards a forced tool call truncated mid-JSON
+  (empty `tool_use.input`), which the workers misdiagnosed as *"No blocks were extracted"*
+  and retried with an identical budget — 3 guaranteed-identical truncations, then the page
+  was dropped with a misleading warning (reproduced on a real 2-page utility bill: page 2
+  needed ~5,400 tokens and always came back empty). Two-part fix: `WORKER_MAX_TOKENS`
+  raised to 16000 (a cap, not a spend — simple pages cost the same), and both worker nodes
+  now check `stop_reason == "max_tokens"`, surfacing a distinct truncation error whose
+  retry instruction asks for *more concise* block text instead of nudging the model to
+  return more. New `truncation_error` state field threads the detail through the pioneer
+  graph-retry path (`retry_incrementor_node` prefers it over the no-blocks message).
+  5 new unit tests (169 total non-e2e).
+
 ## [1.7.1] — 20260713 02:45
 
 ### Fixed

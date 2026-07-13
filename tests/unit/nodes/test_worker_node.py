@@ -12,6 +12,19 @@ def _make_tool_use_response(blocks: list):
     tool_block.input = {"blocks": blocks}
     response = MagicMock()
     response.content = [tool_block]
+    response.stop_reason = "tool_use"
+    return response
+
+
+def _make_truncated_response():
+    """Response cut off by max_tokens: the API discards the partial tool JSON,
+    so the tool_use block arrives with an empty input dict."""
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.input = {}
+    response = MagicMock()
+    response.content = [tool_block]
+    response.stop_reason = "max_tokens"
     return response
 
 
@@ -88,6 +101,19 @@ class TestWindowParserNode:
         _setup_mocks(mocker, response)
         result = await window_parser_node(sample_state)
         assert result["extracted_flat_blocks"][0].get("extraction_note") == "Text is faint."
+
+    async def test_max_tokens_truncation_returns_truncation_error(self, sample_state, mocker):
+        _setup_mocks(mocker, _make_truncated_response())
+        result = await window_parser_node(sample_state)
+        assert result["extracted_flat_blocks"] == []
+        assert "truncated" in result["truncation_error"]
+        assert "max_tokens" in result["truncation_error"]
+
+    async def test_success_resets_truncation_error(self, sample_state, sample_block, mocker):
+        response = _make_tool_use_response([sample_block])
+        _setup_mocks(mocker, response)
+        result = await window_parser_node(sample_state)
+        assert result["truncation_error"] is None
 
 
 class TestBurstWorkerNode:
@@ -185,3 +211,39 @@ class TestBurstWorkerNode:
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [sample_block]
         assert mock_client.messages.create.call_count == 2
+
+    async def test_truncation_triggers_retry_with_conciseness_error(
+        self, sample_state, sample_block, mocker
+    ):
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZXBkZg=="),
+        )
+        mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
+        mock_client = mock_class.return_value
+        mock_client.messages.create = AsyncMock(
+            side_effect=[
+                _make_truncated_response(),
+                _make_tool_use_response([sample_block]),
+            ]
+        )
+        result = await burst_worker_node(sample_state)
+        assert result["extracted_flat_blocks"] == [sample_block]
+        assert mock_client.messages.create.call_count == 2
+        second_call_content = mock_client.messages.create.call_args_list[1].kwargs[
+            "messages"
+        ][0]["content"]
+        assert "truncated" in second_call_content[2]["text"]
+        assert "concise" in second_call_content[2]["text"]
+
+    async def test_persistent_truncation_warns_with_truncation_detail(
+        self, sample_state, mocker
+    ):
+        mock_client = _setup_mocks(mocker, _make_truncated_response())
+        result = await burst_worker_node(sample_state)
+        assert result["extracted_flat_blocks"] == []
+        assert mock_client.messages.create.call_count == VALIDATION_MAX_RETRIES
+        warnings = result.get("extraction_warnings", [])
+        assert len(warnings) == 1
+        assert "truncated" in warnings[0]
+        assert "No blocks were extracted" not in warnings[0]
