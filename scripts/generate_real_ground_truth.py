@@ -42,6 +42,18 @@ def _percentile_80(values: list[int]) -> int:
     return s[idx]
 
 
+def _consensus_key(value) -> str:
+    """Group metadata values for consensus by normalized form — the same
+    canonicalization the test's _norm_eq uses (whitespace/case + line-break
+    hyphenation). Exact-string grouping dropped keys from the golden entirely
+    when runs flickered on case ('Physics-Informed' vs 'Physics-informed'):
+    two 2-vote camps instead of one 4-vote consensus."""
+    if isinstance(value, list):
+        return "[" + ",".join(_consensus_key(v) for v in value) + "]"
+    s_ = _normalize(str(value)).lower().replace("-", "")
+    return s_
+
+
 def _normalize(text: str) -> str:
     import re
     import unicodedata
@@ -123,10 +135,14 @@ def _derive_golden(slot_id: str, doc_type: str, runs_results: list[dict], pdf_sh
             non_null = [v for v in values if v is not None]
             if not non_null:
                 continue
-            value_counter = Counter(str(v) for v in non_null)
-            best_val_str, best_count = value_counter.most_common(1)[0]
-            # Recover the original typed value
-            best_val = next(v for v in non_null if str(v) == best_val_str)
+            value_counter = Counter(_consensus_key(v) for v in non_null)
+            best_key, best_count = value_counter.most_common(1)[0]
+            # Representative value: the most common RAW form within the winning
+            # normalized group (ties break to first occurrence)
+            group = [v for v in non_null if _consensus_key(v) == best_key]
+            raw_counter = Counter(str(v) for v in group)
+            best_raw, _ = raw_counter.most_common(1)[0]
+            best_val = next(v for v in group if str(v) == best_raw)
             if best_count >= required_threshold:
                 metadata_required[key] = best_val
             elif best_count >= deferred_threshold:

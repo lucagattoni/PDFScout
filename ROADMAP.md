@@ -117,12 +117,11 @@ exceeded a generating run's own count under high spread). Remaining: sp-4
 (large-doc skip stands), sp-6 + bc-1..4 (never generated). Generator's exact-
 match metadata consensus still pending (see below).
 
-**Generator improvement (small, found during v1.9.0 regen):**
-`generate_real_ground_truth.py` computes `metadata_required` consensus by exact
-value equality, so run-to-run case flicker ("Physics-Informed" vs
-"Physics-informed") drops a key from the required set entirely (sp-1 lost
-`title`). The consensus grouping should use the same normalized equality as
-`test_real_docs._norm_eq` and store the most common raw value.
+**Generator consensus normalization — shipped v1.10.2:** metadata consensus now
+groups by normalized form (case/whitespace/hyphenation) and stores the most
+common raw value; case flicker no longer drops keys from `metadata_required`.
+Existing goldens are unchanged — sp-1 regains its `title` requirement at its
+next regeneration.
 
 **Update (2026-07-13, v1.8.x):** the sp goldens are additionally **stale for the
 current model** — they were generated 2026-06-04 under the previous MODEL. The
