@@ -442,3 +442,22 @@ class TestStrictSchemaFallback:
         # a deterministic 400 is not retried and not turned into a strict fallback
         assert mock_client.messages.stream.call_count == 1
         assert "scientific_paper" not in wn._STRICT_INCOMPATIBLE
+
+
+class TestEffortKnob:
+    async def test_effort_env_passed_to_api(self, sample_state, sample_block, mocker, monkeypatch):
+        monkeypatch.setenv("PDFSCOUT_EFFORT", "low")
+        response = _make_tool_use_response([sample_block])
+        mock_client = _setup_mocks(mocker, response)
+        await burst_worker_node(sample_state)
+        kwargs = mock_client.messages.stream.call_args.kwargs
+        assert kwargs["output_config"] == {"effort": "low"}
+
+    async def test_no_effort_env_no_output_config(
+        self, sample_state, sample_block, mocker, monkeypatch
+    ):
+        monkeypatch.delenv("PDFSCOUT_EFFORT", raising=False)
+        response = _make_tool_use_response([sample_block])
+        mock_client = _setup_mocks(mocker, response)
+        await burst_worker_node(sample_state)
+        assert "output_config" not in mock_client.messages.stream.call_args.kwargs

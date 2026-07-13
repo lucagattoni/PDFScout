@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.4] — 20260713 16:20
+
+### Added
+
+- **`PDFSCOUT_EFFORT` env knob** (`effort_config()` in `src/utils/usage.py`) sets
+  `output_config.effort` on every classifier, extraction, and hierarchy call.
+  Valid levels `low`/`medium`/`high`/`xhigh`/`max`; **unset (default) sends
+  nothing — zero behavior change**. Opt-in experiment lever from the
+  determinism work: lower effort trades exploration for output consistency and
+  fewer tokens on the mechanical extraction task. An early A/B (n=3) showed
+  `low` roughly halved block-count variance at equal quality, but it stays
+  opt-in pending corpus-wide validation before becoming a default. 5 unit
+  tests. (Reworked from the stale `feat/effort-tuning` branch to apply cleanly
+  on top of the v1.12.3 streaming calls; the superseded hardcoded-effort
+  prototype branch was dropped.)
+
 ## [1.12.3] — 20260713 16:08
 
 ### Fixed

@@ -15,7 +15,7 @@ from src.config import (
 )
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
-from src.utils.usage import cache_control, usage_entry
+from src.utils.usage import cache_control, effort_config, usage_entry
 
 
 @retry(
@@ -35,6 +35,7 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> tuple[str, dict]
         # against max_tokens — a single thinking burst would truncate the
         # tiny classification budget.
         thinking={"type": "disabled"},
+        **effort_config(),
         messages=[
             {
                 "role": "user",

@@ -88,6 +88,7 @@ Why each gate exists:
 | `ANTHROPIC_API_KEY` | required | API authentication |
 | `PDFSCOUT_CACHE_TTL` | `1h` (default: 5-minute TTL) | Prompt-cache lifetime. The 1-hour TTL costs 2× on the first cache write but lets every subsequent run read the PDF prefix at 0.1× — worth it for multi-run workloads over the same document (golden regeneration, variance measurement). The regeneration script sets it automatically. |
 | `PDFSCOUT_LOG_USAGE` | `1` / `true` / `yes` | Print a per-API-call `[USAGE]` line to stderr (cache write/read, input/output tokens, stop reason). Every run also prints an aggregate `USAGE:` summary at the end regardless. |
+| `PDFSCOUT_EFFORT` | `low` / `medium` / `high` / `xhigh` / `max` (unset = model default) | Sets `output_config.effort` on every extraction, classifier, and hierarchy call. Unset sends nothing — zero behavior change. Lower effort trades exploration for consistency and fewer tokens on the mechanical extraction task; an early A/B (n=3) showed `low` roughly halved block-count variance at equal quality, but it is **opt-in only** pending broader validation before ever becoming a default. |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` | optional | Enable Langfuse tracing — see [installation](../01-getting-started/01-installation.md#optional-langfuse-tracing) |
 
 Failed validation attempts that later succeed are printed as `[RETRY]` lines

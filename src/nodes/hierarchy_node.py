@@ -18,7 +18,7 @@ from src.config import (
     RETRY_BACKOFF_MIN_SECONDS,
     RETRY_BACKOFF_MULTIPLIER,
 )
-from src.utils.usage import usage_entry
+from src.utils.usage import effort_config, usage_entry
 
 RELATION_TOOL = {
     "name": "set_block_relations",
@@ -144,6 +144,7 @@ async def _call_api(
         max_tokens=max_tokens,
         tools=[RELATION_TOOL],
         tool_choice={"type": "tool", "name": "set_block_relations"},
+        **effort_config(),
         messages=[
             {
                 "role": "user",

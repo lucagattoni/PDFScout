@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from src.utils.usage import cache_control, summarize_usage, usage_entry
+from src.utils.usage import cache_control, effort_config, summarize_usage, usage_entry
 
 
 def _resp(inp=100, out=50, read=0, write=0, stop="end_turn"):
@@ -72,3 +72,17 @@ class TestCacheControl:
     def test_unknown_value_falls_back_to_default(self, monkeypatch):
         monkeypatch.setenv("PDFSCOUT_CACHE_TTL", "2d")
         assert cache_control() == {"type": "ephemeral"}
+
+
+class TestEffortConfig:
+    def test_default_sends_nothing(self, monkeypatch):
+        monkeypatch.delenv("PDFSCOUT_EFFORT", raising=False)
+        assert effort_config() == {}
+
+    def test_valid_level_builds_output_config(self, monkeypatch):
+        monkeypatch.setenv("PDFSCOUT_EFFORT", "low")
+        assert effort_config() == {"output_config": {"effort": "low"}}
+
+    def test_invalid_level_ignored(self, monkeypatch):
+        monkeypatch.setenv("PDFSCOUT_EFFORT", "turbo")
+        assert effort_config() == {}

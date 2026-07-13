@@ -4,6 +4,22 @@ from typing import Any
 
 USAGE_ENV_FLAG = "PDFSCOUT_LOG_USAGE"
 CACHE_TTL_ENV = "PDFSCOUT_CACHE_TTL"
+EFFORT_ENV = "PDFSCOUT_EFFORT"
+_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
+def effort_config() -> dict[str, Any]:
+    """Optional ``output_config`` for API calls, from PDFSCOUT_EFFORT.
+
+    Unset (default) sends no output_config — the model's own default applies,
+    zero behavior change. Experiment knob for the determinism/cost work: lower
+    effort may reduce output variance and token spend on the mechanical
+    extraction task; must be A/B-measured before ever becoming a default
+    (ROADMAP determinism item)."""
+    level = os.environ.get(EFFORT_ENV, "").lower()
+    if level in _EFFORT_LEVELS:
+        return {"output_config": {"effort": level}}
+    return {}
 
 
 def cache_control() -> dict[str, str]:

@@ -29,7 +29,7 @@ from src.config import (
 from src.nodes.coverage_node import page_anchors
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
-from src.utils.usage import cache_control, usage_entry
+from src.utils.usage import cache_control, effort_config, usage_entry
 
 _semaphore: asyncio.Semaphore | None = None
 _semaphore_loop_id: int = -1
@@ -165,6 +165,7 @@ async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dic
         tools=[tool_definition],
         tool_choice={"type": "tool", "name": tool_definition["name"]},
         messages=messages,
+        **effort_config(),
     ) as stream:
         return await stream.get_final_message()
 

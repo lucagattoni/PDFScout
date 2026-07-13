@@ -51,7 +51,11 @@ Levers, most → least in our control:
   layer; complements the existing jsonschema retry loop.
 - **`output_config={"effort":"low"}`** (default is `high`) → less exploration,
   more scoped/consistent output for a mechanical task. Test hierarchy accuracy
-  first — relational reasoning may want `medium`.
+  first — relational reasoning may want `medium`. **Shipped opt-in (v1.12.4)**
+  as the `PDFSCOUT_EFFORT` env knob on all calls; default sends nothing (zero
+  behavior change). Early A/B (n=3) halved block-count variance at equal
+  quality; broader validation across the corpus still required before adopting
+  `low` as a default.
 - **Prompt tightening** — "extract only what is present; do not infer,
   summarize, or re-order." The current model follows literally, so explicit
   scope reduces semantic variance.
