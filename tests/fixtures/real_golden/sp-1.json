@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "slot_id": "sp-1",
+  "doc_type": "scientific_paper",
+  "generated_at": "2026-06-04T18:12:27Z",
+  "pdf_sha256": "43744eab7f880d71a83b142950061a721f64cff75e3fb630d44cf06de434d437",
+  "n_runs": 5,
+  "raw_block_counts": [
+    106,
+    101,
+    106,
+    102,
+    106
+  ],
+  "min_blocks": 90,
+  "classification": "scientific_paper",
+  "classification_unstable": false,
+  "metadata_required": {
+    "title": "Seismic Traveltime Simulation for Variable Velocity Models Using Physics-Informed Fourier Neural Operator",
+    "authors": [
+      "Chao Song",
+      "Tianshuo Zhao",
+      "Umair bin Waheed",
+      "Cai Liu",
+      "You Tian"
+    ],
+    "abstract": "Seismic traveltime is critical information conveyed by seismic waves, widely utilized in various geophysical applications. Conventionally, the simulation of seismic traveltime involves solving the eikonal equation. However, the efficiency of traditional numerical solvers is hindered, as they are typically capable of simulating seismic traveltime for only a single source at a time. Recently, deep learning tools, particularly physics-informed neural networks (PINNs), have proven effective in simulating seismic traveltimes for multiple sources. Nonetheless, PINNs face challenges such as limited generalization capabilities across different models and difficulties in training convergence. To address these issues, we have developed a method for simulating multi-source seismic traveltimes in variable velocity models using a deep-learning technique, known as the physics-informed Fourier neural operator (PIFNO). The PIFNO-based method for seismic traveltime generation takes both velocity and background traveltime as inputs, generating the perturbation traveltime as the output. This method incorporates a factorized eikonal equation as the loss function and relies solely on physical laws, eliminating the need for labeled training data. We demonstrate that our proposed method is not only effective in calculating seismic traveltimes for velocity models used during training but also shows promising prediction capabilities for test velocity models. We validate these features using velocity models from the OpenFWI dataset."
+  },
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "1 Introduction",
+    "ABSTRACT",
+    "2 Theory",
+    "2.1 The eikonal equation and its factorized form",
+    "3 Results",
+    "2.3 Training setup",
+    "4 Discussion",
+    "5 Conclusion",
+    "6 Acknowledgement",
+    "7 Data availability"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "slot_id": "sp-4",
+  "doc_type": "scientific_paper",
+  "generated_at": "2026-06-04T21:56:13Z",
+  "pdf_sha256": "2a777e50d78f4f41b1223988e14013dddffae1b6b62a40a042d855104fc8da0b",
+  "n_runs": 5,
+  "raw_block_counts": [
+    366,
+    314,
+    364,
+    352,
+    343
+  ],
+  "min_blocks": 309,
+  "classification": "baseline_core",
+  "classification_unstable": true,
+  "metadata_required": {},
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "Warning Notice",
+    "Withdrawn Publication",
+    "Superseding Publication(s) (if applicable)",
+    "Additional Information (if applicable)",
+    "NISTIR 8170",
+    "Executive Summary",
+    "Summary of the Approach: Integrate and Align Cybersecurity and Acquisition Processes",
+    "4. Evaluate Organizational Cybersecurity",
+    "Summary of the Approach: Evaluate Organizational Cybersecurity",
+    "5. Manage the Cybersecurity Program"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}

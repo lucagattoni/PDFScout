@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "slot_id": "sp-3",
+  "doc_type": "scientific_paper",
+  "generated_at": "2026-06-04T21:10:50Z",
+  "pdf_sha256": "2f8ce4282b233b24a34675b1758fc893369d11880ed9dc1b4a0d041c83120aeb",
+  "n_runs": 5,
+  "raw_block_counts": [
+    180,
+    189,
+    170,
+    182,
+    183
+  ],
+  "min_blocks": 155,
+  "classification": "scientific_paper",
+  "classification_unstable": false,
+  "metadata_required": {
+    "title": "Probabilistic Inversions for Time\u2013Distance Helioseismology",
+    "authors": [
+      "Jason Jackiewicz"
+    ],
+    "abstract": "Time\u2013distance helioseismology is a set of powerful tools to study localized features below the Sun's surface. Inverse methods are needed to robustly interpret time\u2013distance measurements, with many examples in the literature. However, techniques that utilize a more statistical approach to inferences, and that are broadly used in the astronomical community, are less-commonly found in helioseismology. This article aims to introduce a potentially powerful inversion scheme based on Bayesian probability theory and Monte Carlo sampling that is suitable for local helioseismology. We first describe the probabilistic method and how it is conceptually different from standard inversions used in local helioseismology. Several example calculations are carried out to compare and contrast the setup of the problems and the results that are obtained. The examples focus on two important phenomena that are currently outstanding issues in helioseismology: meridional circulation and supergranulation. Numerical models are used to compute synthetic observations, providing the added benefit of knowing the solution against which the results can be tested. For demonstration purposes, the problems are formulated in two and three dimensions, using both ray- and Born-theoretical approaches. The results seem to indicate that the probabilistic inversions not only find a better solution with much more realistic estimation of the uncertainties, but they also provide a broader view of the range of solutions possible for any given model, making the interpretation of the inversion more quantitative in nature. The probabilistic inversions are also easy to set up for a broad range of problems, and they can take advantage of software that is publicly available. Unlike the progress being made in fundamental measurement schemes in local helioseismology that image the far side of the Sun, or have detected signatures of global Rossby waves, among many others, inversions of those measurements have had significantly less success. Such statistical methods may help overcome some of these barriers to move the field forward."
+  },
+  "metadata_deferred": {},
+  "spot_check_fragments": [
+    "1. INTRODUCTION",
+    "ABSTRACT",
+    "2. DETERMINISTIC AND BAYESIAN INFERENCES",
+    "2.1. Formulation of Standard Helioseismic Inversions",
+    "2.2. Background to Bayesian inferences",
+    "3. EXAMPLES FOR TIME\u2013DISTANCE LOCAL HELIOSEISMOLOGY",
+    "3.1. Meridional Circulation in a Ray-Theory Approach",
+    "3.1.2. SOLA Solution to the Problem",
+    "3.1.1. The Toy Problem",
+    "3.1.3. Probabilistic Solution to the Problem: Parameter Posteriors"
+  ],
+  "table_assertions": [],
+  "stability_notes": ""
+}
