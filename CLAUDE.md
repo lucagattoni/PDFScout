@@ -145,6 +145,14 @@ rejected proposals. During active development, keep it in sync:
   This applies in all contexts: iterative loops, multi-step implementations, and
   single-change fixes.
 
+## Releases
+
+- **Version bump ⇒ `uv lock` in the same commit.** Whenever `pyproject.toml`'s
+  `version` changes, run `uv lock` and commit the refreshed `uv.lock` together with
+  the bump. A stale lock self-version dirties every later `uv run` and causes rebase
+  conflicts (bit twice on 2026-07-13: v1.6.3 and v1.7.1 both needed follow-up lock
+  commits).
+
 ## Reviews
 
 - Always use the **devil's advocate** approach: actively try to find what can go

@@ -13,7 +13,93 @@ Current version: see [CHANGELOG.md](CHANGELOG.md)
 
 Ordered by priority. Pick from the top unless there's a reason not to.
 
-### 1 · Real-document golden corpus completion (Group R)
+Items 1–5 come from the 2026-07-13 real-document test session (2-page Irish
+utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
+with per-call usage instrumentation).
+
+### 1 · Reading-order banding defects (three failure modes)
+
+**What:** `geometric_pre_sorter` (v1.7.0 banding) mis-orders blocks in three
+distinct ways, all reproduced on real documents:
+
+1. **Band boundary ignores y-overlap.** A full-width block starts a new band
+   *excluding* narrow blocks at the same y. Consequences: label-left/wide-text-right
+   layouts invert every pair (Enel invoice p3 — all 8 sidebar labels sort *after*
+   their own explanation text); a section heading gets divorced from its own
+   full-width table (Enel p1: "DETTAGLIO FISCALE" heading at position 8, its
+   table at position 23; Irish bill p2: "Payments" heading split from its table
+   by 4 sidebar blocks).
+2. **Brittle band trigger.** `BAND_FULL_WIDTH_FRAC = 0.6` produced zero bands on
+   the Irish bill p1 (whole-page column-major: top-right "account number" sorted
+   19th of 30, after the bottom-left payment slip) and a band per row on Enel p3.
+3. **Column-bucket granularity.** `COLUMN_BUCKET_PX = 50` puts a logo at x=90
+   into the second column bucket, sorting it after the entire x=45 column
+   (Enel p1: page title sorted 10th).
+
+**Fix (highest leverage first):** when a full-width block opens a band, blocks
+that vertically overlap it join the same band (sorting before it if to its
+left). Then re-evaluate 2 and 3 against the same replay fixtures.
+
+**Scope:** Small-medium, fully offline-testable — replay the pre-sorter on the
+extracted block sets; no API calls needed. In progress on
+`fix/reading-order-band-splits`.
+
+### 2 · Classifier is one thinking-burst away from breaking
+
+**What:** `CLASSIFIER_MAX_TOKENS = 10`, but the current model runs adaptive
+thinking by default when `thinking` is omitted, and thinking tokens count
+against `max_tokens`. Observed `thinking_tokens: 0` on real runs so far, but a
+single thinking burst truncates the classification.
+
+**Fix:** pass `thinking={"type": "disabled"}` on the classifier call (workers
+are safe — forced `tool_choice` suppresses thinking).
+
+**Scope:** Tiny.
+
+### 3 · Page-1 completeness variance — no detector for silently dropped blocks
+
+**What:** across three runs of the same bill, page 1 gained/lost blocks
+("Total due" missing in one run, "Energy tips" in another) with no warning.
+Since `temperature` was removed (v1.6.4) there is no determinism knob, and
+nothing detects a dropped region.
+
+**Investigate:** use the native text layer (already extracted by
+`native_extractor`) as a completeness oracle — diff significant native-layer
+text spans against extracted block text; unmatched spans → targeted retry or at
+minimum an `extraction_warning`. Same philosophy as the v1.7.2 truncation fix:
+convert silent drops into visible ones.
+
+**Scope:** Medium — needs a matching heuristic robust to whitespace/reflow, and
+a threshold for "significant".
+
+### 4 · Observability: hidden validation retries + opt-in usage logging
+
+**What:** (a) a burst page that fails validation once and succeeds on retry
+leaves no trace of *why* attempt 1 failed (Enel p2 cost one extra ~4.3k-token
+generation, cause unknown). (b) Answering "is prompt caching working?" required
+an ad-hoc monkeypatch; cache/token stats per call are one `usage` field away.
+
+**Fix:** log the discarded `last_error` at debug level on eventual success; add
+an opt-in env flag (e.g. `PDFSCOUT_LOG_USAGE=1`) printing per-call
+cache_write/cache_read/input/output/stop_reason.
+
+**Scope:** Small.
+
+### 5 · Classifier cache write is orphaned (cost)
+
+**What:** the classifier sends no `tools`, so its ~10.4k-token cache write can
+never be read by the workers (prefix mismatch at position 0). Measured on the
+Enel run: classifier wrote 10,403 tokens; workers wrote a separate 11,843-token
+entry.
+
+**Fix idea:** include the worker tool definition on the classifier call with
+`tool_choice: {"type": "none"}` so both share one prefix — one cache write per
+document instead of two. Needs a quick live test that classification quality is
+unaffected.
+
+**Scope:** Small, needs one paid verification run.
+
+### 6 · Real-document golden corpus completion (Group R)
 
 **What:** `tests/integration/test_real_docs.py` (`grp_r`, `e2e`-marked) is
 parametrized over 15 manifest slots defined in `tests/fixtures/real_manifest.json`:
@@ -42,6 +128,18 @@ flags these as needing selection review). Full detail in
 ---
 
 ## Deferred
+
+### D1 · Streaming worker calls for >16k-token pages (contingency)
+
+**What:** `WORKER_MAX_TOKENS = 16000` (v1.7.2) covers the densest real pages
+seen so far (~5.4k needed), but a page requiring more would truncate again —
+now correctly reported as a truncation warning rather than a silent drop.
+
+**Fix when triggered:** switch worker calls to `client.messages.stream(...)` +
+`get_final_message()`, raising the safe ceiling to 64–128k. Defer until a real
+document actually hits the 16k warning.
+
+---
 
 ### B3 · Streaming / SSE output from API (High effort)
 
@@ -88,3 +186,6 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 | C2 · Classifier fallback integration test | v1.6.1 | `TestClassifierFallback` in `test_graph_pipeline.py` |
 | Reading-order banding | v1.7.0 | `plans/20260713_0214-reading-order-banding.md` — band pages at full-width blocks, column-major within band |
 | Golden `model_version` decoupled from `MODEL` | v1.7.1 | Fixed literal in `_common.py`; stops test runs dirtying tracked goldens (`tests/unit/test_golden_meta.py`) |
+| `temperature` removed (rejected by current model) | v1.6.4 | API began rejecting non-default sampling params on the extraction model; removed from all call sites |
+| Dense-page max_tokens truncation fix | v1.7.2 | `WORKER_MAX_TOKENS` 4000→16000 + `stop_reason` truncation detection in both workers (branch `fix/worker-max-tokens-truncation`, pending merge). Root cause of "Page 2: no blocks" on real 2-page bill |
+| Prompt caching verified on real docs | v1.7.2 session | Burst pages + retries read the full ~11.8k-token PDF prefix from cache (pioneer writes it); classifier writes a separate orphaned entry (→ Open #5); hierarchy call uncached |
