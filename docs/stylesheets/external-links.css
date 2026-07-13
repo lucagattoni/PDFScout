@@ -1,0 +1,7 @@
+/* External links (tagged by javascripts/external-links.js) get a small arrow
+   so a reader can tell before clicking that it leaves the site. */
+a.external-link::after {
+  content: " ↗";
+  font-size: 0.75em;
+  vertical-align: super;
+}

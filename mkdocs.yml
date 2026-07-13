@@ -1,41 +1,62 @@
 site_name: PDFScout
 site_description: Multi-agent PDF structure extractor — LangGraph + Claude native PDF vision, with a self-healing validation loop and a native-text completeness oracle.
+site_url: https://lucagattoni.github.io/PDFScout/
+site_author: Luca Gattoni
+
+repo_url: https://github.com/lucagattoni/PDFScout
+repo_name: lucagattoni/PDFScout
+edit_uri: edit/main/docs/
+
+# docs/ is the source; the README stays the GitHub repo landing and links here.
 docs_dir: docs
 site_dir: site
 use_directory_urls: true
 
-repo_url: https://github.com/lucagattoni/PDFScout
-repo_name: lucagattoni/PDFScout
+# Make broken internal links/anchors fail the build (with --strict in CI).
+# Absolute links (intentional github.com refs to repo files) are left alone.
+validation:
+  omitted_files: warn
+  absolute_links: ignore
+  unrecognized_links: warn
+  links:
+    anchors: warn
 
 theme:
   name: material
   language: en
-  features:
-    - navigation.tabs
-    - navigation.tabs.sticky
-    - navigation.sections
-    - navigation.indexes
-    - navigation.top
-    - navigation.tracking
-    - toc.follow
-    - search.suggest
-    - search.highlight
-    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
   palette:
-    - media: "(prefers-color-scheme)"
-      toggle: { icon: material/brightness-auto, name: Switch to light mode }
+    # Light
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: indigo
-      accent: indigo
-      toggle: { icon: material/brightness-7, name: Switch to dark mode }
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    # Dark
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: indigo
-      accent: indigo
-      toggle: { icon: material/brightness-4, name: Switch to system preference }
-  icon:
-    repo: fontawesome/brands/github
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    # Left column — collapsible nav
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    # Right column — on-this-page TOC (kept separate, NOT integrated, so it stays a 3rd column)
+    - toc.follow
+    # Search + code ergonomics
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
 
 markdown_extensions:
   - admonition
@@ -45,10 +66,11 @@ markdown_extensions:
   - footnotes
   - pymdownx.details
   - pymdownx.superfences
-  - pymdownx.inlinehilite
   - pymdownx.highlight:
       anchor_linenums: true
-      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
@@ -58,23 +80,37 @@ markdown_extensions:
 plugins:
   - search
 
+extra_css:
+  - stylesheets/external-links.css
+
+extra_javascript:
+  - javascripts/external-links.js
+  - javascripts/section-numbering.js
+
+# Left navigation tree — simple → deep. Chapters numbered for easy reference
+# (same convention as Claude-Warp / Claude-Loops).
 nav:
   - Home: index.md
-  - "Getting Started":
-    - 01-getting-started/README.md
-    - 01-getting-started/01-installation.md
-    - 01-getting-started/02-usage.md
-  - "Concepts":
-    - 02-concepts/README.md
-    - 02-concepts/01-architecture.md
-    - 02-concepts/02-output-format.md
-    - 02-concepts/03-design-innovations.md
-  - "Reference":
-    - 03-reference/README.md
-    - 03-reference/01-configuration.md
-    - 03-reference/02-api.md
-  - "Contributing":
-    - 04-contributing/README.md
-    - 04-contributing/01-development.md
-    - 04-contributing/02-testing.md
-    - 04-contributing/03-real-doc-workflow.md
+  - 1. Getting Started:
+      - 01-getting-started/README.md
+      - 1.1 Installation: 01-getting-started/01-installation.md
+      - 1.2 Usage: 01-getting-started/02-usage.md
+  - 2. Concepts:
+      - 02-concepts/README.md
+      - 2.1 Architecture: 02-concepts/01-architecture.md
+      - 2.2 Output Format: 02-concepts/02-output-format.md
+      - 2.3 Design Innovations: 02-concepts/03-design-innovations.md
+  - 3. Reference:
+      - 03-reference/README.md
+      - 3.1 Configuration: 03-reference/01-configuration.md
+      - 3.2 API: 03-reference/02-api.md
+  - 4. Contributing:
+      - 04-contributing/README.md
+      - 4.1 Development: 04-contributing/01-development.md
+      - 4.2 Testing: 04-contributing/02-testing.md
+      - 4.3 Real-Doc Workflow: 04-contributing/03-real-doc-workflow.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/lucagattoni/PDFScout

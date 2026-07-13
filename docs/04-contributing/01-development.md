@@ -54,6 +54,12 @@ lives in `docs/` as plain Markdown, organized general → specific: the root
 make docs           # live-preview at http://127.0.0.1:8000
 ```
 
+Every push to `main` that touches `docs/`, `mkdocs.yml`, or
+`requirements-docs.txt` builds the site with `--strict` (broken links fail
+the build) and deploys it to
+[lucagattoni.github.io/PDFScout](https://lucagattoni.github.io/PDFScout/)
+via the `docs` workflow; pull requests get the strict build as a check.
+
 When a code change touches any user-facing surface (a flag, constant, command,
 default, or behavior), update the docs **in the same change** — including test
 counts and config values quoted anywhere in `docs/`.

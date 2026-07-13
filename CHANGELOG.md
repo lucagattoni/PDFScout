@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.12.1] — 20260713 10:16
+
+### Added
+
+- **Docs published to GitHub Pages** at
+  <https://lucagattoni.github.io/PDFScout/> — same pipeline as Claude-Warp:
+  `docs` workflow builds with `mkdocs build --strict` on every PR (broken
+  links fail the check) and deploys on push to main; Pages enabled in
+  workflow mode. `mkdocs.yml` aligned to the Claude-Warp reading experience:
+  numbered nav chapters, 3-column layout, edit-this-page, strict link
+  validation, external-link markers + section-numbering assets;
+  `requirements-docs.txt` pins the docs toolchain for CI caching.
+
 ## [1.12.0] — 20260713 10:02
 
 ### Added

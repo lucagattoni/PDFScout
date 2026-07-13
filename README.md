@@ -6,7 +6,7 @@ Claude's native PDF vision API, prompt caching for cost efficiency, a
 self-healing validation loop, and a completeness audit against the PDF's own
 text layer. Works on text-based and scanned documents alike.
 
-[Documentation](docs/index.md) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+**[Read the documentation →](https://lucagattoni.github.io/PDFScout/)** · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
 ## Why
 
@@ -53,8 +53,10 @@ Full setup (including optional Langfuse tracing):
 
 ## Documentation
 
-Ordered simple → deep. Browse on GitHub via the links below, or serve the
-MkDocs Material site locally with `make docs`.
+Ordered simple → deep. Read it at
+**[lucagattoni.github.io/PDFScout](https://lucagattoni.github.io/PDFScout/)**
+(auto-deployed from `main`), browse the sources below on GitHub, or serve
+locally with `make docs`.
 
 | Section | Read this for |
 |---|---|
