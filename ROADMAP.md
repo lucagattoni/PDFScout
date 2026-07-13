@@ -82,6 +82,43 @@ Items 6 and 7 remain from the 2026-07-13 real-document test session (2-page Iris
 utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
 with per-call usage instrumentation).
 
+### 8 · Usage & cost accounting for tests and e2e runs (Important — requested 2026-07-13)
+
+**What — two layers:**
+
+1. **Token utilisation everywhere (base layer, unconditional).** e2e PDF
+   processing already logs it (v1.8.0: `[USAGE]` lines, `USAGE:` summary,
+   Langfuse metadata); the gap is **test-side runs** — the golden-generation
+   script and API-hitting tests log block counts only. Add per-run and
+   per-slot token totals to their logs.
+2. **Cost derived from tokens (per call and per document).** Verified
+   reliable — see below — so surface a money figure everywhere usage appears.
+
+**Reliability — verified feasible, exact to the cent.** The API `usage` object
+returns the exact billed token counts per call (`input_tokens`,
+`output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`),
+and cost is a deterministic function of them:
+
+| Component | Multiplier on input price |
+|---|---|
+| Uncached input | 1× ($3/MTok on claude-sonnet-5; intro $2 through 2026-08-31) |
+| Output | $15/MTok (intro $10) |
+| Cache read | 0.1× |
+| Cache write, 5m TTL | 1.25× |
+| Cache write, 1h TTL | 2× |
+
+`PDFSCOUT_CACHE_TTL` selects the TTL for the whole run, so the correct write
+multiplier is always known. **Caveat (the only unreliability):** the API has no
+per-request billed-cost field and the org Cost Report Admin API only
+aggregates, so pricing lives in a local table (config) that must be kept
+current — flag the intro-pricing expiry (2026-08-31) and re-check the table on
+every model change.
+
+**How:** price table in `src/config.py` keyed by model id; `cost_of(entry)` in
+`src/utils/usage.py`; add `cost` to `usage_entry` output and a `total_cost` to
+`summarize_usage`; print in `[USAGE]`/`USAGE:` lines and Langfuse metadata;
+golden generator prints per-run and per-slot cost.
+
 ### 7 · Cross-page duplicate blocks and dropped sections in burst extraction
 
 **What (found 2026-07-13 on a real 16-page paper):** adjacent burst workers each
