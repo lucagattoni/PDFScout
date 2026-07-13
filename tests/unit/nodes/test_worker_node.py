@@ -13,6 +13,10 @@ def _make_tool_use_response(blocks: list):
     response = MagicMock()
     response.content = [tool_block]
     response.stop_reason = "tool_use"
+    response.usage.input_tokens = 500
+    response.usage.output_tokens = 4000
+    response.usage.cache_read_input_tokens = 11000
+    response.usage.cache_creation_input_tokens = 0
     return response
 
 
@@ -25,6 +29,10 @@ def _make_truncated_response():
     response = MagicMock()
     response.content = [tool_block]
     response.stop_reason = "max_tokens"
+    response.usage.input_tokens = 500
+    response.usage.output_tokens = 16000
+    response.usage.cache_read_input_tokens = 11000
+    response.usage.cache_creation_input_tokens = 0
     return response
 
 
@@ -247,3 +255,49 @@ class TestBurstWorkerNode:
         assert len(warnings) == 1
         assert "truncated" in warnings[0]
         assert "No blocks were extracted" not in warnings[0]
+
+    async def test_retry_cause_printed_to_stderr(self, sample_state, sample_block, mocker, capsys):
+        invalid_block = {**sample_block, "type": "invalid_type"}
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZXBkZg=="),
+        )
+        mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
+        mock_client = mock_class.return_value
+        mock_client.messages.create = AsyncMock(
+            side_effect=[
+                _make_tool_use_response([invalid_block]),
+                _make_tool_use_response([sample_block]),
+            ]
+        )
+        await burst_worker_node(sample_state)
+        err = capsys.readouterr().err
+        assert "[RETRY]" in err
+        assert "attempt 1/" in err
+        assert "invalid_type" in err or "Field" in err
+
+    async def test_usage_log_accumulates_across_attempts(self, sample_state, sample_block, mocker):
+        invalid_block = {**sample_block, "type": "invalid_type"}
+        mocker.patch(
+            "src.nodes.worker_node.encode_pdf_async",
+            new=AsyncMock(return_value="ZmFrZXBkZg=="),
+        )
+        mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
+        mock_client = mock_class.return_value
+        mock_client.messages.create = AsyncMock(
+            side_effect=[
+                _make_tool_use_response([invalid_block]),
+                _make_tool_use_response([sample_block]),
+            ]
+        )
+        result = await burst_worker_node(sample_state)
+        assert len(result["usage_log"]) == 2
+        assert result["usage_log"][0]["context"].endswith("attempt 1")
+        assert result["usage_log"][1]["context"].endswith("attempt 2")
+
+    async def test_window_parser_returns_usage_log(self, sample_state, sample_block, mocker):
+        response = _make_tool_use_response([sample_block])
+        _setup_mocks(mocker, response)
+        result = await window_parser_node(sample_state)
+        assert len(result["usage_log"]) == 1
+        assert result["usage_log"][0]["context"].startswith("pioneer page")

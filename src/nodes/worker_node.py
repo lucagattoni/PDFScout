@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 from typing import Any
 
 import jsonschema
@@ -19,6 +20,7 @@ from src.config import (
 )
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
+from src.utils.usage import usage_entry
 
 _semaphore: asyncio.Semaphore | None = None
 _semaphore_loop_id: int = -1
@@ -146,6 +148,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             )
 
         response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
+        usage = usage_entry(f"pioneer page {current_page}", response)
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_block is None:
             raise ValueError(
@@ -159,6 +162,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             return {
                 "extracted_flat_blocks": [],
                 "truncation_error": _truncation_error(current_page),
+                "usage_log": [usage],
             }
         blocks = tool_block.input.get("blocks", [])
         if isinstance(blocks, str):
@@ -169,7 +173,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 blocks = []
         if not isinstance(blocks, list):
             blocks = []
-        return {"extracted_flat_blocks": blocks, "truncation_error": None}
+        return {"extracted_flat_blocks": blocks, "truncation_error": None, "usage_log": [usage]}
 
 
 async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -187,6 +191,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
         extra_instructions = _doc_type_instructions(doc_type)
 
         last_error: str | None = None
+        usage_log: list[dict] = []
 
         for attempt in range(1, VALIDATION_MAX_RETRIES + 1):
             content: list = [
@@ -215,6 +220,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                 })
 
             response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
+            usage_log.append(usage_entry(f"burst page {current_page} attempt {attempt}", response))
             tool_block = next((b for b in response.content if b.type == "tool_use"), None)
             if tool_block is None:
                 raise ValueError(
@@ -245,10 +251,19 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
             else:
                 try:
                     SchemaRegistry().validate(doc_type, {"document_type": doc_type, "blocks": blocks})
-                    return {"extracted_flat_blocks": blocks}
+                    return {"extracted_flat_blocks": blocks, "usage_log": usage_log}
                 except jsonschema.ValidationError as e:
                     path = " → ".join(str(p) for p in e.absolute_path) or "root"
                     last_error = f"Field '{path}': {e.message}"
+
+            # Retry causes are valuable operational signal (each retry is a paid
+            # call) — surface them as they happen, not only on final failure.
+            print(
+                f"[RETRY] Page {current_page} attempt {attempt}/{VALIDATION_MAX_RETRIES} "
+                f"failed validation: {last_error}",
+                file=sys.stderr,
+                flush=True,
+            )
 
             if attempt == VALIDATION_MAX_RETRIES:
                 return {
@@ -257,6 +272,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                         f"Page {current_page}: schema validation failed after {VALIDATION_MAX_RETRIES} attempts. "
                         f"Last error: {last_error}"
                     ],
+                    "usage_log": usage_log,
                 }
 
         return {"extracted_flat_blocks": []}  # unreachable; satisfies type checker

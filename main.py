@@ -11,6 +11,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from src.graph import build_app
 from src.utils.pdf_utils import hash_file
 from src.utils.tracing import tracing_span
+from src.utils.usage import summarize_usage
 
 load_dotenv()
 
@@ -37,6 +38,7 @@ async def main():
         config["callbacks"] = callbacks
 
     tree_result = None
+    usage_totals = summarize_usage([])
     try:
         async with tracing_span(
             _langfuse, f"PDFScout — {os.path.basename(target_pdf)}", pdf_hash
@@ -50,6 +52,7 @@ async def main():
             state_values = final_state.values if final_state else {}
             tree_result = state_values.get("hierarchical_document_tree")
             extraction_warnings = tree_result.get("extraction_warnings", []) if tree_result else []
+            usage_totals = summarize_usage(state_values.get("usage_log", []) or [])
             if span:
                 span.update(
                     metadata={
@@ -58,6 +61,7 @@ async def main():
                         "document_type": tree_result.get("document_type") if tree_result else "",
                         "total_pages": str(state_values.get("total_pages", "")),
                         "extraction_warnings": "\n".join(extraction_warnings),
+                        **{f"usage_{k}": v for k, v in usage_totals.items()},
                     }
                 )
     finally:
@@ -68,6 +72,16 @@ async def main():
         print("\nWARNINGS:")
         for w in tree_result["extraction_warnings"]:
             print(f"  ! {w}")
+
+    if usage_totals["api_calls"]:
+        print(
+            f"\nUSAGE: {usage_totals['api_calls']} API calls | "
+            f"input {usage_totals['input_tokens']} | "
+            f"output {usage_totals['output_tokens']} | "
+            f"cache_read {usage_totals['cache_read_input_tokens']} | "
+            f"cache_write {usage_totals['cache_creation_input_tokens']}",
+            file=sys.stderr,
+        )
 
     print("\nExtraction complete. Output tree:\n")
     print(json.dumps(tree_result, indent=2))

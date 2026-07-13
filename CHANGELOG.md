@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.8.0] — 20260713 04:22
+
+### Added
+
+- **Usage observability** (`src/utils/usage.py`, `src/state.py`, all API nodes,
+  `main.py`) — every Anthropic call now records a `usage_log` entry (context, input/
+  output tokens, cache read/write, stop reason) merged into graph state.
+  `PDFSCOUT_LOG_USAGE=1` prints per-call `[USAGE]` lines to stderr in real time; every
+  run prints an aggregate `USAGE:` summary; Langfuse traces carry the same totals as
+  metadata. Verified live: classifier/pioneer cache writes, burst cache reads and the
+  summary line all reported correctly on a real 2-page document.
+- **Retry-cause visibility** (`src/nodes/worker_node.py`) — burst validation attempts
+  that fail are printed as `[RETRY]` stderr lines with the discarded error at the
+  moment they happen, so the cause of paid retries is no longer silent when a later
+  attempt succeeds.
+
+### Fixed
+
+- **Classifier truncation risk** (`src/nodes/classifier_node.py`) — the current model
+  runs adaptive thinking by default when `thinking` is omitted, and thinking tokens
+  count against `max_tokens`; with `CLASSIFIER_MAX_TOKENS = 10` a single thinking
+  burst would truncate classification. Thinking is now explicitly disabled on the
+  classifier call. (`_classify` now returns `(doc_type, usage)`.)
+
+### Rejected
+
+- **Classifier cache-prefix unification** (ROADMAP, was Open #5) — structural analysis
+  showed sharing the workers' cache prefix is impossible: per-doc-type tool lists and
+  the workers' forced `tool_choice` (which invalidates the message-tier cache) both
+  break the prefix match. Recorded in ROADMAP → Rejected.
+
+
 ## [1.7.3] — 20260713 03:54
 
 ### Fixed

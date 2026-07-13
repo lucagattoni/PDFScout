@@ -13,21 +13,9 @@ Current version: see [CHANGELOG.md](CHANGELOG.md)
 
 Ordered by priority. Pick from the top unless there's a reason not to.
 
-Items 2–5 come from the 2026-07-13 real-document test session (2-page Irish
+Items 3 and 6 remain from the 2026-07-13 real-document test session (2-page Irish
 utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
 with per-call usage instrumentation).
-
-### 2 · Classifier is one thinking-burst away from breaking
-
-**What:** `CLASSIFIER_MAX_TOKENS = 10`, but the current model runs adaptive
-thinking by default when `thinking` is omitted, and thinking tokens count
-against `max_tokens`. Observed `thinking_tokens: 0` on real runs so far, but a
-single thinking burst truncates the classification.
-
-**Fix:** pass `thinking={"type": "disabled"}` on the classifier call (workers
-are safe — forced `tool_choice` suppresses thinking).
-
-**Scope:** Tiny.
 
 ### 3 · Page-1 completeness variance — no detector for silently dropped blocks
 
@@ -44,33 +32,6 @@ convert silent drops into visible ones.
 
 **Scope:** Medium — needs a matching heuristic robust to whitespace/reflow, and
 a threshold for "significant".
-
-### 4 · Observability: hidden validation retries + opt-in usage logging
-
-**What:** (a) a burst page that fails validation once and succeeds on retry
-leaves no trace of *why* attempt 1 failed (Enel p2 cost one extra ~4.3k-token
-generation, cause unknown). (b) Answering "is prompt caching working?" required
-an ad-hoc monkeypatch; cache/token stats per call are one `usage` field away.
-
-**Fix:** log the discarded `last_error` at debug level on eventual success; add
-an opt-in env flag (e.g. `PDFSCOUT_LOG_USAGE=1`) printing per-call
-cache_write/cache_read/input/output/stop_reason.
-
-**Scope:** Small.
-
-### 5 · Classifier cache write is orphaned (cost)
-
-**What:** the classifier sends no `tools`, so its ~10.4k-token cache write can
-never be read by the workers (prefix mismatch at position 0). Measured on the
-Enel run: classifier wrote 10,403 tokens; workers wrote a separate 11,843-token
-entry.
-
-**Fix idea:** include the worker tool definition on the classifier call with
-`tool_choice: {"type": "none"}` so both share one prefix — one cache write per
-document instead of two. Needs a quick live test that classification quality is
-unaffected.
-
-**Scope:** Small, needs one paid verification run.
 
 ### 6 · Real-document golden corpus completion (Group R)
 
@@ -142,6 +103,7 @@ quality regression. Revisit only if there is a concrete cost/speed requirement.
 | Item | Decision |
 |------|----------|
 | **A5 Files API** — upload PDF once, reference by file_id | Rejected: `cache_control` compatibility undocumented for Files API; current base64 + `cache_control` is the documented recommendation. Revisit if Anthropic explicitly documents Files API + caching. |
+| **Classifier cache-prefix unification (was Open #5)** | Rejected after analysis (2026-07-13): sharing the workers' cache requires an identical `tools` list AND identical `tool_choice` — but workers send a per-doc-type tool the classifier cannot know in advance, and the workers' forced `tool_choice` invalidates the message-tier cache (where the PDF lives) even with identical tools. Structural, not tunable. Revisit only if the API changes cache semantics for `tool_choice`. |
 | **Option B — Merge classifier into pioneer** | Rejected: silent misclassification risk (wrong type that produces syntactically valid blocks passes validation silently), retry loop quality degrades for type-level errors, implementation cost disproportionate to savings at current scale. Full analysis in `plans/20260608_1130-merge-classifier-into-pioneer.md`. |
 
 ---
@@ -161,5 +123,6 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 | Golden `model_version` decoupled from `MODEL` | v1.7.1 | Fixed literal in `_common.py`; stops test runs dirtying tracked goldens (`tests/unit/test_golden_meta.py`) |
 | `temperature` removed (rejected by current model) | v1.6.4 | API began rejecting non-default sampling params on the extraction model; removed from all call sites |
 | Dense-page max_tokens truncation fix | v1.7.2 | `WORKER_MAX_TOKENS` 4000→16000 + `stop_reason` truncation detection in both workers (branch `fix/worker-max-tokens-truncation`, pending merge). Root cause of "Page 2: no blocks" on real 2-page bill |
+| Classifier thinking pinned off + retry/usage observability | v1.8.0 | `thinking: disabled` on classifier (adaptive default would blow the 10-token budget); `[RETRY]` stderr lines with discarded validation errors; `PDFSCOUT_LOG_USAGE=1` per-call usage; end-of-run USAGE summary; Langfuse trace usage metadata; `usage_log` state field |
 | Reading-order banding v2 — general, scale-invariant | v1.7.3 | `plans/20260713_0354-reading-order-band-splits.md` — within-band column-major, heading pull-down, all knobs as span fractions; 11/12 human-order constraints on real docs (was 5/12); known limitation: bandless pages stay whole-page column-major |
 | Prompt caching verified on real docs | v1.7.2 session | Burst pages + retries read the full ~11.8k-token PDF prefix from cache (pioneer writes it); classifier writes a separate orphaned entry (→ Open #5); hierarchy call uncached |

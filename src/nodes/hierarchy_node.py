@@ -18,6 +18,7 @@ from src.config import (
     RETRY_BACKOFF_MIN_SECONDS,
     RETRY_BACKOFF_MULTIPLIER,
 )
+from src.utils.usage import usage_entry
 
 RELATION_TOOL = {
     "name": "set_block_relations",
@@ -182,6 +183,7 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
         ]
         max_tokens = min(HIERARCHY_MAX_TOKENS_CEIL, max(HIERARCHY_MAX_TOKENS_BASE, len(sorted_blocks) * HIERARCHY_TOKENS_PER_BLOCK))
         response = await _call_api(client, manifest, max_tokens)
+        usage_log = [usage_entry("hierarchy", response)]
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_block is None:
             raise ValueError(
@@ -212,6 +214,7 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
             else:
                 block["parent_id"] = relation_map[block["block_id"]]
     else:
+        usage_log = []
         orphan_warnings = []
         for block in sorted_blocks:
             block["parent_id"] = None
@@ -219,6 +222,7 @@ async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:
     all_warnings = field_warnings + orphan_warnings
     return {
         "extraction_warnings": all_warnings,
+        "usage_log": usage_log,
         "hierarchical_document_tree": {
             "document_type": state["document_type"],
             "pdf_hash": state["pdf_hash"],

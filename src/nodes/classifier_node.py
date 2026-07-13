@@ -15,13 +15,19 @@ from src.config import (
 )
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
+from src.utils.usage import usage_entry
 
 
 @retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
-async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
+async def _classify(client: AsyncAnthropic, pdf_base64: str) -> tuple[str, dict]:
     response = await client.messages.create(
         model=MODEL,
         max_tokens=CLASSIFIER_MAX_TOKENS,
+        # Explicitly disable thinking: the current model runs adaptive thinking
+        # by default when the field is omitted, and thinking tokens count
+        # against max_tokens — a single thinking burst would truncate the
+        # tiny classification budget.
+        thinking={"type": "disabled"},
         messages=[
             {
                 "role": "user",
@@ -46,16 +52,16 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> str:
             }
         ],
     )
-    return response.content[0].text.strip().lower()
+    return response.content[0].text.strip().lower(), usage_entry("classifier", response)
 
 
 async def classifier_node(state: dict) -> dict:
     client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     pdf_base64 = await encode_pdf_async(state["file_path"])
-    doc_type = await _classify(client, pdf_base64)
+    doc_type, usage = await _classify(client, pdf_base64)
 
     if doc_type not in SUPPORTED_DOC_TYPES:
         doc_type = FALLBACK_DOC_TYPE
 
     schema, _ = SchemaRegistry().get_schema_and_tool(doc_type)
-    return {"document_type": doc_type, "target_json_schema": schema}
+    return {"document_type": doc_type, "target_json_schema": schema, "usage_log": [usage]}

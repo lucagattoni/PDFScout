@@ -25,6 +25,14 @@ def merge_warnings(existing: list[str], new: list[str]) -> list[str]:
     return existing + new
 
 
+def merge_usage_log(existing: list[dict[str, Any]], new: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not existing:
+        return new if new is not None else []
+    if not new:
+        return existing
+    return existing + new
+
+
 class PDFParserState(TypedDict):
     # Static Input
     file_path: str
@@ -44,4 +52,5 @@ class PDFParserState(TypedDict):
     # Aggregate Buffers
     extracted_flat_blocks: Annotated[list[dict[str, Any]], merge_flat_blocks]
     extraction_warnings: Annotated[list[str], merge_warnings]
+    usage_log: Annotated[list[dict[str, Any]], merge_usage_log]  # per-API-call token/cache stats
     hierarchical_document_tree: dict[str, Any] | None

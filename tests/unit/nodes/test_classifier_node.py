@@ -9,6 +9,11 @@ def _make_text_response(text: str):
     content_block = MagicMock()
     content_block.text = text
     response.content = [content_block]
+    response.stop_reason = "end_turn"
+    response.usage.input_tokens = 40
+    response.usage.output_tokens = 5
+    response.usage.cache_read_input_tokens = 0
+    response.usage.cache_creation_input_tokens = 10000
     return response
 
 
@@ -50,3 +55,20 @@ class TestClassifierNode:
         _setup_mocks(mocker, "  invoice  ")
         result = await classifier_node(sample_state)
         assert result["document_type"] == "invoice"
+
+    async def test_thinking_explicitly_disabled(self, sample_state, mocker):
+        # Adaptive thinking is on by default when the field is omitted, and
+        # thinking tokens count against the tiny classifier budget — the call
+        # must pin thinking off.
+        mock_client = _setup_mocks(mocker, "invoice")
+        await classifier_node(sample_state)
+        kwargs = mock_client.messages.create.call_args.kwargs
+        assert kwargs["thinking"] == {"type": "disabled"}
+
+    async def test_usage_log_returned(self, sample_state, mocker):
+        _setup_mocks(mocker, "invoice")
+        result = await classifier_node(sample_state)
+        assert len(result["usage_log"]) == 1
+        entry = result["usage_log"][0]
+        assert entry["context"] == "classifier"
+        assert entry["cache_creation_input_tokens"] == 10000

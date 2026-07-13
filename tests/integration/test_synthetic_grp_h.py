@@ -23,7 +23,7 @@ class TestGroupH:
         app = build_app(checkpointer=None)
         with (
             patch(
-                "src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")
+                "src.nodes.classifier_node._classify", new=AsyncMock(return_value=("baseline_core", {"context": "classifier", "input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "stop_reason": "end_turn"}))
             ),
             patch(
                 "src.nodes.hierarchy_node._call_api",
@@ -47,7 +47,7 @@ class TestGroupH:
         app = build_app(checkpointer=None)
         with (
             patch(
-                "src.nodes.classifier_node._classify", new=AsyncMock(return_value="baseline_core")
+                "src.nodes.classifier_node._classify", new=AsyncMock(return_value=("baseline_core", {"context": "classifier", "input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "stop_reason": "end_turn"}))
             ),
             patch(
                 "src.nodes.hierarchy_node._call_api",
