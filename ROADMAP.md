@@ -23,16 +23,14 @@ Only 10 of 15 have a golden file, and of those, only 5 are actually committed:
 | Slot group | Golden generated | Committed |
 |---|---|---|
 | `inv-1..5` | 5/5 | ✅ 5/5 |
-| `sp-1..6` | 5/6 (`sp-1..5`) | ❌ 0/5 — sitting untracked in the working tree since 2026-06-04 |
+| `sp-1..6` | 5/6 (`sp-1..5`) | ✅ 5/5 (`sp-1..5` committed in v1.6.3, 2026-07-13); `sp-6` ungenerated |
 | `bc-1..4` | 0/4 | ❌ 0/4 |
 
 **Fix:**
-1. Commit the 5 untracked `tests/fixtures/real_golden/sp-*.json` files (verify
-   they still match current schema/pipeline output before committing — they
-   were generated over a month ago).
+1. ~~Commit the 5 untracked `sp-*.json` files.~~ Done in v1.6.3 (`b12a29f`/`d617b71`).
 2. Run `scripts/download_real_fixtures.py --slot sp-6,bc-1,bc-2,bc-3,bc-4` then
    `scripts/generate_real_ground_truth.py --slot sp-6,bc-1,bc-2,bc-3,bc-4` to
-   fill the remaining 5 slots.
+   fill the remaining 5 slots (`sp-6` + `bc-1..4`).
 3. Confirm `pytest -m e2e -k grp_r` passes for all 15 slots.
 
 **Scope:** Medium — no code changes, but requires live API calls to generate
