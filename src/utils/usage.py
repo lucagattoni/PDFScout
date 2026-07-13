@@ -3,6 +3,20 @@ import sys
 from typing import Any
 
 USAGE_ENV_FLAG = "PDFSCOUT_LOG_USAGE"
+CACHE_TTL_ENV = "PDFSCOUT_CACHE_TTL"
+
+
+def cache_control() -> dict[str, str]:
+    """Prompt-cache marker for the PDF document block.
+
+    Default 5-minute TTL is optimal for single extractions (1.25x write cost).
+    Multi-run workloads over the same document (golden regeneration, N-run
+    variance measurement) should set PDFSCOUT_CACHE_TTL=1h: the 2x write is
+    paid once and every later run reads the ~12k-token PDF prefix at 0.1x,
+    where the 5m TTL often expires between runs on long documents."""
+    if os.environ.get(CACHE_TTL_ENV, "").lower() in ("1h", "1hr", "hour"):
+        return {"type": "ephemeral", "ttl": "1h"}
+    return {"type": "ephemeral"}
 
 
 def usage_entry(context: str, response: Any) -> dict[str, Any]:

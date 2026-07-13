@@ -22,7 +22,7 @@ from src.config import (
 from src.nodes.coverage_node import page_anchors
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
-from src.utils.usage import usage_entry
+from src.utils.usage import cache_control, usage_entry
 
 _semaphore: asyncio.Semaphore | None = None
 _semaphore_loop_id: int = -1
@@ -148,7 +148,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             {
                 "type": "document",
                 "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64},
-                "cache_control": {"type": "ephemeral"},
+                "cache_control": cache_control(),
             },
             {
                 "type": "text",
@@ -227,7 +227,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                 {
                     "type": "document",
                     "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64},
-                    "cache_control": {"type": "ephemeral"},
+                    "cache_control": cache_control(),
                 },
                 {
                     "type": "text",

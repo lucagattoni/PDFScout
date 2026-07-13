@@ -182,7 +182,12 @@ here are never document-specific.
    generator under `tests/fixtures/generators/` (plus golden) in the same change as
    the fix. Block-level unit tests are the fast first line; the generated PDF
    fixture guards the full pipeline.
-7. **Ask when the principle is ambiguous.** If a general rule can't be derived (two
+7. **Cost cap on paid testing.** Do not run the most expensive test workloads
+   (large documents, high-run-count golden regenerations, full e2e sweeps) without
+   explicit user sign-off. Prefer the minimum viable spend: smallest document that
+   reproduces the issue, minimum run count a protocol allows, offline replays
+   before any paid confirmation, and one confirmation run — not one per iteration.
+8. **Ask when the principle is ambiguous.** If a general rule can't be derived (two
    defensible reading-order policies, no typographic principle to appeal to), ask
    the user with the concrete trade-off instead of picking silently.
 

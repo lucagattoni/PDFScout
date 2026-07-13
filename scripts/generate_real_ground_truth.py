@@ -21,6 +21,10 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
+# Multi-run workload over the same PDF: the 1h prompt-cache TTL pays for
+# itself from the second run onward (see src/utils/usage.py cache_control).
+os.environ.setdefault("PDFSCOUT_CACHE_TTL", "1h")
+
 _MANIFEST_PATH = _PROJECT_ROOT / "tests" / "fixtures" / "real_manifest.json"
 _GOLDEN_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "real_golden"
 _PDF_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "pdfs" / "real"
@@ -83,7 +87,16 @@ def _derive_golden(slot_id: str, doc_type: str, runs_results: list[dict], pdf_sh
     else:
         # Apply a 15% safety margin so the floor tolerates runs slightly below the
         # 80th-percentile observation (LLM output varies ±10–20% on block count).
-        min_blocks = max(1, int(_percentile_80(raw_block_counts) * 0.85))
+        # 0.85 x p80 alone can exceed the observed minimum when run-to-run
+        # spread is high (seen: counts [210, 247, 255] -> 216 > 210, so one of
+        # the generating runs itself would fail). Clamp to 95% of the minimum.
+        min_blocks = max(
+            1,
+            min(
+                int(_percentile_80(raw_block_counts) * 0.85),
+                int(min(raw_block_counts) * 0.95),
+            ),
+        )
 
     classification_counter = Counter(classifications)
     top_class, top_count = classification_counter.most_common(1)[0]

@@ -15,7 +15,7 @@ from src.config import (
 )
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
-from src.utils.usage import usage_entry
+from src.utils.usage import cache_control, usage_entry
 
 
 @retry(stop=stop_after_attempt(HTTP_MAX_RETRIES), wait=wait_exponential(multiplier=RETRY_BACKOFF_MULTIPLIER, min=RETRY_BACKOFF_MIN_SECONDS, max=RETRY_BACKOFF_MAX_SECONDS))
@@ -39,7 +39,7 @@ async def _classify(client: AsyncAnthropic, pdf_base64: str) -> tuple[str, dict]
                             "media_type": "application/pdf",
                             "data": pdf_base64,
                         },
-                        "cache_control": {"type": "ephemeral"},
+                        "cache_control": cache_control(),
                     },
                     {
                         "type": "text",

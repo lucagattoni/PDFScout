@@ -108,12 +108,12 @@ matching — v2 of the coverage oracle).
 
 ### 6 · Real-document golden corpus completion (Group R)
 
-**Status 2026-07-13 (v1.9.0):** sp-1 regenerated and e2e-verified on the final
-pipeline (anchors active). sp-5 regeneration failed twice: the API credit
-balance ran out mid-slot (the deterministic 400 was initially masked by
-tenacity's RetryError — the regen script now logs per-run failures and
-survives them). sp-5 carries a temporary `skip_e2e_reason`; regenerate and
-unskip after topping up credits. sp-4 remains skipped (large doc).
+**Status 2026-07-13 (v1.10.0):** sp-1 regenerated and e2e-verified; sp-5
+regenerated (3 runs, cost-capped per user instruction) and unskipped. The
+`min_blocks` formula is now clamped to 95% of the observed minimum (0.85×p80
+exceeded a generating run's own count under high spread). Remaining: sp-4
+(large-doc skip stands), sp-6 + bc-1..4 (never generated). Generator's exact-
+match metadata consensus still pending (see below).
 
 **Generator improvement (small, found during v1.9.0 regen):**
 `generate_real_ground_truth.py` computes `metadata_required` consensus by exact

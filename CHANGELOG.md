@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.10.0] — 20260713 07:42
+
+### Added
+
+- **Switchable prompt-cache TTL** (`src/utils/usage.py: cache_control()`, env
+  `PDFSCOUT_CACHE_TTL=1h`) — multi-run workloads over the same document read the
+  ~12k-token PDF prefix at 0.1× across runs instead of racing the 5-minute TTL
+  (each sp-5 run takes ~4.5 min — a coin flip). The regeneration script sets it
+  automatically; single extractions keep the cheaper 5m default. Runs stay
+  sequential by design: truly concurrent identical requests each pay the full
+  cache write.
+- **CLAUDE.md investigation rule #7: cost cap on paid testing** — most expensive
+  workloads need explicit sign-off; minimum viable spend otherwise.
+
+### Fixed
+
+- **Golden `min_blocks` could exceed a generating run's own block count**
+  (`scripts/generate_real_ground_truth.py`) — 0.85×p80 under high run-to-run spread
+  (observed: counts [210, 247, 255] → threshold 216 > 210, guaranteed flakiness).
+  Now clamped to ≤95% of the observed minimum; committed goldens recomputed offline
+  (sp-5 216→199, sp-1 105→103).
+
+### Changed
+
+- **sp-5 golden regenerated** for the current model (3 runs, cost-capped; block
+  counts 210–255, 10 stable fragments, title+authors consensus) and unskipped.
+
+
 ## [1.9.0] — 20260713 05:21
 
 ### Added

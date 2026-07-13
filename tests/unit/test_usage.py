@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from src.utils.usage import summarize_usage, usage_entry
+from src.utils.usage import cache_control, summarize_usage, usage_entry
 
 
 def _resp(inp=100, out=50, read=0, write=0, stop="end_turn"):
@@ -58,3 +58,17 @@ class TestSummarizeUsage:
 
     def test_tolerates_missing_keys(self):
         assert summarize_usage([{}])["input_tokens"] == 0
+
+
+class TestCacheControl:
+    def test_default_five_minute(self, monkeypatch):
+        monkeypatch.delenv("PDFSCOUT_CACHE_TTL", raising=False)
+        assert cache_control() == {"type": "ephemeral"}
+
+    def test_one_hour_opt_in(self, monkeypatch):
+        monkeypatch.setenv("PDFSCOUT_CACHE_TTL", "1h")
+        assert cache_control() == {"type": "ephemeral", "ttl": "1h"}
+
+    def test_unknown_value_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("PDFSCOUT_CACHE_TTL", "2d")
+        assert cache_control() == {"type": "ephemeral"}
