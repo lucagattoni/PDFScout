@@ -134,7 +134,12 @@ def geometric_pre_sorter(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def _call_api(
     client: AsyncAnthropic, manifest: list, max_tokens: int = HIERARCHY_MAX_TOKENS_BASE
 ) -> Any:
-    return await client.messages.create(
+    # Stream rather than a blocking create(): the hierarchy call scales to
+    # max_tokens=16000 on large documents, and a long non-streaming response can
+    # hit the API's long-request timeout (same failure mode fixed in
+    # worker_node). Streaming keeps the connection alive; get_final_message()
+    # returns the same Message the caller consumes.
+    async with client.messages.stream(
         model=MODEL,
         max_tokens=max_tokens,
         tools=[RELATION_TOOL],
@@ -154,7 +159,8 @@ async def _call_api(
                 ),
             }
         ],
-    )
+    ) as stream:
+        return await stream.get_final_message()
 
 
 async def layout_hierarchy_agent_node(state: dict[str, Any]) -> dict[str, Any]:

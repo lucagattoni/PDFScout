@@ -22,6 +22,17 @@ def _make_relation_response(relations: list):
     return response
 
 
+def _stream_cm(response):
+    """Mimic worker_node's ``client.messages.stream(...)`` — an async context
+    manager whose ``get_final_message()`` returns the final Message."""
+    inner = MagicMock()
+    inner.get_final_message = AsyncMock(return_value=response)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=inner)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
+
+
 def _valid_block(page: int = 1):
     return {
         "block_id": f"blk-p{page}",
@@ -69,8 +80,8 @@ class TestGraphPipelineHappyPath:
 
         worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         worker_client = worker_mock.return_value
-        worker_client.messages.create = AsyncMock(
-            return_value=_make_tool_use_response([_valid_block(1)])
+        worker_client.messages.stream = MagicMock(
+            return_value=_stream_cm(_make_tool_use_response([_valid_block(1)]))
         )
 
         mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
@@ -105,8 +116,8 @@ class TestClassifierFallback:
 
         worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         worker_client = worker_mock.return_value
-        worker_client.messages.create = AsyncMock(
-            return_value=_make_tool_use_response([_valid_block(1)])
+        worker_client.messages.stream = MagicMock(
+            return_value=_stream_cm(_make_tool_use_response([_valid_block(1)]))
         )
 
         mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
@@ -149,22 +160,24 @@ class TestGraphPipelineRetry:
         }
         worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         worker_client = worker_mock.return_value
-        worker_client.messages.create = AsyncMock(
+        worker_client.messages.stream = MagicMock(
             side_effect=[
-                _make_tool_use_response([invalid_block]),  # pioneer call 1 → invalid
-                _make_tool_use_response([_valid_block(1)]),  # pioneer call 2 (after retry) → valid
-                _make_tool_use_response([_valid_block(2)]),  # page 2 burst worker
+                _stream_cm(_make_tool_use_response([invalid_block])),  # pioneer 1 → invalid
+                _stream_cm(_make_tool_use_response([_valid_block(1)])),  # pioneer 2 (retry) → valid
+                _stream_cm(_make_tool_use_response([_valid_block(2)])),  # page 2 burst worker
             ]
         )
 
         hierarchy_mock = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
         hierarchy_client = hierarchy_mock.return_value
-        hierarchy_client.messages.create = AsyncMock(
-            return_value=_make_relation_response(
-                [
-                    {"block_id": "blk-p1", "parent_id": None},
-                    {"block_id": "blk-p2", "parent_id": None},
-                ]
+        hierarchy_client.messages.stream = MagicMock(
+            return_value=_stream_cm(
+                _make_relation_response(
+                    [
+                        {"block_id": "blk-p1", "parent_id": None},
+                        {"block_id": "blk-p2", "parent_id": None},
+                    ]
+                )
             )
         )
 
@@ -210,19 +223,21 @@ class TestBurstAdversarial:
         }
         worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         worker_client = worker_mock.return_value
-        worker_client.messages.create = AsyncMock(
+        worker_client.messages.stream = MagicMock(
             side_effect=[
-                _make_tool_use_response([_valid_block(1)]),  # pioneer page 1 → valid
-                _make_tool_use_response([malformed_block]),  # burst page 2, attempt 1 → invalid
-                _make_tool_use_response([malformed_block]),  # burst page 2, attempt 2 → invalid
-                _make_tool_use_response([malformed_block]),  # burst page 2, attempt 3 → invalid
+                _stream_cm(_make_tool_use_response([_valid_block(1)])),  # pioneer page 1 → valid
+                _stream_cm(_make_tool_use_response([malformed_block])),  # burst p2, attempt 1
+                _stream_cm(_make_tool_use_response([malformed_block])),  # burst p2, attempt 2
+                _stream_cm(_make_tool_use_response([malformed_block])),  # burst p2, attempt 3
             ]
         )
 
         hierarchy_mock = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
         hierarchy_client = hierarchy_mock.return_value
-        hierarchy_client.messages.create = AsyncMock(
-            return_value=_make_relation_response([{"block_id": "blk-p1", "parent_id": None}])
+        hierarchy_client.messages.stream = MagicMock(
+            return_value=_stream_cm(
+                _make_relation_response([{"block_id": "blk-p1", "parent_id": None}])
+            )
         )
 
         _, final_state = await _stream_graph(minimal_pdf_path)
@@ -268,8 +283,8 @@ class TestGraphPipelineMaxRetryDegradation:
         # All 4 attempts (1 pioneer + 3 retries) return invalid blocks
         worker_mock = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         worker_client = worker_mock.return_value
-        worker_client.messages.create = AsyncMock(
-            return_value=_make_tool_use_response([invalid_block])
+        worker_client.messages.stream = MagicMock(
+            return_value=_stream_cm(_make_tool_use_response([invalid_block]))
         )
 
         mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")

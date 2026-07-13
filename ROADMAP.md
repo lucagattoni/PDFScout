@@ -274,6 +274,7 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 
 | Item | Version | Detail |
 |---|---|---|
+| Extraction/hierarchy streaming (APITimeoutError fix) | v1.12.3 | Worker + hierarchy calls stream via messages.stream()/get_final_message() instead of blocking create() at max_tokens=16000 — avoids the API long-request timeout that broke golden regen on dense pages. Found 2026-07-13. |
 | Strict-schema "too complex" regression fix | v1.12.2 | Strict tool use (v1.10.1) broke `scientific_paper`/`contract` extraction — the API rejects their strict grammar with `400 "Schema is too complex."`. Worker now falls back to a non-strict tool on that error, memoized per doc type; `_call_api` no longer retries deterministic 4xx. Found via golden regen 2026-07-13. |
 | C3 · API job-loss regression test | v1.5.1 | `TestJobStorePersistence` in `test_api_jobs.py` |
 | A2 · Burst page validation full parity | v1.5.0 | Burst pages retry inline up to 3× on schema failure, mirroring pioneer |

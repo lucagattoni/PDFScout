@@ -23,6 +23,17 @@ def _make_relation_response(relations: list):
     return response
 
 
+def _stream_cm(response):
+    """Mimic hierarchy_node's ``client.messages.stream(...)`` — an async context
+    manager whose ``get_final_message()`` returns the final Message."""
+    inner = MagicMock()
+    inner.get_final_message = AsyncMock(return_value=response)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=inner)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
+
+
 def _make_text_only_response():
     text_block = MagicMock()
     text_block.type = "text"
@@ -397,7 +408,7 @@ class TestLayoutHierarchyAgentNode:
         mock_client = mock_class.return_value
         state = {**sample_state, "extracted_flat_blocks": []}
         result = await layout_hierarchy_agent_node(state)
-        mock_client.messages.create.assert_not_called()
+        mock_client.messages.stream.assert_not_called()
         assert result["hierarchical_document_tree"]["structured_payload"] == []
 
     async def test_single_block_skips_api_and_sets_parent_none(
@@ -407,7 +418,7 @@ class TestLayoutHierarchyAgentNode:
         mock_client = mock_class.return_value
         state = {**sample_state, "extracted_flat_blocks": [sample_block]}
         result = await layout_hierarchy_agent_node(state)
-        mock_client.messages.create.assert_not_called()
+        mock_client.messages.stream.assert_not_called()
         payload = result["hierarchical_document_tree"]["structured_payload"]
         assert len(payload) == 1
         assert payload[0]["parent_id"] is None
@@ -424,7 +435,9 @@ class TestLayoutHierarchyAgentNode:
         ]
         mock_class = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(return_value=_make_relation_response(relations))
+        mock_client.messages.stream = MagicMock(
+            return_value=_stream_cm(_make_relation_response(relations))
+        )
         state = {**sample_state, "extracted_flat_blocks": [sample_block, block2]}
         result = await layout_hierarchy_agent_node(state)
         payload = result["hierarchical_document_tree"]["structured_payload"]
@@ -451,7 +464,9 @@ class TestLayoutHierarchyAgentNode:
         relations = [{"block_id": "blk-001", "parent_id": None}]
         mock_class = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(return_value=_make_relation_response(relations))
+        mock_client.messages.stream = MagicMock(
+            return_value=_stream_cm(_make_relation_response(relations))
+        )
         state = {**sample_state, "extracted_flat_blocks": [sample_block, block2]}
         result = await layout_hierarchy_agent_node(state)
         payload = result["hierarchical_document_tree"]["structured_payload"]
@@ -467,7 +482,7 @@ class TestLayoutHierarchyAgentNode:
         }
         mock_class = mocker.patch("src.nodes.hierarchy_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(return_value=_make_text_only_response())
+        mock_client.messages.stream = MagicMock(return_value=_stream_cm(_make_text_only_response()))
         mocker.patch("tenacity.nap.sleep")
         state = {**sample_state, "extracted_flat_blocks": [sample_block, block2]}
         with pytest.raises(ValueError):

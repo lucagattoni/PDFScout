@@ -53,6 +53,36 @@ def _make_text_only_response():
     return response
 
 
+def _stream_cm(response=None, *, exc=None):
+    """Mimic ``client.messages.stream(...)``: an async context manager whose
+    ``get_final_message()`` returns the final Message (or raises)."""
+    inner = MagicMock()
+    inner.get_final_message = (
+        AsyncMock(side_effect=exc) if exc else AsyncMock(return_value=response)
+    )
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=inner)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
+
+
+def _set_stream(mock_client, *, response=None, responses=None, side_effect=None):
+    """Wire ``mock_client.messages.stream`` to yield stream context managers.
+
+    - response: single final Message for every call
+    - responses: one Message per successive call (retry sequences)
+    - side_effect: a callable(*args, **kwargs) returning a stream cm (for
+      tool-dependent behaviour, e.g. the strict-fallback tests)
+    """
+    if side_effect is not None:
+        mock_client.messages.stream = MagicMock(side_effect=side_effect)
+    elif responses is not None:
+        mock_client.messages.stream = MagicMock(side_effect=[_stream_cm(r) for r in responses])
+    else:
+        mock_client.messages.stream = MagicMock(return_value=_stream_cm(response))
+    return mock_client
+
+
 def _setup_mocks(mocker, response):
     mocker.patch(
         "src.nodes.worker_node.encode_pdf_async",
@@ -60,8 +90,7 @@ def _setup_mocks(mocker, response):
     )
     mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
     mock_client = mock_class.return_value
-    mock_client.messages.create = AsyncMock(return_value=response)
-    return mock_client
+    return _set_stream(mock_client, response=response)
 
 
 class TestWindowParserNode:
@@ -78,7 +107,7 @@ class TestWindowParserNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(return_value=_make_text_only_response())
+        _set_stream(mock_client, response=_make_text_only_response())
         # Bypass tenacity retries
         mocker.patch("tenacity.nap.sleep")
         with pytest.raises(ValueError):
@@ -91,7 +120,7 @@ class TestWindowParserNode:
         response = _make_tool_use_response([sample_block])
         mock_client = _setup_mocks(mocker, response)
         await window_parser_node(state)
-        call_args = mock_client.messages.create.call_args
+        call_args = mock_client.messages.stream.call_args
         content = call_args.kwargs["messages"][0]["content"]
         assert len(content) == 3
         assert "Field 'type': invalid value" in content[2]["text"]
@@ -101,7 +130,7 @@ class TestWindowParserNode:
         response = _make_tool_use_response([sample_block])
         mock_client = _setup_mocks(mocker, response)
         await window_parser_node(state)
-        call_args = mock_client.messages.create.call_args
+        call_args = mock_client.messages.stream.call_args
         content = call_args.kwargs["messages"][0]["content"]
         assert len(content) == 2
 
@@ -143,7 +172,7 @@ class TestBurstWorkerNode:
         mock_client = _setup_mocks(mocker, response)
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [sample_block]
-        assert mock_client.messages.create.call_count == 1
+        assert mock_client.messages.stream.call_count == 1
         assert "extraction_warnings" not in result
 
     async def test_extraction_flags_passed_through(self, sample_state, sample_block, mocker):
@@ -174,15 +203,16 @@ class TestBurstWorkerNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=[
+        _set_stream(
+            mock_client,
+            responses=[
                 _make_tool_use_response([invalid_block]),
                 _make_tool_use_response([sample_block]),
-            ]
+            ],
         )
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [sample_block]
-        assert mock_client.messages.create.call_count == 2
+        assert mock_client.messages.stream.call_count == 2
         assert "extraction_warnings" not in result
 
     async def test_max_retries_exceeded_returns_blocks_with_warning(
@@ -192,7 +222,7 @@ class TestBurstWorkerNode:
         mock_client = _setup_mocks(mocker, _make_tool_use_response([invalid_block]))
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [invalid_block]
-        assert mock_client.messages.create.call_count == VALIDATION_MAX_RETRIES
+        assert mock_client.messages.stream.call_count == VALIDATION_MAX_RETRIES
         warnings = result.get("extraction_warnings", [])
         assert len(warnings) == 1
         assert f"schema validation failed after {VALIDATION_MAX_RETRIES} attempts" in warnings[0]
@@ -205,14 +235,15 @@ class TestBurstWorkerNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=[
+        _set_stream(
+            mock_client,
+            responses=[
                 _make_tool_use_response([invalid_block]),
                 _make_tool_use_response([sample_block]),
-            ]
+            ],
         )
         await burst_worker_node(sample_state)
-        second_call_content = mock_client.messages.create.call_args_list[1].kwargs["messages"][0][
+        second_call_content = mock_client.messages.stream.call_args_list[1].kwargs["messages"][0][
             "content"
         ]
         assert len(second_call_content) == 3
@@ -225,15 +256,16 @@ class TestBurstWorkerNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=[
+        _set_stream(
+            mock_client,
+            responses=[
                 _make_tool_use_response([]),
                 _make_tool_use_response([sample_block]),
-            ]
+            ],
         )
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [sample_block]
-        assert mock_client.messages.create.call_count == 2
+        assert mock_client.messages.stream.call_count == 2
 
     async def test_truncation_triggers_retry_with_conciseness_error(
         self, sample_state, sample_block, mocker
@@ -244,16 +276,17 @@ class TestBurstWorkerNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=[
+        _set_stream(
+            mock_client,
+            responses=[
                 _make_truncated_response(),
                 _make_tool_use_response([sample_block]),
-            ]
+            ],
         )
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == [sample_block]
-        assert mock_client.messages.create.call_count == 2
-        second_call_content = mock_client.messages.create.call_args_list[1].kwargs["messages"][0][
+        assert mock_client.messages.stream.call_count == 2
+        second_call_content = mock_client.messages.stream.call_args_list[1].kwargs["messages"][0][
             "content"
         ]
         assert "truncated" in second_call_content[2]["text"]
@@ -263,7 +296,7 @@ class TestBurstWorkerNode:
         mock_client = _setup_mocks(mocker, _make_truncated_response())
         result = await burst_worker_node(sample_state)
         assert result["extracted_flat_blocks"] == []
-        assert mock_client.messages.create.call_count == VALIDATION_MAX_RETRIES
+        assert mock_client.messages.stream.call_count == VALIDATION_MAX_RETRIES
         warnings = result.get("extraction_warnings", [])
         assert len(warnings) == 1
         assert "truncated" in warnings[0]
@@ -277,11 +310,12 @@ class TestBurstWorkerNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=[
+        _set_stream(
+            mock_client,
+            responses=[
                 _make_tool_use_response([invalid_block]),
                 _make_tool_use_response([sample_block]),
-            ]
+            ],
         )
         await burst_worker_node(sample_state)
         err = capsys.readouterr().err
@@ -297,11 +331,12 @@ class TestBurstWorkerNode:
         )
         mock_class = mocker.patch("src.nodes.worker_node.AsyncAnthropic")
         mock_client = mock_class.return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=[
+        _set_stream(
+            mock_client,
+            responses=[
                 _make_tool_use_response([invalid_block]),
                 _make_tool_use_response([sample_block]),
-            ]
+            ],
         )
         result = await burst_worker_node(sample_state)
         assert len(result["usage_log"]) == 2
@@ -332,7 +367,7 @@ class TestBurstWorkerNode:
         fake_reader.pages = [fake_page, fake_page, fake_page]
         mocker.patch("src.nodes.worker_node.PdfReader", return_value=fake_reader)
         await burst_worker_node(sample_state)
-        text = mock_client.messages.create.call_args.kwargs["messages"][0]["content"][1]["text"]
+        text = mock_client.messages.stream.call_args.kwargs["messages"][0]["content"][1]["text"]
         assert "anchors from the PDF text layer" in text
         assert "Opening heading of the page" in text
         assert "Closing footer line of the page" in text
@@ -342,7 +377,7 @@ class TestBurstWorkerNode:
         mock_client = _setup_mocks(mocker, response)
         mocker.patch("src.nodes.worker_node.PdfReader", side_effect=OSError("no such file"))
         await burst_worker_node(sample_state)
-        text = mock_client.messages.create.call_args.kwargs["messages"][0]["content"][1]["text"]
+        text = mock_client.messages.stream.call_args.kwargs["messages"][0]["content"][1]["text"]
         assert "anchors from the PDF text layer" not in text
 
 
@@ -366,12 +401,12 @@ class TestStrictSchemaFallback:
         mock_client = mocker.patch("src.nodes.worker_node.AsyncAnthropic").return_value
         ok = _make_tool_use_response([sample_block])
 
-        async def side_effect(*_, **kwargs):
+        def stream_side_effect(*_, **kwargs):
             if kwargs["tools"][0].get("strict"):
-                raise _bad_request("Schema is too complex.")
-            return ok
+                return _stream_cm(exc=_bad_request("Schema is too complex."))
+            return _stream_cm(ok)
 
-        mock_client.messages.create = AsyncMock(side_effect=side_effect)
+        _set_stream(mock_client, side_effect=stream_side_effect)
         result = await window_parser_node(state)
         assert result["extracted_flat_blocks"] == [sample_block]
         # doc type memoized so later pages skip the strict probe
@@ -384,12 +419,10 @@ class TestStrictSchemaFallback:
             "src.nodes.worker_node.encode_pdf_async", new=AsyncMock(return_value="ZmFrZQ==")
         )
         mock_client = mocker.patch("src.nodes.worker_node.AsyncAnthropic").return_value
-        mock_client.messages.create = AsyncMock(
-            return_value=_make_tool_use_response([sample_block])
-        )
+        _set_stream(mock_client, response=_make_tool_use_response([sample_block]))
         await window_parser_node(state)
         # the only call used a non-strict tool — no wasted strict probe
-        assert "strict" not in mock_client.messages.create.call_args.kwargs["tools"][0]
+        assert "strict" not in mock_client.messages.stream.call_args.kwargs["tools"][0]
 
     async def test_non_too_complex_bad_request_propagates(self, sample_state, mocker):
         state = {**sample_state, "document_type": "scientific_paper"}
@@ -397,12 +430,15 @@ class TestStrictSchemaFallback:
             "src.nodes.worker_node.encode_pdf_async", new=AsyncMock(return_value="ZmFrZQ==")
         )
         mock_client = mocker.patch("src.nodes.worker_node.AsyncAnthropic").return_value
-        mock_client.messages.create = AsyncMock(
-            side_effect=_bad_request("messages.0: at least one message is required")
+        _set_stream(
+            mock_client,
+            side_effect=lambda *_, **__: _stream_cm(
+                exc=_bad_request("messages.0: at least one message is required")
+            ),
         )
         mocker.patch("tenacity.nap.sleep")
         with pytest.raises(BadRequestError):
             await window_parser_node(state)
         # a deterministic 400 is not retried and not turned into a strict fallback
-        assert mock_client.messages.create.call_count == 1
+        assert mock_client.messages.stream.call_count == 1
         assert "scientific_paper" not in wn._STRICT_INCOMPATIBLE

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.3] — 20260713 16:08
+
+### Fixed
+
+- **`APITimeoutError` on extraction/hierarchy calls** (surfaced by real-doc
+  golden regen on the dense sp-1 paper, reproducibly). The worker and hierarchy
+  agents ran blocking `messages.create()` at `max_tokens=16000`; a long
+  non-streaming response holds one connection open long enough for the API's
+  long-request timeout (or a flaky link) to drop it. Both now **stream** via
+  `client.messages.stream(...)` + `get_final_message()` — the connection stays
+  alive with incremental events and is not subject to the long-request timeout.
+  The reassembled `Message` (content, usage, stop_reason) is identical, so the
+  strict-fallback, truncation detection, validation-retry, and usage logging
+  paths are unchanged. Test mocks updated to the streaming context-manager
+  shape across worker, hierarchy, and graph-pipeline suites.
+
 ## [1.12.2] — 20260713 13:52
 
 ### Fixed

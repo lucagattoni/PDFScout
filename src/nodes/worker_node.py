@@ -152,13 +152,21 @@ _STRICT_INCOMPATIBLE: set[str] = set()
     ),
 )
 async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dict) -> Any:
-    return await client.messages.create(
+    # Stream instead of a single blocking create(): extraction runs at
+    # max_tokens=16000, and a long non-streaming response holds one connection
+    # open long enough for the API's long-request timeout (or a flaky link) to
+    # drop it — observed as APITimeoutError on dense pages. Streaming keeps the
+    # connection alive with incremental events and is not subject to that
+    # timeout; get_final_message() reassembles the same Message object (content,
+    # usage, stop_reason) the rest of this module already consumes.
+    async with client.messages.stream(
         model=MODEL,
         max_tokens=WORKER_MAX_TOKENS,
         tools=[tool_definition],
         tool_choice={"type": "tool", "name": tool_definition["name"]},
         messages=messages,
-    )
+    ) as stream:
+        return await stream.get_final_message()
 
 
 def _extraction_tool(doc_type: str) -> dict:
