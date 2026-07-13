@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.12.0] — 20260713 10:02
+
+### Added
+
+- **Hierarchical documentation site (MkDocs Material)** — the 523-line README is
+  restructured into a progressive-depth doc tree modeled on the maintainer's
+  langgraph-course site: a slim beginner-friendly `README.md` (84 lines) plus
+  `docs/` organized as numbered sections — `01-getting-started/` (installation,
+  usage), `02-concepts/` (architecture with new agentic-design, LangGraph-
+  mechanics, reading-order-logic and coverage-oracle-logic deep dives; output
+  format with design rationale; design innovations), `03-reference/`
+  (configuration grouped by concern with per-knob principles; the API reference,
+  moved from `API_README.md`), `04-contributing/` (development, testing,
+  real-doc workflow) — each with a section index and cross-links that work on
+  both GitHub and the rendered site. New `mkdocs.yml` + `make docs` target;
+  `mkdocs-material` added to the dev dependency group; `site/` gitignored;
+  `MD033` disabled for Material grid cards.
+
+### Changed
+
+- **`generate_real_ground_truth.py` default `--runs` 5 → 3** — 3 sequential
+  runs with the 1-hour cache TTL is the cost-capped protocol minimum;
+  `docs/04-contributing/03-real-doc-workflow.md` examples updated to match.
+- **`.env.example`** now documents the optional `PDFSCOUT_LOG_USAGE` and
+  `PDFSCOUT_CACHE_TTL` knobs.
+
+### Fixed
+
+- **`make ci` was red on main** — repo-wide `ruff format` drift (29 files) and
+  markdownlint violations that predate this change (unspaced table pipes now
+  flagged by the new upstream MD060 rule — disabled in config like MD013;
+  missing fence languages/blank lines in `calibration_notes.md` and the corpus
+  runbook; list spacing in `ROADMAP.md`). All repaired; `MD033` also disabled
+  for Material grid-card HTML in the new docs.
+- **Documentation drift (12 findings from a full coherence audit):** test count
+  159 → 241 (twice); prompt-cache TTL described as a fixed 5-minute limitation
+  though switchable via `PDFSCOUT_CACHE_TTL` since v1.10.0 (twice);
+  `BAND_FULL_WIDTH_FRAC` shown as 0.6 (actual 0.55) and `BAND_PULLDOWN_GAP_FRAC`
+  as 0.035 (actual 0.05); six coverage/duplication constants missing from the
+  configuration listing; e2e group range "(a–h)" though groups run to I; "all
+  five node functions" though there are six; strict tool use (v1.10.1) absent
+  from the schema-registry description in both the README and
+  `schemas/README.md` (which still claimed only `$schema`/`title` are
+  stripped); the CLI progress example omitted the `coverage_auditor` node; the
+  project-structure tree omitted `coverage_node.py`, `usage.py`, `tracing.py`,
+  `src/api/`, `api.py`, `scripts/`, and every test file added since v1.8.
+
 ## [1.11.0] — 20260713 08:08
 
 ### Added
@@ -25,7 +72,6 @@
   commit history: consensus groups by normalized value; case flicker no longer
   drops `metadata_required` keys.
 
-
 ## [1.10.1] — 20260713 07:57
 
 ### Changed
@@ -43,7 +89,6 @@
   richest extraction of that document to date (69 blocks), reasoning behavior
   unchanged on forced-tool calls. Note: the tools-prefix change invalidates existing
   prompt-cache entries once.
-
 
 ## [1.10.0] — 20260713 07:42
 
@@ -71,7 +116,6 @@
 
 - **sp-5 golden regenerated** for the current model (3 runs, cost-capped; block
   counts 210–255, 10 stable fragments, title+authors consensus) and unskipped.
-
 
 ## [1.9.0] — 20260713 05:21
 
@@ -111,7 +155,6 @@
   (`scripts/generate_real_ground_truth.py`) — one failed run no longer aborts the slot
   and loses completed paid runs; requires ≥ max(3, 60%·n) successes.
 
-
 ## [1.8.2] — 20260713 04:43
 
 ### Fixed
@@ -133,7 +176,6 @@
   16-page paper (new Open #7); block_id-only dedup cannot catch cross-worker
   duplicates.
 
-
 ## [1.8.1] — 20260713 04:23
 
 ### Fixed
@@ -145,7 +187,6 @@
   heading-to-table gaps include cell padding — about two line-heights, not one.
   Offline replay on both real documents unchanged (11/12 constraints);
   `test_g4_heading_adjacent_to_its_table` now passes live.
-
 
 ## [1.8.0] — 20260713 04:22
 
@@ -178,7 +219,6 @@
   the workers' forced `tool_choice` (which invalidates the message-tier cache) both
   break the prefix match. Recorded in ROADMAP → Rejected.
 
-
 ## [1.7.3] — 20260713 03:54
 
 ### Fixed
@@ -203,7 +243,6 @@
 - **CLAUDE.md Investigation rules** — offline-replay-first, mechanism-not-document
   root-causing, principle-derived scale-invariant thresholds, edge-case test
   enumeration, anti-overfit gate, synthetic-fixture distillation, ask-on-ambiguity.
-
 
 ## [1.7.2] — 20260713 03:12
 

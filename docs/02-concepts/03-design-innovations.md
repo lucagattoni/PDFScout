@@ -7,7 +7,7 @@ The **why** behind PDFScout's design choices, compared feature-by-feature agains
 traditional document parsers (pdfplumber, PyPDF2, Tika, PDFMiner).
 
 For the **what** — pipeline diagram, node-by-node reference, output format, and
-configuration — see the [README](../README.md#architecture). This document
+configuration — see [architecture](01-architecture.md). This document
 deliberately repeats none of it.
 
 ---
@@ -33,7 +33,7 @@ Traditional parsers have no concept of correctness. If a table parser's regex
 doesn't match, it either returns empty or silently corrupts data.
 
 PDFScout's pioneer page runs a closed feedback cycle
-(mechanics in [README → Self-Healing Loop](../README.md#self-healing-loop-pioneer-page)):
+(mechanics in [architecture → Self-Healing Loop](01-architecture.md#self-healing-loop-pioneer-page)):
 
 ```text
 LLM output → jsonschema validation → error path/message → prompt augmentation → LLM retry
@@ -60,12 +60,12 @@ Adding a new document type is declarative — write a JSON Schema file, add the
 type string to a config set. The classifier prompt updates automatically (it
 enumerates `sorted(SUPPORTED_DOC_TYPES)`). No rule-engine changes, no layout
 heuristics, no regex patterns. Step-by-step guide in
-[schemas/README.md](../schemas/README.md).
+[schemas/README.md](https://github.com/lucagattoni/PDFScout/blob/main/schemas/README.md).
 
 ## 4. Map-Reduce Parallel Extraction with Prompt Caching
 
 Most PDF extractors process pages sequentially. PDFScout exploits Anthropic's
-prompt cache (details in [README → Prompt Caching](../README.md#prompt-caching)):
+prompt cache (details in [architecture → Prompt Caching](01-architecture.md#prompt-caching)):
 
 - The **pioneer page** sends the PDF as a `document` block with
   `cache_control: {"type": "ephemeral"}` — this establishes Claude's cached
@@ -123,7 +123,7 @@ reading-order logic and structural inference.
 
 PDFScout normalizes every document to the same output shape — the
 `hierarchical_document_tree` documented in
-[README → Output Format](../README.md#output-format). All core block types nest
+[output format](02-output-format.md). All core block types nest
 under `structured_payload`; domain-specific data lives in `metadata`;
 `extraction_flags` signal uncertainty for downstream RAG pipelines. This
 uniformity means a single ingestion path can consume invoices, scientific

@@ -6,6 +6,7 @@ Usage:
 
 Does NOT invoke C1.  Run download_real_fixtures.py before this script.
 """
+
 import argparse
 import asyncio
 import json
@@ -57,6 +58,7 @@ def _consensus_key(value) -> str:
 def _normalize(text: str) -> str:
     import re
     import unicodedata
+
     text = unicodedata.normalize("NFKC", text)
     text = text.strip()
     text = re.sub(r"\s+", " ", text)
@@ -72,6 +74,7 @@ async def _run_all_for_slot(pdf_path: Path, n_runs: int) -> list[tuple[int, dict
     the paid runs already completed — log it and continue. The caller enforces
     a minimum number of successful runs."""
     from src.graph import build_app
+
     results = []
     for i in range(n_runs):
         try:
@@ -89,7 +92,14 @@ async def _run_all_for_slot(pdf_path: Path, n_runs: int) -> list[tuple[int, dict
     return results
 
 
-def _derive_golden(slot_id: str, doc_type: str, runs_results: list[dict], pdf_sha256: str | None, n_runs: int, min_blocks_override: int | None) -> dict:
+def _derive_golden(
+    slot_id: str,
+    doc_type: str,
+    runs_results: list[dict],
+    pdf_sha256: str | None,
+    n_runs: int,
+    min_blocks_override: int | None,
+) -> dict:
     block_lists = [r["hierarchical_document_tree"]["structured_payload"] for r in runs_results]
     classifications = [r["document_type"] for r in runs_results]
     raw_block_counts = [len(bl) for bl in block_lists]
@@ -159,8 +169,7 @@ def _derive_golden(slot_id: str, doc_type: str, runs_results: list[dict], pdf_sh
                     seen_in_run.add(norm)
 
     spot_check_fragments = [
-        h for h, count in heading_texts.most_common()
-        if count >= required_threshold
+        h for h, count in heading_texts.most_common() if count >= required_threshold
     ][:10]
 
     table_assertions: list[dict] = []
@@ -192,10 +201,12 @@ def _derive_golden(slot_id: str, doc_type: str, runs_results: list[dict], pdf_sh
         # table structure), row count varies as LLM groups line items differently.
         if candidates:
             best = max(candidates, key=lambda ta: ta["min_rows"] * ta["min_cols"])
-            table_assertions = [{
-                "min_rows": max(2, int(best["min_rows"] * 0.6)),
-                "min_cols": best["min_cols"],
-            }]
+            table_assertions = [
+                {
+                    "min_rows": max(2, int(best["min_rows"] * 0.6)),
+                    "min_cols": best["min_cols"],
+                }
+            ]
 
     return {
         "schema_version": CURRENT_SCHEMA_VERSION,
@@ -259,7 +270,9 @@ def _process_slot(entry: dict, n_runs: int, force: bool, dry_run: bool) -> None:
         existing = json.loads(golden_path.read_text())
         recorded_sha = entry.get("pdf_sha256")
         if recorded_sha and existing.get("pdf_sha256") == recorded_sha:
-            print(f"  {slot_id}: golden up-to-date (checksum matches), skipping (use --force to regenerate)")
+            print(
+                f"  {slot_id}: golden up-to-date (checksum matches), skipping (use --force to regenerate)"
+            )
             return
 
     if dry_run:
@@ -283,10 +296,12 @@ def _process_slot(entry: dict, n_runs: int, force: bool, dry_run: bool) -> None:
     )
 
     _write_json(golden, golden_path)
-    print(f"  {slot_id}: golden written → {golden_path.name} "
-          f"(min_blocks={golden['min_blocks']}, "
-          f"fragments={len(golden['spot_check_fragments'])}, "
-          f"table_assertions={len(golden['table_assertions'])})")
+    print(
+        f"  {slot_id}: golden written → {golden_path.name} "
+        f"(min_blocks={golden['min_blocks']}, "
+        f"fragments={len(golden['spot_check_fragments'])}, "
+        f"table_assertions={len(golden['table_assertions'])})"
+    )
 
 
 def main() -> int:
@@ -294,9 +309,20 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--slot", help="Comma-separated slot IDs to process")
     group.add_argument("--all", action="store_true", help="Process all slots with non-null URLs")
-    parser.add_argument("--runs", type=int, default=5, help="Number of pipeline runs per slot (default: 5)")
-    parser.add_argument("--force", action="store_true", help="Regenerate even if golden file exists and checksum matches")
-    parser.add_argument("--dry-run", action="store_true", help="Print what would run without making API calls")
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=3,
+        help="Number of pipeline runs per slot (default: 3, the cost-capped protocol minimum)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Regenerate even if golden file exists and checksum matches",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print what would run without making API calls"
+    )
     args = parser.parse_args()
 
     manifest: list = json.loads(_MANIFEST_PATH.read_text())

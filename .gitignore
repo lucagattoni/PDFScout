@@ -14,3 +14,4 @@ htmlcov/
 node_modules/
 package-lock.json
 tests/fixtures/pdfs/
+site/

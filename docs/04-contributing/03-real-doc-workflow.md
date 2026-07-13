@@ -26,13 +26,17 @@ regressions.  Never runs C2 unless specifically maintaining the corpus.
    (`url`, `license`, `memorisation_risk`).  Leave `pdf_sha256` and `size_bytes`
    null — C1 will fill them.
 4. Run C1 to download the PDF and record the checksum:
-   ```
+
+   ```bash
    python scripts/download_real_fixtures.py --slot <slot_id>
    ```
+
 5. Run C2 to generate the golden file:
+
+   ```bash
+   python scripts/generate_real_ground_truth.py --slot <slot_id> --runs 3
    ```
-   python scripts/generate_real_ground_truth.py --slot <slot_id> --runs 5
-   ```
+
 6. Inspect the generated `tests/fixtures/real_golden/<slot_id>.json`.  Verify
    `min_blocks`, `spot_check_fragments`, and `table_assertions` look reasonable.
    If the golden is too tight or too loose, adjust `min_blocks_override` in the
@@ -40,9 +44,11 @@ regressions.  Never runs C2 unless specifically maintaining the corpus.
 7. Add the new `slot_id` to the `@pytest.mark.parametrize` list in
    `tests/integration/test_real_docs.py`.
 8. Run C3 to confirm the new slot passes:
-   ```
+
+   ```bash
    pytest tests/integration/test_real_docs.py -m grp_r -k <slot_id>
    ```
+
 9. Commit `real_manifest.json` and `real_golden/<slot_id>.json`.
    Do **not** commit the PDF binary (`tests/fixtures/pdfs/real/` is gitignored).
 
@@ -55,9 +61,11 @@ When pipeline logic changes (new block types, renamed fields, schema bump):
 1. If the golden format itself changed, bump `CURRENT_SCHEMA_VERSION` in
    `tests/fixtures/_golden.py` (single source of truth — C2 and C3 import it).
 2. Re-run C2 for affected slots:
+
+   ```bash
+   python scripts/generate_real_ground_truth.py --slot <slot_id> --runs 3 --force
    ```
-   python scripts/generate_real_ground_truth.py --slot <slot_id> --runs 5 --force
-   ```
+
 3. Review the diff to the golden file before committing.  The diff is the paper
    trail that a pipeline change actually propagated correctly.
 
@@ -68,13 +76,17 @@ When pipeline logic changes (new block types, renamed fields, schema bump):
 If a URL returns a different PDF (checksum mismatch in C1 or C3):
 
 1. Re-run C1 with `--force` to download the new PDF and update the manifest sha:
-   ```
+
+   ```bash
    python scripts/download_real_fixtures.py --slot <slot_id> --force
    ```
+
 2. Re-run C2 to regenerate the golden against the new PDF:
+
+   ```bash
+   python scripts/generate_real_ground_truth.py --slot <slot_id> --runs 3 --force
    ```
-   python scripts/generate_real_ground_truth.py --slot <slot_id> --runs 5 --force
-   ```
+
 3. If the upstream PDF changed significantly, reconsider whether the slot still
    satisfies its selection criteria.  Replace if necessary.
 
@@ -85,7 +97,7 @@ If a URL returns a different PDF (checksum mismatch in C1 or C3):
 C4 produces a JSON regression report without pytest overhead.  Use it for
 iterative development before committing golden files.
 
-```
+```bash
 python scripts/evaluate_real_docs.py [--slot sp-1,inv-2] [--output-dir reports/]
 ```
 
@@ -98,7 +110,7 @@ investigating further.
 
 ## Checking corpus health
 
-```
+```bash
 python scripts/evaluate_real_docs.py --output-dir reports/
 ```
 

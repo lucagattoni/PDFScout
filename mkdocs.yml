@@ -1,0 +1,80 @@
+site_name: PDFScout
+site_description: Multi-agent PDF structure extractor — LangGraph + Claude native PDF vision, with a self-healing validation loop and a native-text completeness oracle.
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+
+repo_url: https://github.com/lucagattoni/PDFScout
+repo_name: lucagattoni/PDFScout
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle: { icon: material/brightness-auto, name: Switch to light mode }
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle: { icon: material/brightness-7, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle: { icon: material/brightness-4, name: Switch to system preference }
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.highlight:
+      anchor_linenums: true
+      pygments_lang_class: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - "Getting Started":
+    - 01-getting-started/README.md
+    - 01-getting-started/01-installation.md
+    - 01-getting-started/02-usage.md
+  - "Concepts":
+    - 02-concepts/README.md
+    - 02-concepts/01-architecture.md
+    - 02-concepts/02-output-format.md
+    - 02-concepts/03-design-innovations.md
+  - "Reference":
+    - 03-reference/README.md
+    - 03-reference/01-configuration.md
+    - 03-reference/02-api.md
+  - "Contributing":
+    - 04-contributing/README.md
+    - 04-contributing/01-development.md
+    - 04-contributing/02-testing.md
+    - 04-contributing/03-real-doc-workflow.md

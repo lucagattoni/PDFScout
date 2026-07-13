@@ -1,4 +1,4 @@
-.PHONY: install lint lint-md fix test test-e2e fixtures coverage ci clean
+.PHONY: install lint lint-md fix test test-e2e fixtures coverage docs ci clean
 
 install:
 	uv sync --group dev
@@ -34,6 +34,9 @@ endif
 
 coverage:
 	uv run pytest -m "not e2e" --cov=. --cov-report=term-missing
+
+docs:
+	uv run mkdocs serve
 
 ci: lint lint-md test
 

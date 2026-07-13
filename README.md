@@ -1,515 +1,83 @@
-# PDFScout · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+# PDFScout
 
-An agnostic, multi-agent PDF structure extractor that converts any PDF document into a validated, hierarchical JSON tree. Built on LangGraph with Claude's native PDF vision API, prompt caching for cost efficiency, and a self-healing validation loop. Works on text-based and scanned documents alike.
+An agnostic, multi-agent PDF structure extractor that converts any PDF
+document into a validated, hierarchical JSON tree. Built on LangGraph with
+Claude's native PDF vision API, prompt caching for cost efficiency, a
+self-healing validation loop, and a completeness audit against the PDF's own
+text layer. Works on text-based and scanned documents alike.
 
----
+[Documentation](docs/index.md) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
-## The Problem
+## Why
 
-Traditional PDF parsers break on structurally complex documents — multi-column academic papers, corporate brochures, dense financial sheets. Regex and heuristic approaches are brittle: they hardcode assumptions about layout that collapse the moment a document deviates from the expected template.
+Traditional PDF parsers break on structurally complex documents —
+multi-column papers, corporate brochures, dense financial sheets — because
+they hardcode layout assumptions. PDFScout shifts the parsing burden to a
+language model, then enforces correctness with deterministic checks: schema
+validation with retries on every page, and a word-level completeness audit
+against the text embedded in the PDF itself.
 
-PDFScout shifts the parsing burden to a language model. It treats every document as a collection of generic spatial structures, lets Claude extract and classify them, and enforces schema correctness through a closed-loop validation protocol.
+## What it does
 
-For a feature-by-feature comparison with traditional parsers and the rationale behind each design choice, see **[docs/design_innovations.md](docs/design_innovations.md)**.
+Given a PDF, PDFScout:
 
----
+1. Counts pages and rejects encrypted files (locally, before any API cost)
+2. Classifies the document type (invoice, scientific paper, contract, or a
+   generic fallback)
+3. Extracts structured content from every page **in parallel**, with the PDF
+   cached provider-side so pages 2–N read it at ~10% of the input cost
+4. Validates each page against a JSON Schema and retries on failure (up to 3×)
+5. Audits completeness against the PDF's native text layer and automatically
+   re-extracts pages with dropped or duplicated content
+6. Assigns parent-child relationships with a geometry-informed hierarchy agent
+7. Outputs one validated, hierarchical JSON document tree
 
-## What It Does
+Interrupted runs resume from the last checkpoint — state persists to SQLite
+after every step.
 
-Given a PDF file, PDFScout:
+## Quick start
 
-1. Counts pages and validates the file is not encrypted using `pypdf` (lightweight, zero-dependency)
-2. Classifies the document type (invoice, scientific paper, contract, or a generic fallback) by sending the full PDF to Claude via the native PDF Chat API
-3. Extracts structured content from every page in parallel via Claude tool-calling, with the PDF document block cached at the provider to minimize token costs — this works on scanned PDFs, complex multi-column layouts, and any document pdfplumber-style text extraction would fail on
-4. Validates page 1's output against a JSON Schema blueprint and retries up to 3 times if the model produces malformed data
-5. Assigns parent-child relationships across all extracted blocks using a geometry-informed hierarchy agent
-6. Outputs a validated, hierarchical JSON document tree
-
-State is persisted to SQLite after every node. If execution is interrupted, re-running the same PDF resumes from the last valid checkpoint.
-
----
-
-## Architecture
-
-The pipeline is a LangGraph state machine with two distinct execution phases — sequential for the pioneer page, concurrent for all remaining pages — joined by a map-reduce merge.
-
-```text
-START
-  └─► native_extractor          (local: pypdf page count + SHA-256 hash)
-        └─► classifier           (Claude: returns document type token)
-              └─► pioneer_parser (Claude: page 1, sequential — primes prompt cache)
-                    ├─► [validation failure, retry_count < 3]
-                    │     └─► retry_node ──► pioneer_parser
-                    └─► [validation pass OR retry_count >= 3]
-                          └─► burst_dispatcher
-                                ├─► [single-page doc] ──► coverage_auditor
-                                └─► [multi-page doc]
-                                      Send("parser_worker", page=2)
-                                      Send("parser_worker", page=3)
-                                      ...
-                                      Send("parser_worker", page=N)
-                                        └─► (merge via merge_flat_blocks)
-                                              └─► coverage_auditor
-                                                    └─► hierarchy_node
-                                                          └─► END
-```
-
-### Nodes
-
-| Node | Responsibility |
-|---|---|
-| `native_extractor` | Counts pages with `pypdf`, guards against encrypted PDFs, and computes a chunked SHA-256 hash used as the LangGraph thread ID |
-| `classifier` | Sends the full PDF to Claude via the native PDF Chat API and returns one of the supported document type tokens; falls back to `baseline_core` for unknown values |
-| `pioneer_parser` | Sends page 1 as a `document` block to Claude via tool-calling; marks the document block with `cache_control: ephemeral` to establish the provider's prompt cache for all subsequent burst calls; appends doc-type-specific supplemental instructions (e.g. requests optional metadata subfields for `scientific_paper`) |
-| `retry_node` | Re-runs `jsonschema` validation to capture the specific error, increments `retry_count`, and writes the error detail to state for the model's next attempt |
-| `burst_dispatcher` | Emits one `Send("parser_worker", ...)` per remaining page using LangGraph's Send API; writes a degradation warning to state if pioneer validation exhausted its retries |
-| `parser_worker` | Extracts pages 2–N concurrently under an `asyncio.Semaphore`; includes an inline validation-retry loop (up to 3 attempts) mirroring the pioneer's graph-level retry; degrades gracefully with a warning after 3 failed attempts |
-| `coverage_auditor` | Completeness oracle: compares each page's extracted blocks against the PDF's native text layer, word-level and order-free; flags pages with dropped content or cross-page duplication (wrong-page extraction), then **re-extracts up to `COVERAGE_RETRY_MAX_PAGES` flagged pages once each**, keeping whichever block set scores better native coverage (never regresses). Self-disables on pages whose native layer is unusable (scans, subset-font encodings) and applies a lower threshold on figure pages |
-| `hierarchy_node` | Deduplicates blocks by `block_id`, sorts by geometric reading order, then uses Claude tool-calling to assign `parent_id` relationships across the full flat block list |
-
-### Self-Healing Loop (Pioneer Page)
-
-Page 1 is special: it runs sequentially before the burst phase and its output is validated against the schema. If validation fails, the `retry_node` captures the exact `jsonschema.ValidationError` path and message and feeds it back to the model as a structured error prompt. This loop runs up to 3 times before the pipeline degrades gracefully — page 1's partial output is included as-is, a warning is appended to `extraction_warnings`, and the burst phase continues normally.
-
-Pages 2–N use `burst_worker_node`, which retries inline up to 3 times on schema validation failure before degrading gracefully. Transient HTTP errors (429/529) are handled separately by `tenacity`'s `@retry` decorator at the API call site.
-
-### Prompt Caching
-
-Every page extraction call sends the PDF as a `document` block with `cache_control: {"type": "ephemeral"}`. The pioneer call establishes this block in Anthropic's prompt cache — caching Claude's fully-processed representation of the PDF (image + text per page). All subsequent burst calls hit the warm cache, achieving a >90% cache-hit rate on input tokens across multi-page documents.
-
-> **Note:** Anthropic's prompt cache TTL is 5 minutes. Burst pages dispatched after this window pay full input token cost.
-
----
-
-## Output Format
-
-The final `hierarchical_document_tree` has this shape:
-
-```json
-{
-  "document_type": "invoice",
-  "pdf_hash": "a3f1c9...",
-  "extraction_warnings": [],
-  "structured_payload": [
-    {
-      "block_id": "p1-b1",
-      "type": "title",
-      "bbox": {
-        "page_number": 1,
-        "coordinates": [72, 50, 120, 540]
-      },
-      "text": "INVOICE #1042",
-      "is_continued": false,
-      "extraction_flags": [],
-      "metadata": {},
-      "parent_id": null
-    },
-    {
-      "block_id": "p1-b2",
-      "type": "table",
-      "bbox": {
-        "page_number": 1,
-        "coordinates": [150, 50, 420, 540]
-      },
-      "text": "Item | Qty | Price",
-      "is_continued": false,
-      "metadata": {
-        "table_data": {
-          "total_rows": 3,
-          "total_cols": 3,
-          "cells": [
-            {"r": 0, "c": 0, "rs": 1, "cs": 1, "value": "Item", "is_header": true},
-            {"r": 0, "c": 1, "rs": 1, "cs": 1, "value": "Qty",  "is_header": true}
-          ]
-        }
-      },
-      "parent_id": "p1-b1"
-    }
-  ]
-}
-```
-
-### Block Types
-
-Every document normalizes to 8 base block types. Domain-specific schemas may extend this with additional types.
-
-| Type | Description | Schemas |
-|---|---|---|
-| `title` | Document or section title | all |
-| `heading` | Sub-section heading | all |
-| `paragraph` | Body text | all |
-| `list_item` | Bulleted or numbered list entry | all |
-| `table` | Tabular data (with normalized cell matrix in `metadata.table_data`) | all |
-| `figure` | Image, chart, or diagram reference | all |
-| `footnote` | Footer annotation | all |
-| `margin_element` | Sidebar, callout, or margin note | all |
-| `signature_block` | Signature area with signatory name, role, and date lines | `contract` only |
-
-Domain-specific data (invoice line items, bibliographic authors, contract parties) lives inside the `metadata` field.
-
-### Extraction Flags
-
-Every block may carry an optional `extraction_flags` array naming specific reasons why the extraction may be uncertain. Absent or empty means high confidence.
-
-| Flag | Meaning | Suggested RAG action |
-|---|---|---|
-| `partial_visibility` | Block is cut off at a page edge — text appears to continue beyond the visible area | Exclude or mark incomplete |
-| `low_legibility` | Text is hard to read due to scan quality, low contrast, overlapping content, or background interference | Exclude or lower weight |
-| `ambiguous_type` | Block type assignment is uncertain — content could reasonably be classified as two different types | Flag for review; rely on text content, not type |
-| `possible_encoding_error` | Extracted text contains likely OCR or encoding artifacts — garbled characters, unusual punctuation, mixed scripts | Exclude or flag for re-extraction |
-
-RAG pipelines can filter on flags:
-
-```python
-high_quality = [b for b in blocks if not b.get("extraction_flags")]
-uncertain    = [b for b in blocks if b.get("extraction_flags")]
-```
-
-When `extraction_flags` is non-empty, `extraction_note` is also set — a one-sentence
-description of the specific observable symptom on that block (e.g. `"Top third of text
-is obscured by a watermark"` or `"Characters alternate between Cyrillic and Latin with
-no language boundary"`). Intended for a downstream remediation agent that can inspect
-flagged blocks and attempt targeted correction. Absent when no flags are set. Maximum
-length is controlled by `EXTRACTION_NOTE_MAX_LENGTH` in `src/config.py` (default 200).
-
-### Table Cell Matrix
-
-Tables are stored as a compressed coordinate matrix that handles row/column spans:
-
-| Field | Type | Description |
-|---|---|---|
-| `r` | integer | Row index |
-| `c` | integer | Column index |
-| `rs` | integer | Row span |
-| `cs` | integer | Column span |
-| `value` | string | Cell text |
-| `is_header` | boolean | Whether the cell is a header |
-
----
-
-## Document Types & Schemas
-
-Schemas live in `schemas/` as JSON Schema Draft-07 files. The `SchemaRegistry` loads them at runtime for both validation and Claude tool definition generation.
-
-| File | Used for |
-|---|---|
-| `schemas/invoice.json` | Invoice documents — extends baseline with `metadata.table_data` |
-| `schemas/scientific_paper.json` | Academic papers — adds `bibliographic`, `section`, `reference`, and `figure_table` metadata fields; the extraction prompt explicitly requests these subfields so they are actively populated on relevant blocks |
-| `schemas/contract.json` | Legal contracts — adds `signature_block` block type and metadata subfields `contract_meta`, `party`, `clause`, and `signature`; the extraction prompt instructs the model to populate each subfield on the relevant block types |
-| `schemas/baseline_core.json` | Generic fallback for any unrecognized document type |
-
-When the classifier returns an unknown document type, the registry silently falls back to `baseline_core.json`. The tool definition passed to Claude strips `$schema` and `title` fields, which are rejected by Anthropic's `input_schema` spec.
-
-See **[schemas/README.md](schemas/README.md)** for a full guide on adding new document types.
-
----
-
-## Installation
-
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.13.
+Requires [uv](https://docs.astral.sh/uv/) and an
+[Anthropic API key](https://console.anthropic.com/).
 
 ```bash
 git clone https://github.com/lucagattoni/PDFScout.git
 cd PDFScout
-uv sync --group dev   # installs production deps + ruff, pytest, and other dev tools
-cp .env.example .env  # then fill in your API key
-```
-
-Edit `.env` and set your Anthropic API key:
-
-```text
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-`.env` is gitignored and never committed. `.env.example` documents the required variables.
-
----
-
-## Development
-
-| Command | Description |
-|---|---|
-| `make install` | Install all dependencies (production + dev, including Node) |
-| `make lint` | Check Python for linting violations and formatting drift (read-only) |
-| `make lint-md` | Check Markdown files with markdownlint-cli2 (read-only) |
-| `make fix` | Auto-fix Python violations and reformat all files |
-| `make test` | Run the full test suite (159 tests, no API key required) |
-| `make test-e2e` | Run all synthetic e2e tests (requires `ANTHROPIC_API_KEY`) |
-| `make test-e2e GRP=c` | Run one group of e2e tests (a–h) |
-| `make fixtures` | Regenerate all synthetic PDF fixtures and golden files |
-| `make fixtures GRP=c` | Regenerate one group of fixtures |
-| `make coverage` | Run tests and print per-module coverage report |
-| `make ci` | Run `lint`, `lint-md`, then `test` — use before pushing |
-| `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache`, `node_modules` |
-
-Python linting and formatting use [ruff](https://github.com/astral-sh/ruff) (configured in `pyproject.toml` under `[tool.ruff]`). Markdown linting uses [markdownlint-cli2](https://github.com/DavidAnson/markdownlint-cli2) (configured in `.markdownlint.json`).
-
----
-
-## Testing
-
-The suite has 159 tests across two layers (run with `make test`, coverage with `make coverage`):
-
-| Layer | Location | What it covers |
-|---|---|---|
-| Unit | `tests/unit/` | State reducers, schema registry, routing edges, PDF utilities, page counter, tracing, Pydantic models, graph topology, and all five node functions — all external I/O mocked |
-| Integration | `tests/integration/` | All FastAPI endpoints (health, extract, jobs) via an ASGI test client; `run_extraction` background task; end-to-end LangGraph pipeline (happy path, pioneer retry-then-success, max-retry degradation) |
-
-No `ANTHROPIC_API_KEY` is required — the suite runs entirely in isolation with mocked Anthropic clients.
-
-### Synthetic e2e tests
-
-A separate tier of tests exercises the real pipeline against synthetic PDF fixtures. These require a real `ANTHROPIC_API_KEY` and are excluded from `make test` (they carry `@pytest.mark.e2e`).
-
-| Group | Concern | API calls |
-|---|---|---|
-| A | Native extraction (pypdf only) | 0 |
-| B | Classifier accuracy | 1 per test |
-| C | Block-type extraction | 1–2 per test |
-| D | Schema-specific metadata | 1–2 per test |
-| E | Multi-page burst + merge (hierarchy mocked) | N (one per page) |
-| F | Hierarchy assignment (narrow, direct function call) | 1 per test |
-| G | Two- and three-column reading order | 1–2 |
-| H | Graceful degradation (blank page, tiny text) | 1 |
-| I | Full-chain integration (no LLM tier mocked except classifier) | N + 1 |
-
-```bash
-# Run all e2e tests
-make test-e2e
-
-# Run one group
-make test-e2e GRP=c
-
-# Regenerate fixtures after a generator or prompt change
-make fixtures
-make fixtures GRP=b
-```
-
-PDF fixtures are not committed — they are generated at session start by a hash-check that compares each generator script's SHA-256 against `tests/fixtures/manifest.json`. Golden files (expected outputs, design-intent) are committed to `tests/fixtures/golden/`.
-
-### Real-document corpus tests (Group R)
-
-A third tier runs the full pipeline against real PDFs sourced from public repositories and
-government/institutional open-access publications. Unlike Groups A–I (which use synthetic
-PDFs), Group R tests the pipeline against documents it will encounter in production.
-
-```bash
-# Download PDFs (first time, or when URLs change)
-python scripts/download_real_fixtures.py
-
-# Run Group R tests (requires ANTHROPIC_API_KEY)
-pytest tests/integration/test_real_docs.py -m grp_r
-```
-
-Real PDFs are never committed — they land in `tests/fixtures/pdfs/real/` (gitignored) and
-are fetched on demand by `download_real_fixtures.py`. Golden assertion files are committed
-to `tests/fixtures/real_golden/`. The corpus manifest (`tests/fixtures/real_manifest.json`)
-records URLs, checksums, and licenses for all 15 slots.
-
-**Managing the corpus** (adding slots, updating golden files, replacing stale URLs) — see
-[`docs/real_doc_workflow.md`](docs/real_doc_workflow.md).
-
-**Coverage targets:**
-
-| Module | Coverage |
-|---|---|
-| `src/state.py`, `src/edges.py`, `src/schema_registry.py` | 100% |
-| `src/utils/`, `src/extractors/`, `src/api/jobs.py`, `src/api/models.py` | 100% |
-| `src/graph.py`, `src/nodes/*.py` | 100% |
-| `src/api/runner.py` | ≥ 90% |
-| `api.py` | ≥ 75% (lifespan I/O not exercised) |
-
----
-
-## Observability
-
-PDFScout ships with optional [Langfuse](https://langfuse.com/) tracing. When enabled, every pipeline run produces a single trace showing node execution, Claude API calls, token usage (including prompt-cache hits), and extraction metadata. All runs for the same PDF are grouped in the Langfuse Sessions view via a shared `session_id`.
-
-To enable, add to your `.env`:
-
-```text
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_BASE_URL=https://cloud.langfuse.com
-```
-
-Get keys from your [Langfuse project settings](https://cloud.langfuse.com). If the keys are absent the pipeline runs normally with no tracing.
-
----
-
-## Usage
-
-### CLI
-
-```bash
+uv sync --group dev
+cp .env.example .env   # add your ANTHROPIC_API_KEY
 uv run main.py path/to/document.pdf
 ```
 
-The output is printed as formatted JSON to stdout. Progress is logged per node:
+Full setup (including optional Langfuse tracing):
+[installation guide](docs/01-getting-started/01-installation.md).
 
-```text
-Initializing extraction pipeline for: document.pdf (thread: a3f1c9d2...)
-[GRAPH] Node 'native_extractor' completed.
-[GRAPH] Node 'classifier' completed.
-[GRAPH] Node 'pioneer_parser' completed.
-[GRAPH] Node 'burst_dispatcher' completed.
-[GRAPH] Node 'parser_worker' completed.
-[GRAPH] Node 'hierarchy_node' completed.
+## Documentation
 
-Extraction complete. Output tree:
-{ ... }
-```
+Ordered simple → deep. Browse on GitHub via the links below, or serve the
+MkDocs Material site locally with `make docs`.
 
-If the pioneer page failed validation after 3 retries, a warning is printed before the tree:
+| Section | Read this for |
+|---|---|
+| [Getting Started](docs/01-getting-started/README.md) | Install and run your first extraction |
+| [Concepts](docs/02-concepts/README.md) | How and why it works — agentic design, LangGraph mechanics, the logic behind every heuristic |
+| [Reference](docs/03-reference/README.md) | Every configuration constant, environment variables, limitations, REST API |
+| [Contributing](docs/04-contributing/README.md) | Development commands, test architecture, real-document corpus |
 
-```text
-WARNINGS:
-  ! Pioneer page (page 1) failed schema validation after 3 retries. Page 1 data may be incomplete or structurally invalid.
-```
+**New to the project?** Start at
+[Getting Started](docs/01-getting-started/README.md).
+**ML engineer evaluating the design?** Go straight to
+[Architecture](docs/02-concepts/01-architecture.md) and
+[Design Innovations](docs/02-concepts/03-design-innovations.md).
 
-### Checkpoint Resumption
-
-The thread ID is the PDF's SHA-256 hash. Re-running the same file resumes from the last valid checkpoint rather than restarting from scratch:
+## Development
 
 ```bash
-# First run — interrupted mid-way
-uv run main.py large_document.pdf
-
-# Second run — resumes automatically from last checkpoint
-uv run main.py large_document.pdf
+make test   # 241 offline tests, no API key needed
+make lint   # ruff check
+make ci     # lint + lint-md + test — use before pushing
 ```
 
-Checkpoint state is stored in `state_checkpoint.db` (SQLite, created automatically).
-
-### API Server
-
-```bash
-uv run uvicorn api:app --host 0.0.0.0 --port 8000
-```
-
-See **[API_README.md](API_README.md)** for the full endpoint reference, job
-lifecycle, and operational notes.
-
----
-
-## Project Structure
-
-```text
-PDFScout/
-├── .python-version             # Pins Python 3.13
-├── .env.example                # Required environment variables template
-├── Makefile                    # Developer shortcuts: install, lint, fix, test, coverage, ci, clean
-├── pyproject.toml              # uv-managed dependencies + ruff and pytest configuration
-├── uv.lock                     # Locked dependency graph
-├── main.py                     # Entry point (loads .env via python-dotenv)
-│
-├── schemas/                    # JSON Schema Draft-07 blueprints
-│   ├── baseline_core.json      # Generic fallback: 8-type enum, no domain metadata
-│   ├── contract.json           # Contract-specific: signature_block type + party/clause/signature metadata
-│   ├── invoice.json            # Invoice-specific metadata extensions
-│   └── scientific_paper.json   # Academic paper metadata additions
-│
-├── tests/
-│   ├── conftest.py             # Shared fixtures (env setup, mock graph, ASGI client, PDF helpers)
-│   ├── unit/
-│   │   ├── test_state.py       # merge_flat_blocks / merge_warnings reducers
-│   │   ├── test_schema_registry.py
-│   │   ├── test_edges.py       # pioneer_validation_route all branches
-│   │   ├── test_pdf_utils.py   # hash_file, encode_pdf_async
-│   │   ├── test_page_counter.py
-│   │   ├── test_tracing.py     # tracing_span (langfuse=None + active paths)
-│   │   ├── test_models.py      # JobResponse.from_record, HealthResponse
-│   │   ├── test_graph.py       # burst_dispatcher_node, dispatch_pages, build_app topology
-│   │   └── nodes/
-│   │       ├── test_extractor_node.py
-│   │       ├── test_classifier_node.py
-│   │       ├── test_worker_node.py
-│   │       ├── test_retry_node.py
-│   │       └── test_hierarchy_node.py
-│   └── integration/
-│       ├── test_api_health.py  # GET / redirect, GET /health
-│       ├── test_api_extract.py # POST /extract (idempotency, force, size limit, conflict)
-│       ├── test_api_jobs.py    # GET /jobs/{id}, DELETE /jobs/{id}
-│       ├── test_api_runner.py  # _resolve_input branches, run_extraction happy/fail paths
-│       └── test_graph_pipeline.py  # End-to-end graph (happy path, retry, max-retry degradation)
-│
-└── src/
-    ├── config.py               # Centralized constants (MODEL, CONCURRENCY_LIMIT, etc.)
-    ├── state.py                # PDFParserState TypedDict and merge reducers
-    ├── schema_registry.py      # jsonschema loader, validator, and tool builder
-    ├── edges.py                # pioneer_validation_route routing function
-    ├── graph.py                # LangGraph graph, Send API dispatch, build_app() factory
-    │
-    ├── extractors/
-    │   └── page_counter.py     # pypdf page count + encrypted PDF guard
-    │
-    ├── utils/
-    │   └── pdf_utils.py        # Shared hash_file and encode_pdf_async helpers
-    │
-    └── nodes/                  # Graph node implementations
-        ├── extractor_node.py   # PDF hashing + page count
-        ├── classifier_node.py  # Document type classification with fallback
-        ├── worker_node.py      # window_parser_node (pioneer) + burst_worker_node (pages 2-N, inline retry)
-        ├── retry_node.py       # Validation error capture + retry_count increment
-        └── hierarchy_node.py   # Geometric pre-sorter + hierarchy assignment agent
-```
-
----
-
-## Configuration
-
-All tunable constants live in `src/config.py`:
-
-```python
-MODEL = "claude-sonnet-5"
-CONCURRENCY_LIMIT = 3               # Max concurrent Anthropic API calls during burst phase
-SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
-FALLBACK_DOC_TYPE = "baseline_core"
-COLUMN_BUCKET_FRAC = 0.11           # Column bucket width (fraction of page x-span) for geometric pre-sorter
-BAND_PULLDOWN_GAP_FRAC = 0.035      # Max gap (fraction of x-span) for a heading to join the band of the full-width block below it
-BAND_FULL_WIDTH_FRAC = 0.6          # Min width (fraction of page x-span) for a block to start a reading-order band
-EXTRACTION_NOTE_MAX_LENGTH = 200    # Max chars for extraction_note field (injected into schemas)
-VALIDATION_MAX_RETRIES = 3          # Max schema-validation retries (pioneer graph-level + burst inline)
-HTTP_MAX_RETRIES = 3                # Max tenacity retries on transient HTTP errors (429/529)
-CLASSIFIER_MAX_TOKENS = 10          # Token budget for single-token classification response
-WORKER_MAX_TOKENS = 16000           # Token budget for page extraction worker (dense pages exceed 4000 and truncate)
-HIERARCHY_MAX_TOKENS_BASE = 4000    # Minimum token budget for hierarchy agent
-HIERARCHY_MAX_TOKENS_CEIL = 16000   # Maximum token budget for hierarchy agent (scales with block count)
-HIERARCHY_TOKENS_PER_BLOCK = 40     # Estimated tokens per block used for dynamic budget scaling
-COVERAGE_CHAR_CLASS_MIN = 0.85      # Min fraction of standard document chars for a usable native text layer
-COVERAGE_WARN_THRESHOLD = 0.5       # Warn when less than this fraction of native words is covered by extraction
-COVERAGE_WARN_THRESHOLD_FIGURE = 0.25  # Lower bar on pages containing figure blocks (figures are summarized)
-COVERAGE_RETRY_MAX_PAGES = 2        # Cost cap: max flagged pages re-extracted per run (one attempt each)
-RETRY_BACKOFF_MULTIPLIER = 1        # Tenacity exponential backoff multiplier (seconds)
-RETRY_BACKOFF_MIN_SECONDS = 1       # Minimum wait between HTTP retries (seconds)
-RETRY_BACKOFF_MAX_SECONDS = 10      # Maximum wait between HTTP retries (seconds)
-```
-
-`CONCURRENCY_LIMIT` controls the `asyncio.Semaphore` cap on parallel `parser_worker` calls. Increase it for faster processing on large documents; decrease it if hitting TPM rate limits. `COLUMN_BUCKET_FRAC` controls how the geometric pre-sorter groups blocks into columns before sorting by vertical position — as a fraction of the page x-span, so ordering is invariant to the model's coordinate scale; increase it to merge narrow columns, decrease it to preserve fine-grained column boundaries. `BAND_FULL_WIDTH_FRAC` controls reading-order banding: the pre-sorter splits each page into horizontal bands at every block at least this fraction of the page x-span wide (full-width tables, headers, footers), and orders blocks column-major within each band. This yields natural top-to-bottom order for invoices/forms while keeping multi-column papers grouped by column; raise it to treat fewer blocks as band-splitters, lower it to treat more. `BAND_PULLDOWN_GAP_FRAC` keeps a heading/title adjacent to the full-width block it introduces: a heading whose bottom edge lies within this fraction of the x-span from the block's top joins that block's band. `VALIDATION_MAX_RETRIES` controls how many times the pipeline re-prompts the model after a schema validation failure, for both the pioneer page (graph-level loop) and burst pages (inline loop). `HTTP_MAX_RETRIES` controls how many times tenacity retries a failed API call on transient errors. Set `PDFSCOUT_CACHE_TTL=1h` for multi-run workloads over the same document (golden regeneration, variance measurement): the 1-hour prompt-cache TTL costs 2× on the first write but lets every subsequent run read the PDF prefix at 0.1× — the regeneration script sets it automatically. Default is the 5-minute TTL, optimal for single extractions. Set `PDFSCOUT_LOG_USAGE=1` to print a per-API-call `[USAGE]` line to stderr (cache write/read, input/output tokens, stop reason); every run also prints an aggregate `USAGE:` summary line at the end and, when Langfuse tracing is configured, attaches the same totals to the trace metadata. Failed validation attempts that later succeed are printed as `[RETRY]` lines to stderr with the discarded error, so paid retry causes are never silent. `HIERARCHY_TOKENS_PER_BLOCK` × block count is clamped between `HIERARCHY_MAX_TOKENS_BASE` and `HIERARCHY_MAX_TOKENS_CEIL` to dynamically size the hierarchy agent's token budget.
-
----
-
-## Extending with New Document Types
-
-1. Add a new JSON Schema file to `schemas/<type>.json` following the Draft-07 structure with the 8-type block enum and any domain-specific `metadata` extensions. The filename without `.json` is the exact token the classifier will return.
-2. Add the new type string to `SUPPORTED_DOC_TYPES` in `src/config.py` — the classifier prompt updates automatically via `sorted(SUPPORTED_DOC_TYPES)`.
-3. *(Optional but recommended)* Add a branch in `_doc_type_instructions()` in `src/nodes/worker_node.py` with domain-specific extraction instructions. These are appended to the prompt for every page, guiding the model to populate domain metadata subfields on the relevant block types.
-
-The classifier, schema registry, and validation loop pick it up after steps 1–2. Step 3 improves metadata extraction quality but is not required for the pipeline to function.
-
-See **[schemas/README.md](schemas/README.md)** for the full guide.
-
----
-
-## Limitations
-
-- **Encrypted PDFs:** Password-protected PDFs are not supported by Claude PDF Chat. `pypdf` detects encryption at startup and raises a `ValueError` before any API call is made.
-- **Max request size:** The Anthropic API limit is 32 MB per request. PDFs approaching this size should use the Files API (upload once, reference by `file_id`) rather than per-call base64 encoding.
-- **Max pages:** 600 pages per request (100 for 200k-context models). Very large documents should be split before processing.
-- **Cache TTL:** Anthropic's prompt cache TTL is 5 minutes. Burst pages dispatched after this window pay full input token cost.
-- **Hierarchy accuracy:** The hierarchy agent uses spatial heuristics and model judgment. Cross-page `is_continued` linkages and complex multi-column layouts may produce imperfect parent-child assignments.
-
----
+Full command list: [development guide](docs/04-contributing/01-development.md).
 
 ## License
 
