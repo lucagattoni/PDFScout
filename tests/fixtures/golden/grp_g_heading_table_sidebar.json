@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "generator": "grp_g_heading_table_sidebar",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-5",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "baseline_core",
+    "order": [
+      "INTRO",
+      "SIDEBAR",
+      "CHARGE DETAILS",
+      "Standing charge"
+    ],
+    "adjacent": [
+      "CHARGE DETAILS",
+      "Standing charge"
+    ]
+  }
+}

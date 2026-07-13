@@ -153,6 +153,39 @@ rejected proposals. During active development, keep it in sync:
   conflicts (bit twice on 2026-07-13: v1.6.3 and v1.7.1 both needed follow-up lock
   commits).
 
+## Investigation rules
+
+Apply whenever existing logic stops working as expected (mis-ordering, extraction
+gaps, validation failures) — layout/ordering issues affect every document, so fixes
+here are never document-specific.
+
+1. **Reproduce on the cheapest surface first.** Replay saved block sets or fixtures
+   offline (no API calls) to reproduce and iterate; use constraint-based scoring and
+   parameter sweeps offline. Go to a paid live run only to confirm a finished fix.
+2. **Root-cause to a mechanism, never to a document.** The diagnosis must name the
+   general failure mode ("band boundary strands same-y narrow blocks"), not the
+   symptom location ("Enel p3 is wrong"). If you can't state the mechanism, keep
+   investigating.
+3. **Solutions must be general — no overfitting.** Derive every threshold from a
+   typographic/geometric principle and state that principle in a comment. Make
+   geometry scale-invariant: fractions of the page span, never absolute pixels (the
+   model emits x-spans of 855–1125 units for the same A4 page). If a constant can
+   only be justified by "it fixes this document", it's wrong.
+4. **Tests must be general too — enumerate edge cases.** For each heuristic cover:
+   degenerate geometry (empty input, single block, zero span), coordinate
+   jitter/noise, stacked/adjacent features, scale extremes, and at least one
+   negative case where the heuristic must NOT trigger.
+5. **Anti-overfit gate.** A change to shared logic must pass the entire fixture
+   corpus (all unit tests + golden replays), not just the case that motivated it.
+6. **Distill real failures into synthetic fixtures.** Real user documents are
+   private and local-only — never committable — so encode each failure pattern as a
+   generator under `tests/fixtures/generators/` (plus golden) in the same change as
+   the fix. Block-level unit tests are the fast first line; the generated PDF
+   fixture guards the full pipeline.
+7. **Ask when the principle is ambiguous.** If a general rule can't be derived (two
+   defensible reading-order policies, no typographic principle to appeal to), ask
+   the user with the concrete trade-off instead of picking silently.
+
 ## Reviews
 
 - Always use the **devil's advocate** approach: actively try to find what can go

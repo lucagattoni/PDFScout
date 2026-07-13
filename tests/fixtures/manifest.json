@@ -52,10 +52,12 @@
     ]
   },
   "grp_g": {
-    "hash": "6fe9fa4ed12cbffdbb399030c3e0ea0911ed9514a183d8e128255942fbad3004",
+    "hash": "6d40c5e89607d8d931fa377bb9b762d2eb1dda89f2843c7533ac57e6d4cf0fac",
     "fixtures": [
       "grp_g_two_column.pdf",
-      "grp_g_three_column.pdf"
+      "grp_g_three_column.pdf",
+      "grp_g_label_sidebar.pdf",
+      "grp_g_heading_table_sidebar.pdf"
     ]
   },
   "grp_h": {

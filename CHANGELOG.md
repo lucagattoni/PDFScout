@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.7.3] — 20260713 03:54
+
+### Fixed
+
+- **Reading-order banding v2** (`src/nodes/hierarchy_node.py`, `src/config.py`) — three
+  general ordering defects reproduced on real documents (ROADMAP #1): full-width blocks
+  no longer lead their band (labels left of a wide block read first); heading/title
+  blocks directly above a full-width block are pulled into its band — nearest block,
+  jitter-tolerant — so a section heading stays adjacent to its table; all tuning knobs
+  are now fractions of the page x-span (`COLUMN_BUCKET_FRAC = 0.11`,
+  `BAND_PULLDOWN_GAP_FRAC = 0.035`, `BAND_FULL_WIDTH_FRAC` 0.6 → 0.55), making ordering
+  invariant to the model's coordinate scale (observed x-spans 855–1125 for the same A4
+  page). Offline replay on two real documents: 11/12 human-reading-order constraints
+  (was 5/12). Known limitation recorded in the plan: pages with no full-width block
+  remain whole-page column-major. 7 new sorter unit tests (edge cases: jitter, stacked
+  tables, negative pull cases, scale invariance, degenerate geometry) and 2 new
+  synthetic layout fixtures + e2e tests (`grp_g_label_sidebar`,
+  `grp_g_heading_table_sidebar`). 180 non-e2e tests.
+
+### Added
+
+- **CLAUDE.md Investigation rules** — offline-replay-first, mechanism-not-document
+  root-causing, principle-derived scale-invariant thresholds, edge-case test
+  enumeration, anti-overfit gate, synthetic-fixture distillation, ask-on-ambiguity.
+
+
 ## [1.7.2] — 20260713 03:12
 
 ### Fixed

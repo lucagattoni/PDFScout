@@ -71,7 +71,7 @@ class TestGeometricPreSorter:
         assert result[1]["block_id"] == "b1"
 
     def test_sorts_by_column_bucket(self):
-        # xmin=10 → bucket 0, xmin=100 → bucket 2 (with COLUMN_BUCKET_PX=50)
+        # buckets are span-relative: xmin=10 and xmin=100 land in different buckets
         b1 = {
             "block_id": "b1",
             "type": "paragraph",
@@ -142,6 +142,137 @@ class TestGeometricPreSorter:
             "b15", "b16", "b17",  # TOTAL (left) / notes (right)
             "b18",  # full-width footer
         ]
+
+    def test_label_left_of_full_width_block_reads_first(self):
+        # Sidebar-label layout (real Enel invoice p3): narrow label column at
+        # x0-14, full-width text blocks at x15-100. The label must read before
+        # the wide text at the same y — full-width blocks no longer lead their band.
+        label_a = {"block_id": "la", "type": "heading", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [120, 0, 300, 140]}}
+        text_a = {"block_id": "ta", "type": "paragraph", "text": "x",
+                  "bbox": {"page_number": 1, "coordinates": [100, 150, 400, 1000]}}
+        label_b = {"block_id": "lb", "type": "heading", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [520, 0, 700, 140]}}
+        text_b = {"block_id": "tb", "type": "paragraph", "text": "x",
+                  "bbox": {"page_number": 1, "coordinates": [500, 150, 800, 1000]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([text_b, label_a, text_a, label_b])]
+        assert result == ["la", "ta", "lb", "tb"]
+
+    def test_heading_above_full_width_table_pulled_into_band(self):
+        # A heading directly above a full-width table joins the table's band
+        # (adjacent in output) instead of being stranded before sidebar content
+        # (real Enel p1 "DETTAGLIO FISCALE" / Irish bill p2 "Payments" pattern).
+        heading = {"block_id": "h", "type": "heading", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [800, 0, 975, 300]}}
+        sidebar = {"block_id": "s", "type": "paragraph", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [100, 700, 600, 1000]}}
+        table = {"block_id": "t", "type": "table", "text": "x",
+                 "bbox": {"page_number": 1, "coordinates": [1000, 0, 1600, 1000]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([table, sidebar, heading])]
+        assert result == ["s", "h", "t"]
+
+    def test_paragraph_above_full_width_table_not_pulled(self):
+        # Only heading/title blocks are pulled down — an ordinary paragraph
+        # just above a table stays with its own column/band.
+        para = {"block_id": "p", "type": "paragraph", "text": "x",
+                "bbox": {"page_number": 1, "coordinates": [800, 0, 975, 300]}}
+        sidebar = {"block_id": "s", "type": "paragraph", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [100, 700, 600, 1000]}}
+        table = {"block_id": "t", "type": "table", "text": "x",
+                 "bbox": {"page_number": 1, "coordinates": [1000, 0, 1600, 1000]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([table, sidebar, para])]
+        assert result == ["p", "s", "t"]
+
+    def test_empty_input_returns_empty(self):
+        assert geometric_pre_sorter([]) == []
+
+    def test_zero_x_span_sorts_by_y(self):
+        # Degenerate geometry: all blocks share one x — no bands, pure y order.
+        blocks = [
+            {"block_id": f"b{y}", "type": "paragraph", "text": "x",
+             "bbox": {"page_number": 1, "coordinates": [y, 50, y + 10, 50]}}
+            for y in (300, 100, 200)
+        ]
+        result = [b["block_id"] for b in geometric_pre_sorter(blocks)]
+        assert result == ["b100", "b200", "b300"]
+
+    def test_deterministic_on_identical_coordinates(self):
+        # Ties break on block_id — same input always yields the same order.
+        blocks = [
+            {"block_id": bid, "type": "paragraph", "text": "x",
+             "bbox": {"page_number": 1, "coordinates": [100, 0, 120, 900]}}
+            for bid in ("z", "a", "m")
+        ]
+        first = [b["block_id"] for b in geometric_pre_sorter(list(blocks))]
+        second = [b["block_id"] for b in geometric_pre_sorter(list(reversed(blocks)))]
+        assert first == second == ["a", "m", "z"]
+
+    def test_heading_with_jittered_overlap_still_pulled(self):
+        # BBox noise: heading ymax slightly BELOW the table's ymin boundary
+        # (overlapping it) must still be pulled — tolerance is symmetric.
+        heading = {"block_id": "h", "type": "heading", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [950, 0, 1010, 300]}}
+        sidebar = {"block_id": "s", "type": "paragraph", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [100, 700, 600, 1000]}}
+        table = {"block_id": "t", "type": "table", "text": "x",
+                 "bbox": {"page_number": 1, "coordinates": [1000, 0, 1600, 1000]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([table, sidebar, heading])]
+        assert result == ["s", "h", "t"]
+
+    def test_heading_above_stacked_tables_joins_nearest(self):
+        # Two consecutive full-width tables: the heading must join the FIRST
+        # (nearest) one and read before it — not get pulled past it.
+        heading = {"block_id": "h", "type": "heading", "text": "x",
+                   "bbox": {"page_number": 1, "coordinates": [800, 0, 975, 300]}}
+        t1 = {"block_id": "t1", "type": "table", "text": "x",
+              "bbox": {"page_number": 1, "coordinates": [1000, 0, 1200, 1000]}}
+        t2 = {"block_id": "t2", "type": "table", "text": "x",
+              "bbox": {"page_number": 1, "coordinates": [1210, 0, 1400, 1000]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([t2, t1, heading])]
+        assert result == ["h", "t1", "t2"]
+
+    def test_heading_without_x_overlap_not_pulled(self):
+        # A label in a left rail that does NOT x-overlap the full-width block
+        # below-right of it must not be pulled (negative case for pull-down).
+        label = {"block_id": "l", "type": "heading", "text": "x",
+                 "bbox": {"page_number": 1, "coordinates": [900, 0, 980, 140]}}
+        other = {"block_id": "o", "type": "paragraph", "text": "x",
+                 "bbox": {"page_number": 1, "coordinates": [100, 0, 200, 140]}}
+        wide = {"block_id": "w", "type": "paragraph", "text": "x",
+                "bbox": {"page_number": 1, "coordinates": [1000, 150, 1300, 1000]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([wide, label, other])]
+        # label stays in band 0 with 'other' (same rail), ordered by y
+        assert result == ["o", "l", "w"]
+
+    def test_scale_invariance_same_layout_different_units(self):
+        # The same physical layout at two coordinate scales (model emits
+        # different spans for the same page) must produce the same order.
+        def layout(scale: float) -> list[dict]:
+            raw = [
+                ("intro", "paragraph", 40, 0, 90, 300),
+                ("side", "paragraph", 40, 700, 400, 1000),
+                ("head", "heading", 800, 0, 975, 300),
+                ("tbl", "table", 1000, 0, 1600, 1000),
+            ]
+            return [
+                {"block_id": bid, "type": t, "text": "x",
+                 "bbox": {"page_number": 1,
+                          "coordinates": [y0 * scale, x0 * scale, y1 * scale, x1 * scale]}}
+                for bid, t, y0, x0, y1, x1 in raw
+            ]
+        small = [b["block_id"] for b in geometric_pre_sorter(layout(0.76))]
+        large = [b["block_id"] for b in geometric_pre_sorter(layout(1.0))]
+        assert small == large == ["intro", "side", "head", "tbl"]
+
+    def test_same_column_jittered_xmin_shares_bucket(self):
+        # Blocks of one visual column whose xmin differs by <100px (logo at
+        # x=90 vs column at x=45, real Enel p1) share a bucket and sort by y.
+        logo = {"block_id": "logo", "type": "title", "text": "x",
+                "bbox": {"page_number": 1, "coordinates": [5, 90, 20, 300]}}
+        col = {"block_id": "col", "type": "heading", "text": "x",
+               "bbox": {"page_number": 1, "coordinates": [30, 45, 45, 200]}}
+        result = [b["block_id"] for b in geometric_pre_sorter([col, logo])]
+        assert result == ["logo", "col"]
 
 
 class TestLayoutHierarchyAgentNode:

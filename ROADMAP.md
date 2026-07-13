@@ -13,36 +13,9 @@ Current version: see [CHANGELOG.md](CHANGELOG.md)
 
 Ordered by priority. Pick from the top unless there's a reason not to.
 
-Items 1–5 come from the 2026-07-13 real-document test session (2-page Irish
+Items 2–5 come from the 2026-07-13 real-document test session (2-page Irish
 utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
 with per-call usage instrumentation).
-
-### 1 · Reading-order banding defects (three failure modes)
-
-**What:** `geometric_pre_sorter` (v1.7.0 banding) mis-orders blocks in three
-distinct ways, all reproduced on real documents:
-
-1. **Band boundary ignores y-overlap.** A full-width block starts a new band
-   *excluding* narrow blocks at the same y. Consequences: label-left/wide-text-right
-   layouts invert every pair (Enel invoice p3 — all 8 sidebar labels sort *after*
-   their own explanation text); a section heading gets divorced from its own
-   full-width table (Enel p1: "DETTAGLIO FISCALE" heading at position 8, its
-   table at position 23; Irish bill p2: "Payments" heading split from its table
-   by 4 sidebar blocks).
-2. **Brittle band trigger.** `BAND_FULL_WIDTH_FRAC = 0.6` produced zero bands on
-   the Irish bill p1 (whole-page column-major: top-right "account number" sorted
-   19th of 30, after the bottom-left payment slip) and a band per row on Enel p3.
-3. **Column-bucket granularity.** `COLUMN_BUCKET_PX = 50` puts a logo at x=90
-   into the second column bucket, sorting it after the entire x=45 column
-   (Enel p1: page title sorted 10th).
-
-**Fix (highest leverage first):** when a full-width block opens a band, blocks
-that vertically overlap it join the same band (sorting before it if to its
-left). Then re-evaluate 2 and 3 against the same replay fixtures.
-
-**Scope:** Small-medium, fully offline-testable — replay the pre-sorter on the
-extracted block sets; no API calls needed. In progress on
-`fix/reading-order-band-splits`.
 
 ### 2 · Classifier is one thinking-burst away from breaking
 
@@ -188,4 +161,5 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 | Golden `model_version` decoupled from `MODEL` | v1.7.1 | Fixed literal in `_common.py`; stops test runs dirtying tracked goldens (`tests/unit/test_golden_meta.py`) |
 | `temperature` removed (rejected by current model) | v1.6.4 | API began rejecting non-default sampling params on the extraction model; removed from all call sites |
 | Dense-page max_tokens truncation fix | v1.7.2 | `WORKER_MAX_TOKENS` 4000→16000 + `stop_reason` truncation detection in both workers (branch `fix/worker-max-tokens-truncation`, pending merge). Root cause of "Page 2: no blocks" on real 2-page bill |
+| Reading-order banding v2 — general, scale-invariant | v1.7.3 | `plans/20260713_0354-reading-order-band-splits.md` — within-band column-major, heading pull-down, all knobs as span fractions; 11/12 human-order constraints on real docs (was 5/12); known limitation: bandless pages stay whole-page column-major |
 | Prompt caching verified on real docs | v1.7.2 session | Burst pages + retries read the full ~11.8k-token PDF prefix from cache (pioneer writes it); classifier writes a separate orphaned entry (→ Open #5); hierarchy call uncached |

@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "generator": "grp_g_label_sidebar",
+    "page_size_pts": [
+      595.28,
+      841.89
+    ],
+    "coord_scale": null,
+    "model_version": "claude-sonnet-5",
+    "created": "2026-06-03"
+  },
+  "expected": {
+    "document_type": "baseline_core",
+    "order": [
+      "Online Discount",
+      "TXT1",
+      "Energy Cost",
+      "TXT2",
+      "Contact Us",
+      "TXT3"
+    ]
+  }
+}
