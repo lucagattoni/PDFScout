@@ -13,7 +13,70 @@ Current version: see [CHANGELOG.md](CHANGELOG.md)
 
 Ordered by priority. Pick from the top unless there's a reason not to.
 
-Items 3 and 6 remain from the 2026-07-13 real-document test session (2-page Irish
+### 1 · Determinism strategy — maximize reproducibility (2026-07-13 research conclusion)
+
+**Bottom line: bit-identical output across fresh runs is not achievable on the
+hosted Claude API — the goal is minimizing variance, not "determinism."**
+`temperature`/`top_p`/`top_k` are 400-rejected on the current model (removed
+v1.6.4), there is **no `seed` parameter**, and even `temperature=0` never
+guaranteed identical output. The dominant cause is *batch-invariance*: hosted
+inference batches requests dynamically, so GPU reduction-kernel order — and thus
+the exact logits — shifts with batch size/load. Fixing that needs
+batch-invariant kernels in the serving stack, which Anthropic controls, not us
+(Thinking Machines Lab, "Defeating Nondeterminism in LLM Inference", 2025).
+
+Levers, most → least in our control:
+
+**A · Application-level (ours; the only true determinism we have — already shipped).**
+- **Checkpoint cache by `pdf_hash`.** Same PDF → same `thread_id` → LangGraph
+  resumes from `state_checkpoint.db` without re-calling the model → byte-identical
+  on re-run. Caveat: only same-file re-runs on a persistent DB; a fresh run,
+  cleared DB, or different machine re-infers.
+- **Deterministic post-processing.** `geometric_pre_sorter` sorts with a
+  `block_id` final tiebreak and dedups by `block_id` → identical block set →
+  identical ordering. Keep every downstream sort/dedup total-ordered.
+
+**B · Request parameters (ours to set; each needs a quality check before committing).**
+- **Disable thinking — highest-value lever.** Post-Sonnet-5, omitting `thinking`
+  silently runs *adaptive* thinking, whose depth/content vary run-to-run and feed
+  the output. Workers + hierarchy already force `tool_choice` (thinking
+  suppressed); the **classifier runs free-form → adaptive on** — this is Open #2.
+  Recommend setting `thinking={"type":"disabled"}` **explicitly on every call**,
+  not relying on implicit `tool_choice` suppression.
+- **`strict: true`** on the extraction + `set_block_relations` tools (with
+  `additionalProperties:false` + `required`) → guarantees schema-exact tool
+  inputs, removing field-ordering/missing-field structural variance at the API
+  layer; complements the existing jsonschema retry loop.
+- **`output_config={"effort":"low"}`** (default is `high`) → less exploration,
+  more scoped/consistent output for a mechanical task. Test hierarchy accuracy
+  first — relational reasoning may want `medium`.
+- **Prompt tightening** — "extract only what is present; do not infer,
+  summarize, or re-order." The current model follows literally, so explicit
+  scope reduces semantic variance.
+
+**C · Fundamental ceiling (not ours).** No `seed`; batch-invariance
+nondeterminism; prompt caching does not touch output sampling (neither helps nor
+hurts determinism).
+
+**Measure it, don't assume it.** The real-golden corpus already quantifies
+variance: `raw_block_counts` across `n_runs: 5` and the `classification_unstable`
+flag (e.g. `sp-1` = [106,101,106,102,106]). Use that spread as the determinism
+metric — apply the B-levers, regenerate, and check whether block-count spread and
+`classification_unstable` shrink. This turns "as deterministic as possible" into
+a measurable acceptance test.
+
+**Actionable next steps (tracked):** Open #2 (disable classifier thinking) — the
+first and highest-value fix — **shipped in v1.8.0** (`thinking: disabled` on the
+classifier call). Open #3 (completeness oracle) targets the *symptom*
+of residual variance — silently dropped blocks — regardless of cause. New
+candidates from this analysis: (i) add `strict:true` to the extraction/hierarchy
+tools; (ii) trial `effort:"low"`; (iii) add a block-count-spread-over-N-runs
+check to golden regeneration.
+
+**Scope:** (i)/(ii) Small each + one paid verification run; the checkpoint-cache
+and deterministic-sort guarantees (A) are already in place.
+
+Items 3, 6 and 7 remain from the 2026-07-13 real-document test session (2-page Irish
 utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
 with per-call usage instrumentation).
 
