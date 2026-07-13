@@ -43,10 +43,10 @@ async def main():
         ) as span:
             async with AsyncSqliteSaver.from_conn_string("state_checkpoint.db") as checkpointer:
                 app = build_app(checkpointer)
-                async for event in app.stream({"file_path": target_pdf}, config):
+                async for event in app.astream({"file_path": target_pdf}, config):
                     for node_name in event:
                         print(f"[GRAPH] Node '{node_name}' completed.")
-                final_state = await app.get_state(config)
+                final_state = await app.aget_state(config)
             state_values = final_state.values if final_state else {}
             tree_result = state_values.get("hierarchical_document_tree")
             extraction_warnings = tree_result.get("extraction_warnings", []) if tree_result else []

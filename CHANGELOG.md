@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.6.2] — 20260713 01:52
+
+### Fixed
+
+- **Async streaming bug** (`main.py`, `src/api/runner.py`) — both the CLI and the API job
+  runner iterated the LangGraph app with `async for` over the **synchronous** `.stream()`
+  method, which returns a plain generator and raised
+  `TypeError: 'async for' requires an object with __aiter__ method, got generator`. Switched
+  both call sites to the async `.astream()`. Also fixed a latent companion bug in `main.py`
+  where the sync, non-awaitable `.get_state()` was `await`ed; now uses `.aget_state()`
+  (the runner already used the async variant). Test mocks in
+  `tests/integration/test_api_runner.py` updated to stub `astream`.
+
+### Changed
+
+- **Model upgraded to Claude Sonnet 5** (`src/config.py`, `README.md`) — `MODEL` bumped from
+  `claude-sonnet-4-6` to `claude-sonnet-5` for all classification, extraction, and hierarchy
+  calls. Verified end-to-end on a real invoice.
+
 ## [1.6.1] — 2026-07-07
 
 ### Added

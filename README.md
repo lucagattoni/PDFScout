@@ -459,7 +459,7 @@ PDFScout/
 All tunable constants live in `src/config.py`:
 
 ```python
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-sonnet-5"
 CONCURRENCY_LIMIT = 3               # Max concurrent Anthropic API calls during burst phase
 SUPPORTED_DOC_TYPES = {"invoice", "scientific_paper", "contract"}
 FALLBACK_DOC_TYPE = "baseline_core"

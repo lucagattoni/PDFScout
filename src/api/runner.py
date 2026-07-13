@@ -39,7 +39,7 @@ async def run_extraction(
         input_data = await _resolve_input(graph, file_path, config, force)
 
         async with tracing_span(langfuse, job.file_name, job_id) as span:
-            async for event in graph.stream(input_data, config):
+            async for event in graph.astream(input_data, config):
                 for node_name in event:
                     job.events.append(f"[GRAPH] Node '{node_name}' completed.")
 

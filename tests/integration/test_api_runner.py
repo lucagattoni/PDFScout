@@ -19,7 +19,7 @@ def _make_graph_with_stream(events: list, final_snapshot):
         for event in events:
             yield event
 
-    graph.stream = _stream
+    graph.astream = _stream
     graph.aget_state = AsyncMock(return_value=final_snapshot)
     return graph
 
@@ -128,7 +128,7 @@ class TestRunExtraction:
             yield  # make it an async generator
 
         graph = MagicMock()
-        graph.stream = _error_stream
+        graph.astream = _error_stream
         graph.aget_state = AsyncMock(return_value=make_snapshot())
 
         await run_extraction(job_id, file_path, graph, langfuse=None)
@@ -148,7 +148,7 @@ class TestRunExtraction:
             yield
 
         graph = MagicMock()
-        graph.stream = _error_stream
+        graph.astream = _error_stream
         graph.aget_state = AsyncMock(return_value=make_snapshot())
 
         await run_extraction(job_id, file_path, graph, langfuse=None)
