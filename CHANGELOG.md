@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.12.5] — 20260713 16:43
+
+### Fixed
+
+- **Streaming + strict tool use hangs `scientific_paper`/`contract` extraction
+  indefinitely.** Strict tool use (v1.10.1) compiles the tool schema into a
+  constrained-decoding grammar with a complexity ceiling the richest schemas
+  exceed. Non-streaming surfaced this as a fast `400 "Schema is too complex"`
+  (caught by the v1.12.2 fallback); but under the streaming introduced in
+  v1.12.3 (to fix the long-request `APITimeoutError`) the oversized grammar
+  makes the API **stall the stream** — it sends keepalive pings that keep
+  resetting the client read timeout while never emitting content or an error,
+  so the call hangs forever and the 400-based fallback never fires. Live-probe
+  confirmed: strict `scientific_paper` + streaming hangs >75s; **non-strict
+  completes in 28s**.
+  Fix: the extraction tool is no longer declared `strict`. Structural
+  correctness is enforced by the existing local `jsonschema` validation +
+  retry loop (unchanged), which never depended on strict. The `scientific_paper`
+  40-prop / `contract` 37-prop schemas now stream cleanly; `baseline_core`/
+  `invoice` are unaffected. The hierarchy tool keeps `strict: true` (its tiny
+  `block_id`/`parent_id` schema is far under the ceiling and streams fine).
+  Removes the now-unnecessary strict-probe/fallback machinery
+  (`_STRICT_INCOMPATIBLE`, `_call_extraction`) from `worker_node`.
+
 ## [1.12.4] — 20260713 16:20
 
 ### Added

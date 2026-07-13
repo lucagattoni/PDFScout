@@ -14,11 +14,11 @@ uses it in two ways:
 
 1. **Claude tool definition** — the schema becomes the `input_schema` of the
    tool Claude is forced to call. This is what constrains Claude's output
-   structure. The fields `$schema` and `title` — plus JSON-Schema constraint
-   keywords unsupported by strict tool use (`minItems`, `maxItems`,
-   `uniqueItems`, `maxLength`, `pattern`, numeric bounds) — are stripped from
-   the tool copy before sending
-   (Anthropic's API rejects JSON Schema meta-fields in `input_schema`).
+   structure. The fields `$schema` and `title` are stripped from the tool copy
+   before sending (Anthropic's API rejects JSON Schema meta-fields in
+   `input_schema`). The extraction tool is **not** declared `strict` — strict
+   tool use stalls streaming responses on the richer schemas — so structural
+   correctness is enforced by local `jsonschema` validation instead.
 
 2. **Validation** — `jsonschema.validate()` checks the extracted blocks against
    the same schema. Failures feed a structured error message back to Claude for
@@ -227,7 +227,7 @@ _CONTRACT_INSTRUCTIONS = (
 | `document_type` enum must match the filename | `SchemaRegistry` loads `schemas/<doc_type>.json`; a mismatch causes Claude to extract with the wrong type token |
 | `coordinates` must include the `[ymin, xmin, ymax, xmax]` description | `hierarchy_node.py`'s `geometric_pre_sorter` unpacks `ymin, xmin, _, _` at index 0,1 — wrong order silently breaks reading-order sorting |
 | Do not add `"required"` to `metadata` properties | Claude populates metadata only on relevant blocks; required fields would cause validation failures on every other block |
-| `$schema`, `title`, and strict-unsupported constraint keywords are stripped from the tool copy | `SchemaRegistry.get_schema_and_tool()` removes them and declares the tool `strict: true`; the full constraints still validate locally via `jsonschema`, so keep them in your schema |
+| `$schema` and `title` are stripped from the tool copy | `SchemaRegistry.get_schema_and_tool()` removes them (the API rejects meta-fields in `input_schema`); the extraction tool is non-strict and the full schema validates locally via `jsonschema`, so keep all constraints in your schema |
 | The fallback schema (`baseline_core`) is used for unknown types | If the classifier returns a token not in `SUPPORTED_DOC_TYPES`, the registry silently falls back to `baseline_core.json` |
 
 ---

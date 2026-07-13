@@ -9,7 +9,6 @@ from anthropic import (
     APIConnectionError,
     APITimeoutError,
     AsyncAnthropic,
-    BadRequestError,
     InternalServerError,
     RateLimitError,
 )
@@ -133,13 +132,8 @@ def _truncation_error(current_page: int) -> str:
 
 # Retry only transient failures. A 4xx like BadRequestError is deterministic —
 # retrying it wastes paid calls and buries the real message under a RetryError
-# wrapper, so it must propagate immediately to the strict-fallback handler.
+# wrapper, so it must propagate immediately.
 _TRANSIENT_API_ERRORS = (APITimeoutError, APIConnectionError, RateLimitError, InternalServerError)
-
-# Doc types whose strict tool schema the API rejected as "too complex" this
-# process. Populated on first failure so every later page/run for that type
-# skips straight to the non-strict tool (one wasted probe per type per process).
-_STRICT_INCOMPATIBLE: set[str] = set()
 
 
 @retry(
@@ -171,37 +165,18 @@ async def _call_api(client: AsyncAnthropic, messages: list, tool_definition: dic
 
 
 def _extraction_tool(doc_type: str) -> dict:
-    """Build the extraction tool, using strict tool use unless this doc type has
-    already been found strict-incompatible in this process."""
-    _, tool = SchemaRegistry().get_schema_and_tool(
-        doc_type, strict=doc_type not in _STRICT_INCOMPATIBLE
-    )
+    """Build the (non-strict) extraction tool.
+
+    Strict tool use is deliberately NOT used for extraction. The richest
+    per-doc-type schemas (scientific_paper, contract) exceed strict mode's
+    grammar-complexity ceiling: non-streaming that surfaced as a fast
+    400 "Schema is too complex", but under streaming (required to avoid the
+    long-request timeout) the oversized grammar makes the server STALL the
+    stream instead of erroring — hanging the call indefinitely. Non-strict has
+    no grammar ceiling; correctness is still guaranteed by the local jsonschema
+    validation + retry loop (two-layer validation, unchanged)."""
+    _, tool = SchemaRegistry().get_schema_and_tool(doc_type, strict=False)
     return tool
-
-
-async def _call_extraction(
-    client: AsyncAnthropic, messages: list, tool_definition: dict, doc_type: str
-) -> Any:
-    """Call the extraction tool, falling back to a non-strict tool if the API
-    rejects the strict schema as too complex (scientific_paper, contract).
-
-    The strict grammar has a complexity ceiling the richer schemas exceed; the
-    non-strict tool has none, and local jsonschema validation still enforces the
-    full schema. The doc type is memoized so only the first page pays the probe."""
-    try:
-        return await _call_api(client, messages, tool_definition)
-    except BadRequestError as e:
-        if tool_definition.get("strict") and "too complex" in str(e).lower():
-            _STRICT_INCOMPATIBLE.add(doc_type)
-            print(
-                f"[STRICT-FALLBACK] {doc_type}: strict tool schema rejected as too "
-                f"complex — retrying without strict (later pages skip strict).",
-                file=sys.stderr,
-                flush=True,
-            )
-            _, non_strict = SchemaRegistry().get_schema_and_tool(doc_type, strict=False)
-            return await _call_api(client, messages, non_strict)
-        raise
 
 
 async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -245,9 +220,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-        response = await _call_extraction(
-            client, [{"role": "user", "content": content}], tool_definition, doc_type
-        )
+        response = await _call_api(client, [{"role": "user", "content": content}], tool_definition)
         usage = usage_entry(f"pioneer page {current_page}", response)
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_block is None:
@@ -326,8 +299,8 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
 
-            response = await _call_extraction(
-                client, [{"role": "user", "content": content}], tool_definition, doc_type
+            response = await _call_api(
+                client, [{"role": "user", "content": content}], tool_definition
             )
             usage_log.append(usage_entry(f"burst page {current_page} attempt {attempt}", response))
             tool_block = next((b for b in response.content if b.type == "tool_use"), None)

@@ -66,7 +66,7 @@ deterministic harness checks its work:
 | Agent | Role | Pattern |
 |---|---|---|
 | `classifier` | Reads the whole PDF, emits **one token** (the document type) | Constrained decision agent — forced tool-free, tiny `max_tokens`, unknown values fall back to `baseline_core` |
-| `pioneer_parser` / `parser_worker` | Extract one page each into typed blocks | Tool-calling extractors — the JSON Schema *is* the tool signature, declared `strict: true` so the API guarantees conformant arguments |
+| `pioneer_parser` / `parser_worker` | Extract one page each into typed blocks | Tool-calling extractors — the JSON Schema *is* the tool signature; output is validated locally against the full schema (not strict tool use, which stalls streaming on the richer schemas) |
 | `coverage_auditor` | Compares each page's blocks against the PDF's native text layer | **Critic/oracle** — deterministic ground truth (no LLM), with bounded self-correction: up to `COVERAGE_RETRY_MAX_PAGES` flagged pages are re-extracted once, keeping whichever result covers more |
 | `hierarchy_node` | Assigns parent–child relations across all blocks | Hybrid — a deterministic geometric pre-sorter establishes reading order; the model only judges semantic nesting |
 
