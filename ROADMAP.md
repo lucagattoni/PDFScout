@@ -76,25 +76,9 @@ check to golden regeneration.
 **Scope:** (i)/(ii) Small each + one paid verification run; the checkpoint-cache
 and deterministic-sort guarantees (A) are already in place.
 
-Items 3, 6 and 7 remain from the 2026-07-13 real-document test session (2-page Irish
+Items 6 and 7 remain from the 2026-07-13 real-document test session (2-page Irish
 utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
 with per-call usage instrumentation).
-
-### 3 · Page-1 completeness variance — no detector for silently dropped blocks
-
-**What:** across three runs of the same bill, page 1 gained/lost blocks
-("Total due" missing in one run, "Energy tips" in another) with no warning.
-Since `temperature` was removed (v1.6.4) there is no determinism knob, and
-nothing detects a dropped region.
-
-**Investigate:** use the native text layer (already extracted by
-`native_extractor`) as a completeness oracle — diff significant native-layer
-text spans against extracted block text; unmatched spans → targeted retry or at
-minimum an `extraction_warning`. Same philosophy as the v1.7.2 truncation fix:
-convert silent drops into visible ones.
-
-**Scope:** Medium — needs a matching heuristic robust to whitespace/reflow, and
-a threshold for "significant".
 
 ### 7 · Cross-page duplicate blocks and dropped sections in burst extraction
 
@@ -110,10 +94,26 @@ into the output.
 **Investigate:** content+bbox-based dedup across pages (same normalized text +
 overlapping bbox on the same page number → duplicate); stricter page-exclusivity
 prompting; and page-attribution validation (block's bbox page vs assigned page).
-Related to #3 (both are completeness/attribution variance); fixing #3's oracle
-would also detect the dropped sections.
+**Shipped in v1.9.0:** (a) cross-page duplication detection in
+`coverage_auditor` — flags a page whose substantial blocks mostly duplicate ONE
+other page (single-dominant rule suppresses templated-boilerplate false
+positives; validated: catches the real 4/5 failure, silent on clean docs);
+(b) prevention — worker prompts carry first/last native-text-layer line anchors
+per page when the layer is usable.
+
+**Remains open:** structural fix (send each worker a single-page PDF —
+trade-off: loses the shared prompt-cache prefix); auto-retry of a flagged page;
+single dropped headings on otherwise-covered pages (needs span/bbox-aware
+matching — v2 of the coverage oracle).
 
 ### 6 · Real-document golden corpus completion (Group R)
+
+**Generator improvement (small, found during v1.9.0 regen):**
+`generate_real_ground_truth.py` computes `metadata_required` consensus by exact
+value equality, so run-to-run case flicker ("Physics-Informed" vs
+"Physics-informed") drops a key from the required set entirely (sp-1 lost
+`title`). The consensus grouping should use the same normalized equality as
+`test_real_docs._norm_eq` and store the most common raw value.
 
 **Update (2026-07-13, v1.8.x):** the sp goldens are additionally **stale for the
 current model** — they were generated 2026-06-04 under the previous MODEL. The
@@ -214,6 +214,8 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 | Golden `model_version` decoupled from `MODEL` | v1.7.1 | Fixed literal in `_common.py`; stops test runs dirtying tracked goldens (`tests/unit/test_golden_meta.py`) |
 | `temperature` removed (rejected by current model) | v1.6.4 | API began rejecting non-default sampling params on the extraction model; removed from all call sites |
 | Dense-page max_tokens truncation fix | v1.7.2 | `WORKER_MAX_TOKENS` 4000→16000 + `stop_reason` truncation detection in both workers (branch `fix/worker-max-tokens-truncation`, pending merge). Root cause of "Page 2: no blocks" on real 2-page bill |
+| Completeness oracle (`coverage_auditor` node) | v1.9.0 | Was Open #3. Native-text-layer word-coverage audit per page, warning-only; self-disables on unusable layers (subset fonts → control-char soup); figure pages get a lower bar. Validated: flags the real dropped-page case at 0% coverage, silent on known-good runs and on a 16-page paper |
+| sp goldens refreshed for current model + large-doc skip | v1.9.0 | sp-1/sp-5 regenerated (5 runs each); sp-4 carries `skip_e2e_reason` in the manifest (large doc, deferred) |
 | Classifier thinking pinned off + retry/usage observability | v1.8.0 | `thinking: disabled` on classifier (adaptive default would blow the 10-token budget); `[RETRY]` stderr lines with discarded validation errors; `PDFSCOUT_LOG_USAGE=1` per-call usage; end-of-run USAGE summary; Langfuse trace usage metadata; `usage_log` state field |
 | Reading-order banding v2 — general, scale-invariant | v1.7.3 | `plans/20260713_0354-reading-order-band-splits.md` — within-band column-major, heading pull-down, all knobs as span fractions; 11/12 human-order constraints on real docs (was 5/12); known limitation: bandless pages stay whole-page column-major |
 | Prompt caching verified on real docs | v1.7.2 session | Burst pages + retries read the full ~11.8k-token PDF prefix from cache (pioneer writes it); classifier writes a separate orphaned entry (→ Open #5); hierarchy call uncached |

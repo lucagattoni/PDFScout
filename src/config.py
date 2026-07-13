@@ -21,3 +21,6 @@ COVERAGE_CHAR_CLASS_MIN = 0.85  # min fraction of standard document characters f
 COVERAGE_MIN_WORDS = 10  # min significant native words for a page to be auditable
 COVERAGE_WARN_THRESHOLD = 0.5  # warn when less than this fraction of native words appears in extracted blocks
 COVERAGE_WARN_THRESHOLD_FIGURE = 0.25  # lower bar on pages with figure blocks (figures are summarized by design)
+CROSS_PAGE_DUP_MIN_CHARS = 20  # min normalized text length for a block to count in cross-page duplication checks (filters page furniture)
+CROSS_PAGE_DUP_MIN_BLOCKS = 4  # min substantial blocks on a page for its duplication ratio to be meaningful
+CROSS_PAGE_DUP_RATIO = 0.5  # warn when this fraction of a page's substantial blocks duplicates one other page

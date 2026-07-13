@@ -1,6 +1,8 @@
 from src.nodes.coverage_node import (
+    audit_cross_page_duplication,
     audit_page_coverage,
     native_layer_usable,
+    page_anchors,
     significant_words,
 )
 
@@ -131,3 +133,58 @@ class TestAuditPageCoverage:
         # A page with almost no significant words (cover page, separator)
         # is not auditable — no warning.
         assert audit_page_coverage({1: "Appendix " * 12}, []) == []
+
+
+class TestCrossPageDuplication:
+    def test_wrong_page_extraction_flagged(self):
+        # Page 5's worker re-emitted page 4's content (real observed failure):
+        # most of page 5's substantial blocks duplicate page 4's text.
+        texts = [
+            "Although this allows us to obtain a bidirectional pre-trained model",
+            "To make BERT handle a variety of down-stream tasks our inputs",
+            "Unlike prior encoders the representation fuses both directions",
+            "In order to train a deep bidirectional representation we mask",
+            "Many important downstream tasks such as question answering",
+        ]
+        blocks = [_block(4, t) for t in texts] + [_block(5, t) for t in texts[:4]]
+        blocks.append(_block(5, "One genuinely new page five sentence about experiments"))
+        warnings = audit_cross_page_duplication(blocks)
+        assert len(warnings) == 1
+        assert "worker may have extracted the wrong page" in warnings[0]
+
+    def test_repeated_page_furniture_not_flagged(self):
+        # Headers/footers repeat on every page — short strings are excluded
+        # and one repeated block never crosses the ratio on a full page.
+        pages = []
+        for p in (1, 2, 3):
+            pages.append(_block(p, "VAT Reg No IE 8F 52100V E&OE all rights reserved"))
+            for i in range(5):
+                pages.append(_block(p, f"Unique page {p} paragraph number {i} with distinct content here"))
+        assert audit_cross_page_duplication(pages) == []
+
+    def test_small_pages_skipped(self):
+        # Below CROSS_PAGE_DUP_MIN_BLOCKS the ratio is meaningless.
+        blocks = [
+            _block(1, "Shared long sentence appearing on both pages equally"),
+            _block(2, "Shared long sentence appearing on both pages equally"),
+        ]
+        assert audit_cross_page_duplication(blocks) == []
+
+    def test_empty_blocks_no_warning(self):
+        assert audit_cross_page_duplication([]) == []
+
+
+class TestPageAnchors:
+    def test_clean_page_yields_first_and_last_lines(self):
+        text = "Opening heading line\n" + _CLEAN_TEXT + "\nClosing footer line here"
+        anchors = page_anchors(text)
+        assert anchors is not None
+        first, last = anchors
+        assert first.startswith("Opening heading")
+        assert last.startswith("Closing footer")
+
+    def test_garbled_layer_yields_none(self):
+        assert page_anchors(_GARBLED) is None
+
+    def test_single_line_yields_none(self):
+        assert page_anchors("Just one line of sufficient length here " * 3) is None

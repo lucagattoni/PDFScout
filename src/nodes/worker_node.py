@@ -6,6 +6,7 @@ from typing import Any
 
 import jsonschema
 from anthropic import AsyncAnthropic
+from pypdf import PdfReader
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import (
@@ -18,6 +19,7 @@ from src.config import (
     VALIDATION_MAX_RETRIES,
     WORKER_MAX_TOKENS,
 )
+from src.nodes.coverage_node import page_anchors
 from src.schema_registry import SchemaRegistry
 from src.utils.pdf_utils import encode_pdf_async
 from src.utils.usage import usage_entry
@@ -82,6 +84,31 @@ def _doc_type_instructions(doc_type: str) -> str:
     return ""
 
 
+async def _page_anchor_instruction(file_path: str, current_page: int) -> str:
+    """Anchor the extraction prompt to the physical page using the native text
+    layer's first/last lines. Prevents page-attribution failures (a worker
+    re-extracting a neighbouring page's content — observed on a real 16-page
+    paper). Empty string when the native layer is unusable or unreadable."""
+    def _read() -> str:
+        try:
+            reader = PdfReader(file_path)
+            if current_page > len(reader.pages):
+                return ""
+            return reader.pages[current_page - 1].extract_text() or ""
+        except Exception:  # noqa: BLE001 — anchoring is best-effort, never fail the worker
+            return ""
+
+    anchors = page_anchors(await asyncio.to_thread(_read))
+    if not anchors:
+        return ""
+    first, last = anchors
+    return (
+        f"\nPage {current_page} anchors from the PDF text layer: the page begins with "
+        f"«{first}» and ends with «{last}». Extract only content that lies on "
+        f"this physical page — do not include content from neighbouring pages."
+    )
+
+
 def _truncation_error(current_page: int) -> str:
     """Error text for a response cut off by max_tokens.
 
@@ -116,6 +143,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
 
         doc_type = state["document_type"]
         extra_instructions = _doc_type_instructions(doc_type)
+        anchor_instruction = await _page_anchor_instruction(state["file_path"], current_page)
         content = [
             {
                 "type": "document",
@@ -131,7 +159,7 @@ async def window_parser_node(state: dict[str, Any]) -> dict[str, Any]:
                     f"top of the next page, set is_continued=true. Leave is_continued=false (or "
                     f"omit it) for all complete blocks. "
                     f"Use the tool '{tool_definition['name']}' to return structured data matching "
-                    f"the schema parameters.{extra_instructions}{_EXTRACTION_FLAGS_INSTRUCTION}"
+                    f"the schema parameters.{anchor_instruction}{extra_instructions}{_EXTRACTION_FLAGS_INSTRUCTION}"
                 ),
             },
         ]
@@ -189,6 +217,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
         _, tool_definition = SchemaRegistry().get_schema_and_tool(doc_type)
         pdf_base64 = await encode_pdf_async(state["file_path"])
         extra_instructions = _doc_type_instructions(doc_type)
+        anchor_instruction = await _page_anchor_instruction(state["file_path"], current_page)
 
         last_error: str | None = None
         usage_log: list[dict] = []
@@ -209,7 +238,7 @@ async def burst_worker_node(state: dict[str, Any]) -> dict[str, Any]:
                         f"top of the next page, set is_continued=true. Leave is_continued=false (or "
                         f"omit it) for all complete blocks. "
                         f"Use the tool '{tool_definition['name']}' to return structured data matching "
-                        f"the schema parameters.{extra_instructions}{_EXTRACTION_FLAGS_INSTRUCTION}"
+                        f"the schema parameters.{anchor_instruction}{extra_instructions}{_EXTRACTION_FLAGS_INSTRUCTION}"
                     ),
                 },
             ]

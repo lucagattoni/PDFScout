@@ -28,6 +28,9 @@ from src.config import (
     COVERAGE_MIN_WORDS,
     COVERAGE_WARN_THRESHOLD,
     COVERAGE_WARN_THRESHOLD_FIGURE,
+    CROSS_PAGE_DUP_MIN_BLOCKS,
+    CROSS_PAGE_DUP_MIN_CHARS,
+    CROSS_PAGE_DUP_RATIO,
 )
 
 _DOC_CHARS = set(".,;:€$%()/-–—'\"@&*+=<>[]|_!?")
@@ -97,6 +100,67 @@ def audit_page_coverage(
     return warnings
 
 
+def _squash(s: str) -> str:
+    return re.sub(r"\s+", " ", _norm(s)).strip()
+
+
+def audit_cross_page_duplication(blocks: list[dict[str, Any]]) -> list[str]:
+    """Detect page-attribution failures: a worker that extracted the wrong
+    page re-emits another page's content under its own page number (observed
+    on a real 16-page paper: page 5's worker re-described page 4, so page 5's
+    real content was silently dropped). Flag any page whose substantial blocks
+    mostly duplicate another single page's text."""
+    by_page: dict[int, list[str]] = {}
+    for b in blocks:
+        text = _squash(b.get("text", ""))
+        if len(text) >= CROSS_PAGE_DUP_MIN_CHARS:
+            by_page.setdefault(b["bbox"]["page_number"], []).append(text)
+
+    warnings: list[str] = []
+    pages = sorted(by_page)
+    reported: set[tuple[int, int]] = set()
+    for n in pages:
+        if len(by_page[n]) < CROSS_PAGE_DUP_MIN_BLOCKS:
+            continue
+        # Ratio of page n's substantial blocks found on each other page. A
+        # genuine wrong-page extraction duplicates ONE specific page; templated
+        # boilerplate (repeated section boxes, headers) matches MANY pages —
+        # suppress the warning in that case rather than flooding.
+        ratios = {}
+        for m in pages:
+            if m == n:
+                continue
+            other = set(by_page[m])
+            ratios[m] = sum(1 for t in by_page[n] if t in other) / len(by_page[n])
+        above = [m for m, r in ratios.items() if r >= CROSS_PAGE_DUP_RATIO]
+        if len(above) != 1:
+            continue
+        m = above[0]
+        pair = (min(n, m), max(n, m))
+        if pair in reported:
+            continue
+        reported.add(pair)
+        warnings.append(
+            f"Pages {n} and {m}: {ratios[m]:.0%} of page {n}'s substantial blocks "
+            f"duplicate page {m}'s text — a worker may have extracted the wrong "
+            f"page, and page {n}'s real content may be missing."
+        )
+    return warnings
+
+
+def page_anchors(native_text: str) -> tuple[str, str] | None:
+    """First and last significant native-layer lines of a page — used to anchor
+    the extraction prompt to the physical page and prevent wrong-page
+    extraction. None when the native layer is unusable."""
+    if not native_layer_usable(native_text):
+        return None
+    lines = [ln.strip() for ln in native_text.splitlines()
+             if len(ln.strip()) >= 8 and sum(c.isalnum() for c in ln) >= 5]
+    if len(lines) < 2:
+        return None
+    return lines[0][:120], lines[-1][:120]
+
+
 async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
     """Graph node: read native text per page and audit the extracted blocks."""
     try:
@@ -110,5 +174,7 @@ async def coverage_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
                 f"Coverage audit skipped: could not read native text layer ({e})."
             ]
         }
-    warnings = audit_page_coverage(native_texts, state["extracted_flat_blocks"] or [])
+    blocks = state["extracted_flat_blocks"] or []
+    warnings = audit_page_coverage(native_texts, blocks)
+    warnings += audit_cross_page_duplication(blocks)
     return {"extraction_warnings": warnings}

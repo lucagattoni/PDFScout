@@ -301,3 +301,35 @@ class TestBurstWorkerNode:
         result = await window_parser_node(sample_state)
         assert len(result["usage_log"]) == 1
         assert result["usage_log"][0]["context"].startswith("pioneer page")
+
+    async def test_anchor_instruction_included_when_native_layer_usable(
+        self, sample_state, sample_block, mocker
+    ):
+        response = _make_tool_use_response([sample_block])
+        mock_client = _setup_mocks(mocker, response)
+        native = (
+            "Opening heading of the page\n"
+            "The quarterly statement summarises electricity consumption across the "
+            "billing period including standing charges and applicable taxation.\n"
+            "Closing footer line of the page"
+        )
+        fake_page = MagicMock()
+        fake_page.extract_text.return_value = native
+        fake_reader = MagicMock()
+        fake_reader.pages = [fake_page, fake_page, fake_page]
+        mocker.patch("src.nodes.worker_node.PdfReader", return_value=fake_reader)
+        await burst_worker_node(sample_state)
+        text = mock_client.messages.create.call_args.kwargs["messages"][0]["content"][1]["text"]
+        assert "anchors from the PDF text layer" in text
+        assert "Opening heading of the page" in text
+        assert "Closing footer line of the page" in text
+
+    async def test_no_anchor_when_native_layer_unreadable(
+        self, sample_state, sample_block, mocker
+    ):
+        response = _make_tool_use_response([sample_block])
+        mock_client = _setup_mocks(mocker, response)
+        mocker.patch("src.nodes.worker_node.PdfReader", side_effect=OSError("no such file"))
+        await burst_worker_node(sample_state)
+        text = mock_client.messages.create.call_args.kwargs["messages"][0]["content"][1]["text"]
+        assert "anchors from the PDF text layer" not in text
