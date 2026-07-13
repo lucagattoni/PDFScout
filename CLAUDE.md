@@ -125,6 +125,19 @@ The test: Could a developer act on this response and only discover it was wrong 
   implementation branch, merge the plan branch into the implementation branch before
   pushing.
 
+## Roadmap
+
+`ROADMAP.md` is the single source of truth for open items, deferred decisions, and
+rejected proposals. During active development, keep it in sync:
+
+- **Same-commit rule.** When work opens, closes, or changes an item's state (a gap
+  filled, a slot still missing, a decision deferred/reversed), update `ROADMAP.md` in
+  the **same commit** as that work — never as a follow-up. A landed change that leaves
+  the roadmap stale is an incomplete change.
+- **Record, don't discard.** New gaps, deferred work, and recommendations go into
+  `ROADMAP.md` (correct section: Open Now / Deferred / Rejected), not into chat or a
+  commit message that then vanishes.
+
 ## Iterative loops
 
 - **Commit and push every commit immediately when it is ready** — do not accumulate
