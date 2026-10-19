@@ -17,7 +17,7 @@
 | `make fixtures GRP=c` | Regenerate one group of fixtures |
 | `make coverage` | Run tests and print per-module coverage report |
 | `make docs` | Serve this documentation locally with MkDocs Material |
-| `make ci` | Run `lint`, `lint-md`, then `test` — use before pushing |
+| `make ci` | Run `lint`, `lint-md`, then `test` — use before pushing. The `ci` GitHub Actions workflow runs the same checks except `lint-md`, plus `uv lock --check` |
 | `make clean` | Remove `__pycache__`, `.coverage`, `htmlcov`, `.pytest_cache`, `node_modules` |
 
 Python linting and formatting use [ruff](https://github.com/astral-sh/ruff)

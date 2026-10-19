@@ -1,0 +1,34 @@
+name: ci
+
+# Gate for Python changes: lint, format, lockfile, and the offline test suite
+# (mocked Anthropic clients — no API key, no paid calls). Runs on every branch
+# push and on pull requests. Markdown lint stays local (`make lint-md`) and the
+# docs site has its own workflow (docs.yml).
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # Fails when pyproject.toml and uv.lock disagree (stale lock after a version bump).
+      - run: uv lock --check
+      - run: uv sync --group dev --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      # Same selection as `make test`; e2e tests need a real API key and are excluded.
+      - run: uv run pytest -m "not e2e"

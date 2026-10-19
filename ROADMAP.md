@@ -11,7 +11,81 @@ Current version: see [CHANGELOG.md](CHANGELOG.md)
 
 ## Open Now
 
-Ordered by priority. Pick from the top unless there's a reason not to.
+Ordered by priority. Pick from the top unless there's a reason not to. Item numbers
+are stable IDs (cited from the CHANGELOG and plans), not rank — file order is the
+priority order. Items 9–15 were added by the 2026-10-19 repository review.
+
+### 9 · Validate the current pipeline end to end (review finding, 2026-10-19)
+
+**What:** The v1.12.2–v1.12.5 fixes (non-strict streaming extraction, the
+`PDFSCOUT_EFFORT` knob) and the v1.12.6 corpus refresh were verified by offline
+tests and golden regeneration only; the repo does not record a paid e2e re-run
+since. Two gaps:
+
+1. **e2e sweep.** Run `pytest -m e2e -k grp_r` (every slot ≤5 pages, so cheap) and
+   the synthetic groups a–i; record the outcome in the CHANGELOG.
+2. **Effort mismatch.** The v1.12.6 goldens were generated at `effort=low`, but the
+   runtime default sends no effort and nothing in the tests or `Makefile` sets
+   `PDFSCOUT_EFFORT`. Unless a local `.env` sets it, e2e compares default-effort
+   output against low-effort goldens. Settle it with #1's effort decision: run e2e
+   under the same setting the goldens used, or regenerate them at the default.
+
+**Scope:** Small — no code, one paid sweep (needs sign-off per the cost cap in
+CLAUDE.md → Investigation rules).
+
+### 8 · Usage & cost accounting for tests and e2e runs (Important — requested 2026-07-13)
+
+**What — two layers:**
+
+1. **Token utilisation everywhere (base layer, unconditional).** e2e PDF
+   processing already logs it (v1.8.0: `[USAGE]` lines, `USAGE:` summary,
+   Langfuse metadata); the gap is **test-side runs** — the golden-generation
+   script and API-hitting tests log block counts only. Add per-run and
+   per-slot token totals to their logs.
+2. **Cost derived from tokens (per call and per document).** Verified
+   reliable — see below — so surface a money figure everywhere usage appears.
+
+**Reliability — verified feasible, exact to the cent.** The API `usage` object
+returns the exact billed token counts per call (`input_tokens`,
+`output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`),
+and cost is a deterministic function of them:
+
+| Component | Multiplier on input price |
+|---|---|
+| Uncached input | 1× ($3/MTok on claude-sonnet-5 as recorded 2026-07-13; the intro $2 rate ended 2026-08-31) |
+| Output | $15/MTok as recorded 2026-07-13 (intro $10 ended 2026-08-31) |
+| Cache read | 0.1× |
+| Cache write, 5m TTL | 1.25× |
+| Cache write, 1h TTL | 2× |
+
+`PDFSCOUT_CACHE_TTL` selects the TTL for the whole run, so the correct write
+multiplier is always known. **Caveat (the only unreliability):** the API has no
+per-request billed-cost field and the org Cost Report Admin API only
+aggregates, so pricing lives in a local table (config) that must be kept
+current. The intro-pricing window ended 2026-08-31 — verify the rates against
+Anthropic's published pricing before populating the table, and re-check it on
+every model change.
+
+**How:** price table in `src/config.py` keyed by model id; `cost_of(entry)` in
+`src/utils/usage.py`; add `cost` to `usage_entry` output and a `total_cost` to
+`summarize_usage`; print in `[USAGE]`/`USAGE:` lines and Langfuse metadata;
+golden generator prints per-run and per-slot cost.
+
+### 10 · Model-version trial (review finding, 2026-10-19)
+
+**What:** `MODEL` is pinned to `claude-sonnet-5`. As of 2026-10-19 Sonnet 5.5
+(`claude-sonnet-5-5`) is listed as the current Sonnet — verify against Anthropic's
+models list. Any model change needs re-validation (see B4); golden `model_version`
+is deliberately decoupled from `MODEL` (v1.7.1), so the goldens won't flag a swap.
+
+**Plan:** after #8 (so the comparison is in dollars) and #9 (so the baseline is
+green), run the real-document corpus on both models and compare golden pass rate,
+block-count spread, `classification_unstable`, coverage warnings, and cost per
+document. Adopt only on equal-or-better quality; otherwise record the result under
+Rejected. Re-check default behaviours that can differ across versions (adaptive
+thinking, `effort` semantics — see #1).
+
+**Scope:** Medium — one paid corpus sweep per model; needs sign-off.
 
 ### 1 · Determinism strategy — maximize reproducibility (2026-07-13 research conclusion)
 
@@ -45,10 +119,11 @@ Levers, most → least in our control:
   suppressed); the **classifier runs free-form → adaptive on** — this is Open #2.
   Recommend setting `thinking={"type":"disabled"}` **explicitly on every call**,
   not relying on implicit `tool_choice` suppression.
-- **`strict: true`** on the extraction + `set_block_relations` tools (with
-  `additionalProperties:false` + `required`) → guarantees schema-exact tool
-  inputs, removing field-ordering/missing-field structural variance at the API
-  layer; complements the existing jsonschema retry loop.
+- **`strict: true`** — **partly reverted.** Shipped in v1.10.1 on the extraction +
+  `set_block_relations` tools; v1.12.5 dropped it on extraction (strict +
+  streaming stalls the richest schemas, `scientific_paper`/`contract`). It stays
+  on the hierarchy tool. Extraction relies on the local jsonschema validation +
+  retry loop for structure.
 - **`output_config={"effort":"low"}`** (default is `high`) → less exploration,
   more scoped/consistent output for a mechanical task. Test hierarchy accuracy
   first — relational reasoning may want `medium`. **Shipped opt-in (v1.12.4)**
@@ -71,59 +146,23 @@ metric — apply the B-levers, regenerate, and check whether block-count spread 
 `classification_unstable` shrink. This turns "as deterministic as possible" into
 a measurable acceptance test.
 
-**Actionable next steps (tracked):** Open #2 (disable classifier thinking) — the
-first and highest-value fix — **shipped in v1.8.0** (`thinking: disabled` on the
-classifier call). Candidate (i) `strict: true` — **shipped in v1.10.1** (both
-extraction tools and the hierarchy relation tool; unsupported constraint
-keywords stripped API-side, enforced locally — two-layer validation). Open #3 (completeness oracle) targets the *symptom*
-of residual variance — silently dropped blocks — regardless of cause. New
-candidates from this analysis: (i) add `strict:true` to the extraction/hierarchy
-tools; (ii) trial `effort:"low"`; (iii) add a block-count-spread-over-N-runs
-check to golden regeneration.
+**Status (2026-10-19):**
 
-**Scope:** (i)/(ii) Small each + one paid verification run; the checkpoint-cache
-and deterministic-sort guarantees (A) are already in place.
+- Classifier thinking pinned off — shipped v1.8.0.
+- `strict: true` — shipped v1.10.1, reverted on extraction in v1.12.5 (see above).
+- `effort` — shipped as the opt-in `PDFSCOUT_EFFORT` knob (v1.12.4); the v1.12.6
+  goldens were regenerated at `effort=low`.
+- Block-count spread over N runs — recorded per golden (`raw_block_counts`);
+  median 6.3% at `low` (v1.12.6).
+- Completeness oracle (the symptom-level fix for silently dropped blocks) — shipped
+  v1.9.0.
 
-Items 6 and 7 remain from the 2026-07-13 real-document test session (2-page Irish
-utility bill + 3-page Italian Enel invoice, both extracted end-to-end on v1.7.2
-with per-call usage instrumentation).
+**Still open:** decide the effort default — adopt `low` explicitly only after a
+corpus-wide A/B against the default (the paid sweep in #9 supplies it) — and whether
+to add the "extract only what is present" prompt tightening.
 
-### 8 · Usage & cost accounting for tests and e2e runs (Important — requested 2026-07-13)
-
-**What — two layers:**
-
-1. **Token utilisation everywhere (base layer, unconditional).** e2e PDF
-   processing already logs it (v1.8.0: `[USAGE]` lines, `USAGE:` summary,
-   Langfuse metadata); the gap is **test-side runs** — the golden-generation
-   script and API-hitting tests log block counts only. Add per-run and
-   per-slot token totals to their logs.
-2. **Cost derived from tokens (per call and per document).** Verified
-   reliable — see below — so surface a money figure everywhere usage appears.
-
-**Reliability — verified feasible, exact to the cent.** The API `usage` object
-returns the exact billed token counts per call (`input_tokens`,
-`output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`),
-and cost is a deterministic function of them:
-
-| Component | Multiplier on input price |
-|---|---|
-| Uncached input | 1× ($3/MTok on claude-sonnet-5; intro $2 through 2026-08-31) |
-| Output | $15/MTok (intro $10) |
-| Cache read | 0.1× |
-| Cache write, 5m TTL | 1.25× |
-| Cache write, 1h TTL | 2× |
-
-`PDFSCOUT_CACHE_TTL` selects the TTL for the whole run, so the correct write
-multiplier is always known. **Caveat (the only unreliability):** the API has no
-per-request billed-cost field and the org Cost Report Admin API only
-aggregates, so pricing lives in a local table (config) that must be kept
-current — flag the intro-pricing expiry (2026-08-31) and re-check the table on
-every model change.
-
-**How:** price table in `src/config.py` keyed by model id; `cost_of(entry)` in
-`src/utils/usage.py`; add `cost` to `usage_entry` output and a `total_cost` to
-`summarize_usage`; print in `[USAGE]`/`USAGE:` lines and Langfuse metadata;
-golden generator prints per-run and per-slot cost.
+**Scope:** Small — one paid verification run, shared with #9. The
+checkpoint-cache and deterministic-sort guarantees (A) are already in place.
 
 ### 7 · Cross-page duplicate blocks and dropped sections in burst extraction
 
@@ -157,35 +196,82 @@ tests incl. the real sp-5 failure shape; triggers naturally on live flagged runs
 trade-off: loses the shared prompt-cache prefix); single dropped headings on
 otherwise-covered pages (needs span/bbox-aware matching — v2 of the oracle).
 
-### 6 · Real-document golden corpus completion (Group R) — ✅ COMPLETE (v1.12.6)
+### 11 · REST API hardening (review finding, 2026-10-19)
 
-**Done 2026-07-13.** The corpus was fully refreshed and all goldens regenerated
-against the current model:
+**What** (found by reading `api.py` / `src/api/`, not yet exercised — write a
+failing test first for each):
 
-- **New documents (≤5 pages, verified with pypdf):** `sp-1..6` replaced with six
-  fresh arXiv papers (July 2026, post-knowledge-cutoff — no memorisation risk);
-  `bc-1` → Federal Register FERC scoping notice, `bc-3` → June FOMC statement;
-  `bc-2`/`bc-4`/`inv-1..5` unchanged. Recency rule applies to scientific slots
-  only (see CLAUDE.md → Test corpus).
-- **All 10 slots regenerated** (`sp-1..6`, `bc-1..4`), 3 runs each, `effort=low`,
-  1-hour prompt cache. Median run-to-run block spread 6.3% (7/10 ≤8%; sp-2/bc-1/
-  bc-3 higher — the `min_blocks` 95%-of-observed-min clamp keeps all goldens
-  non-flaky). `inv-1..5` goldens unchanged. **15/15 committed.**
-- Metadata consensus normalization (v1.10.2) confirmed working: `sp-1` golden
-  carries `title`, `authors`, and `abstract` in `metadata_required`.
+- No authentication, rate limiting or CORS; every upload spawns N paid calls.
+  Fine on localhost, unsafe if the API is ever exposed.
+- `asyncio.create_task(run_extraction(...))` keeps no reference to the task; Python's
+  docs warn such tasks can be garbage-collected mid-run. Hold them in a set and
+  discard on completion.
+- `jobs.init()` marks every queued or running job `failed` on restart, and a re-POST
+  without `force` returns that failed record — so checkpoint resume (README:
+  "Interrupted runs resume") appears reachable from the CLI only. Either resume
+  interrupted jobs at startup or document that API resume is not supported.
+- The PDF check trusts the client-declared `content-type`; add a `%PDF-` magic-byte
+  check.
 
-This work drove the v1.12.2–v1.12.5 pipeline fixes (strict-schema 400, streaming
-for `APITimeoutError`, and the strict+streaming hang) — extraction was
-effectively broken for `scientific_paper`/`contract` until they landed.
+**Scope:** Small each. The one decision needed is the auth model (shared-secret
+header vs none).
 
-Remaining follow-up: run `pytest -m e2e -k grp_r` for a full green e2e pass on
-the new corpus (cheap now — all docs ≤5 pages; needs sign-off as a paid sweep).
+### 12 · Long-document cost and quality benchmark (review finding, 2026-10-19)
 
-**Scope:** Medium — no code changes, but requires live API calls to generate
-ground truth and manual verification of `bc-3`/`sp-1` fixture notes (manifest
-flags these as needing selection review). Full detail in
-`plans/20260603_1540-real-doc-test-corpus.md` and
-`plans/20260604_0739-real-doc-infrastructure.md`.
+**What:** Every page worker re-sends the whole PDF (cached after the first call).
+The docs list 600 pages as the API maximum (100 on 200k-context models), but the
+test corpus caps at 5 pages, so cost and quality at 20–100 pages are unmeasured.
+One suspected limit, from reading `hierarchy_node.py` (not tested): the single
+hierarchy call's budget is `min(16000, max(4000, blocks × 40))`, so it stops scaling
+at about 400 blocks, and — unlike the workers — it never checks
+`stop_reason == "max_tokens"`. If a truncated forced tool call arrives with empty
+input, as the worker code documents, every block would be promoted to root with one
+warning each.
+
+**Plan:** run one 20–50 page public document outside the 5-page corpus (one-off, not
+a manifest slot) and report dollars per page, cache-hit rate, coverage warnings and
+hierarchy behaviour above ~400 blocks. Add the missing truncation check regardless —
+it is cheap.
+
+**Scope:** Medium — one paid run; needs sign-off.
+
+### 13 · Pipeable CLI output (review finding, 2026-10-19)
+
+**What:** `main.py` prints `[GRAPH]` progress lines and the final JSON to the same
+stdout stream, so the result cannot be piped without parsing around the progress
+text, and there is no `--output` flag.
+
+**Fix:** add `--output <file>` (opt-in, non-breaking) and send progress to stderr
+only when it is used; making stdout JSON-only the default would change the CLI
+contract (MAJOR under the release rules) — decide before doing it. Update the README
+and `docs/01-getting-started/02-usage.md` examples in the same change.
+
+**Scope:** Small.
+
+### 14 · Dependency freshness (review finding, 2026-10-19)
+
+**What:** On 2026-10-19 `uv pip list --outdated` reported newer versions of locked
+dependencies — notably `anthropic` (0.116.0 locked, 1.15.0 listed), `langfuse`
+(4.14.0 → 5.0.2) and `fastapi` (0.139.0 → 0.148.0). Re-check; the numbers are dated.
+There is no Dependabot or Renovate config.
+
+**Fix:** add `.github/dependabot.yml` (uv + github-actions ecosystems, weekly,
+grouped) — the `ci` workflow now gates those PRs. Take the `anthropic` major bump
+deliberately: the pipeline depends on the streaming and `output_config` surface, so
+run the offline suite plus #9's sweep before merging it.
+
+**Scope:** Small (config); Medium for the `anthropic` bump.
+
+### 15 · Worker prompt/parse duplication (review finding, 2026-10-19)
+
+**What:** `window_parser_node` and `burst_worker_node` (`src/nodes/worker_node.py`)
+repeat the prompt construction and the tool-block / `blocks` parsing logic. Tech
+debt only — no behavioural bug known.
+
+**Fix:** extract shared helpers the next time the worker is touched for another
+reason; don't refactor standalone (CLAUDE.md → surgical changes).
+
+**Scope:** Small.
 
 ---
 
@@ -206,15 +292,16 @@ create the PyPI project, configure trusted publishing (repo
 `lucagattoni/PDFScout`, workflow `python-publish.yml`, environment `pypi`),
 and restore the workflow from git history (`1603a19`).
 
-### D1 · Streaming worker calls for >16k-token pages (contingency)
+### D1 · Raise `WORKER_MAX_TOKENS` above 16k for very dense pages (contingency)
 
 **What:** `WORKER_MAX_TOKENS = 16000` (v1.7.2) covers the densest real pages
 seen so far (~5.4k needed), but a page requiring more would truncate again —
-now correctly reported as a truncation warning rather than a silent drop.
+reported as a truncation warning rather than a silent drop.
 
-**Fix when triggered:** switch worker calls to `client.messages.stream(...)` +
-`get_final_message()`, raising the safe ceiling to 64–128k. Defer until a real
-document actually hits the 16k warning.
+**Fix when triggered:** worker calls already stream (v1.12.3), so the long-request
+timeout no longer caps the budget; raise `WORKER_MAX_TOKENS` toward the 64–128k
+ceiling from the original analysis. Defer until a real document actually hits the
+16k warning.
 
 ---
 
@@ -257,6 +344,11 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 
 | Item | Version | Detail |
 |---|---|---|
+| CI gate (`ci.yml`): ruff, format check, `uv lock --check`, offline pytest | unreleased | Runs on every branch push and pull request; closes the "no CI on tests" review finding (2026-10-19). Markdown lint stays local (`make lint-md`). |
+| Real-document corpus refresh + goldens regenerated (was #6, Group R) | v1.12.6 | `sp-1..6` replaced with July-2026 arXiv papers (≤5 pp, verified with pypdf, post-cutoff); `bc-1` → Federal Register FERC scoping notice, `bc-3` → June FOMC statement; `bc-2`/`bc-4`/`inv-1..5` unchanged. 10 slots regenerated (3 runs, `effort=low`, 1-hour cache), 15/15 goldens committed. Median run-to-run block spread 6.3% (7/10 ≤8%; `sp-2`/`bc-1`/`bc-3` higher — the `min_blocks` 95%-of-observed-min clamp keeps all goldens non-flaky). Metadata consensus normalization (folded into v1.11.0) confirmed on `sp-1`. Drove the v1.12.2–v1.12.5 fixes. Remaining paid e2e pass → #9. Plans: `plans/20260603_1540-real-doc-test-corpus.md`, `plans/20260604_0739-real-doc-infrastructure.md`. |
+| `PDFSCOUT_EFFORT` env knob | v1.12.4 | `output_config.effort` on every call; unset sends nothing. Early A/B (n=3) halved block-count variance at equal quality. Default decision → #1. |
+| Hierarchical MkDocs documentation + GitHub Pages deploy | v1.12.0–v1.12.1 | Docs site auto-deployed from `main`; strict build as a PR check. |
+| Coverage auto-retry of flagged pages | v1.11.0 | Auto-retry half of #7 (details there). |
 | Strict tool use dropped on extraction (streaming hang fix) | v1.12.5 | Strict + streaming hangs scientific_paper/contract (grammar-ceiling stall, no 400 → fallback never fires); extraction tool now non-strict with local jsonschema validation. Hierarchy stays strict. Confirmed by live probe 2026-07-13. |
 | Extraction/hierarchy streaming (APITimeoutError fix) | v1.12.3 | Worker + hierarchy calls stream via messages.stream()/get_final_message() instead of blocking create() at max_tokens=16000 — avoids the API long-request timeout that broke golden regen on dense pages. Found 2026-07-13. |
 | Strict-schema "too complex" regression fix | v1.12.2 | Strict tool use (v1.10.1) broke `scientific_paper`/`contract` extraction — the API rejects their strict grammar with `400 "Schema is too complex."`. Worker now falls back to a non-strict tool on that error, memoized per doc type; `_call_api` no longer retries deterministic 4xx. Found via golden regen 2026-07-13. |

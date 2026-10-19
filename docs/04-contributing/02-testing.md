@@ -6,11 +6,12 @@ Three tiers, by cost: an offline suite that runs on every change, synthetic
 e2e tests that hit the real API against generated PDFs, and a real-document
 corpus that runs the full pipeline against production-like documents.
 
-## Offline suite (241 tests)
+## Offline suite (252 tests)
 
 Run with `make test`; coverage report with `make coverage`. No
 `ANTHROPIC_API_KEY` required — the suite runs entirely in isolation with
-mocked Anthropic clients.
+mocked Anthropic clients. The `ci` GitHub Actions workflow runs it, with the
+ruff lint, format and `uv.lock` checks, on every branch push and pull request.
 
 | Layer | Location | What it covers |
 |---|---|---|
