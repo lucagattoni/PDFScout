@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`ci` GitHub Actions workflow** (`.github/workflows/ci.yml`) — runs `uv lock
+  --check`, `ruff check`, `ruff format --check` and the offline suite
+  (`pytest -m "not e2e"`, no API key) on every branch push and pull request.
+  Until now only the docs and release workflows existed, so nothing gated `main`.
+  Markdown lint stays local (`make lint-md`). Repository review 2026-10-19.
+
+### Changed
+
+- **Docs/ROADMAP sync.** Offline test count 241 → 252 in `README.md`,
+  `01-installation.md` and `02-testing.md`; the contributing docs now describe the
+  CI workflow. ROADMAP: completed #6 moved to Recently Shipped (stale
+  "v1.10.2" reference corrected — folded into v1.11.0), #1's strict-tool-use status
+  reconciled with the v1.12.5 revert, #8's expired intro-pricing note flagged, D1
+  updated (streaming shipped v1.12.3), missing shipped rows added, "Open Now"
+  reordered by priority, and findings #9–#15 from the repository review recorded.
+
 ## [1.12.6] — 20260713 17:51
 
 ### Changed

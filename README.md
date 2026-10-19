@@ -74,7 +74,7 @@ locally with `make docs`.
 ## Development
 
 ```bash
-make test   # 241 offline tests, no API key needed
+make test   # 252 offline tests, no API key needed
 make lint   # ruff check
 make ci     # lint + lint-md + test — use before pushing
 ```

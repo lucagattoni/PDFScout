@@ -47,7 +47,7 @@ If the keys are absent the pipeline runs normally with no tracing.
 ## Verify the install
 
 ```bash
-make test   # 241 offline tests — no API key required
+make test   # 252 offline tests — no API key required
 ```
 
 Next: [usage](02-usage.md) to run your first extraction.
