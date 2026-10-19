@@ -344,7 +344,7 @@ Compact history — full detail in [CHANGELOG.md](CHANGELOG.md) and the linked p
 
 | Item | Version | Detail |
 |---|---|---|
-| CI gate (`ci.yml`): ruff, format check, `uv lock --check`, offline pytest | unreleased | Runs on every branch push and pull request; closes the "no CI on tests" review finding (2026-10-19). Markdown lint stays local (`make lint-md`). |
+| CI gate (`ci.yml`): ruff, format check, `uv lock --check`, offline pytest | v1.12.7 | Runs on every branch push and pull request; closes the "no CI on tests" review finding (2026-10-19). Markdown lint stays local (`make lint-md`). |
 | Real-document corpus refresh + goldens regenerated (was #6, Group R) | v1.12.6 | `sp-1..6` replaced with July-2026 arXiv papers (≤5 pp, verified with pypdf, post-cutoff); `bc-1` → Federal Register FERC scoping notice, `bc-3` → June FOMC statement; `bc-2`/`bc-4`/`inv-1..5` unchanged. 10 slots regenerated (3 runs, `effort=low`, 1-hour cache), 15/15 goldens committed. Median run-to-run block spread 6.3% (7/10 ≤8%; `sp-2`/`bc-1`/`bc-3` higher — the `min_blocks` 95%-of-observed-min clamp keeps all goldens non-flaky). Metadata consensus normalization (folded into v1.11.0) confirmed on `sp-1`. Drove the v1.12.2–v1.12.5 fixes. Remaining paid e2e pass → #9. Plans: `plans/20260603_1540-real-doc-test-corpus.md`, `plans/20260604_0739-real-doc-infrastructure.md`. |
 | `PDFSCOUT_EFFORT` env knob | v1.12.4 | `output_config.effort` on every call; unset sends nothing. Early A/B (n=3) halved block-count variance at equal quality. Default decision → #1. |
 | Hierarchical MkDocs documentation + GitHub Pages deploy | v1.12.0–v1.12.1 | Docs site auto-deployed from `main`; strict build as a PR check. |
